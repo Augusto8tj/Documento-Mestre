@@ -108,6 +108,19 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
     overflow: visible !important;
   }
 
+  /* Elementos indivisíveis: cabeçalho e bloco de assinatura não quebram entre páginas */
+  #cabecalho-timbrado,
+  .cabecalho-timbrado,
+  #assinatura-timbrado,
+  .assinatura-timbrado,
+  .sig-block,
+  .avoid-break {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   /* Folha A4 Oficial: Renderização contínua de documento oficial limpo */
   #print-area-content,
   .print-area-container {
@@ -122,6 +135,17 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
     box-shadow: none !important;
     max-width: 100% !important;
     width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Preservação estrita das cores institucionais no fallback de impressão nativa */
+  #cabecalho-timbrado *,
+  #assinatura-timbrado *,
+  .text-\[\#002b82\],
+  .border-\[\#002b82\],
+  .brasao-oficial-img,
+  img[alt*="Brasão"] {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }

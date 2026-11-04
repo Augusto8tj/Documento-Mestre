@@ -1576,12 +1576,73 @@ ${headerAndBodyHtml}
     showToast(`Documento ${cleanDocName} exportado para Word com Brasão oficial!`);
   };
 
-  // Exportação para PDF (utiliza html2pdf.js com proporções A4 oficiais e Brasão protegido contra deformações)
+  // Normalizador de cores oklch -> RGB usando Canvas 2D para compatibilidade com html2canvas
+  const normalizeOklchToRgb = (rootElement: HTMLElement) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const propsToCheck = [
+      'color',
+      'background-color',
+      'border-top-color',
+      'border-bottom-color',
+      'border-left-color',
+      'border-right-color',
+      'fill',
+      'stroke',
+      'outline-color',
+      'text-decoration-color'
+    ];
+
+    const elements = [rootElement, ...Array.from(rootElement.querySelectorAll('*'))] as HTMLElement[];
+
+    for (const el of elements) {
+      if (!el || !el.style) continue;
+      const computed = window.getComputedStyle(el);
+      for (const prop of propsToCheck) {
+        const val = computed.getPropertyValue(prop);
+        if (val && val.includes('oklch')) {
+          try {
+            ctx.fillStyle = '#000000';
+            ctx.fillStyle = val;
+            const rgb = ctx.fillStyle;
+            el.style.setProperty(prop, rgb, 'important');
+          } catch {
+            // fallback silencioso
+          }
+        }
+      }
+    }
+  };
+
+  // Exportação oficial para PDF (utiliza html2pdf.js com clone A4 de 794px, normalização oklch, quebra inteligente e PNG nítido)
   const handleBaixarPdfRedator = async () => {
     const cleanDocName = `${redatorTipo}_${(redatorNumero || 'minuta').replace(/[^a-zA-Z0-9_-]/g, '_')}_RioClaro.pdf`;
     setIsRedatorLetterheadOpen(true);
 
-    // Garante que o motor html2pdf está carregado no escopo global
+    // 1. Espera o carregamento de fontes do documento com timeout de segurança de 2s
+    try {
+      await Promise.race([
+        document.fonts ? document.fonts.ready : Promise.resolve(),
+        new Promise(resolve => setTimeout(resolve, 2000))
+      ]);
+    } catch {
+      // prossegue mesmo se a API de fontes falhar
+    }
+    // Breve pausa para estabilização de layout
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // 2. Localiza o elemento original no modal timbrado
+    const elementoOrig = document.getElementById('print-area-content') || (document.querySelector('.print-area-container') as HTMLElement | null);
+    if (!elementoOrig) {
+      showToast('Erro: área de impressão não localizada.', 'Erro', true);
+      return;
+    }
+
+    // 3. Garante o motor html2pdf disponível no escopo global
     let html2pdf = (window as any).html2pdf;
     if (!html2pdf) {
       try {
@@ -1596,46 +1657,120 @@ ${headerAndBodyHtml}
       } catch (e) {}
     }
 
-    setTimeout(() => {
-      const elemento = document.getElementById('print-area-content') || (document.querySelector('.print-area-container') as HTMLElement | null);
-      if (!elemento) {
-        showToast('Erro: área de impressão não localizada.', 'Erro', true);
-        return;
-      }
+    if (!html2pdf) {
+      showToast("Abrindo prévia de impressão: selecione 'Salvar como PDF' na impressora.");
+      setTimeout(() => window.print(), 300);
+      return;
+    }
 
-      if (html2pdf) {
-        showToast('Gerando arquivo PDF com Brasão e Timbrado oficial...');
-        const opt = {
-          margin: [10, 10, 10, 10],
-          filename: cleanDocName,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            scrollY: 0,
-            scrollX: 0
-          },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
+    // 4. Cria container de captura fixo fora da tela na largura exata A4 (794px a 96 DPI)
+    const captureContainer = document.createElement('div');
+    captureContainer.id = 'pdf-capture-container';
+    captureContainer.style.position = 'fixed';
+    captureContainer.style.left = '-10000px';
+    captureContainer.style.top = '0';
+    captureContainer.style.width = '794px';
+    captureContainer.style.minWidth = '794px';
+    captureContainer.style.maxWidth = '794px';
+    captureContainer.style.background = '#ffffff';
+    captureContainer.style.margin = '0';
+    captureContainer.style.padding = '0';
+    captureContainer.style.boxSizing = 'border-box';
+    captureContainer.style.zIndex = '-9999';
 
-        html2pdf()
-          .set(opt)
-          .from(elemento)
-          .save()
-          .then(() => {
-            showToast(`PDF "${cleanDocName}" salvo com sucesso!`);
-          })
-          .catch((err: any) => {
-            console.warn('Falha no html2pdf, acionando diálogo nativo para PDF:', err);
-            showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
-            setTimeout(() => window.print(), 300);
-          });
-      } else {
-        showToast("Abrindo prévia de impressão: selecione 'Salvar como PDF' na impressora.");
-        setTimeout(() => window.print(), 300);
+    // 5. Clona o conteúdo timbrado e zera o padding para que a margem de 15mm do html2pdf seja a única margem
+    const clone = elementoOrig.cloneNode(true) as HTMLElement;
+    clone.id = 'print-area-clone';
+    clone.style.width = '794px';
+    clone.style.minWidth = '794px';
+    clone.style.maxWidth = '794px';
+    clone.style.boxSizing = 'border-box';
+    clone.style.padding = '0';
+    clone.style.margin = '0';
+    clone.style.background = '#ffffff';
+    clone.style.color = '#000000';
+
+    // Preserva rigorosamente as proporções oficiais do Brasão Municipal de Rio Claro RJ
+    const brasaoImg = clone.querySelector('img[alt*="Brasão"]') as HTMLImageElement | null;
+    if (brasaoImg) {
+      brasaoImg.style.width = '83px';
+      brasaoImg.style.height = '96px';
+      brasaoImg.style.minWidth = '83px';
+      brasaoImg.style.minHeight = '96px';
+      brasaoImg.style.maxWidth = '83px';
+      brasaoImg.style.maxHeight = '96px';
+      brasaoImg.style.aspectRatio = '86 / 100';
+      brasaoImg.style.objectFit = 'contain';
+      brasaoImg.style.display = 'block';
+      brasaoImg.style.flexShrink = '0';
+      brasaoImg.setAttribute('width', '83');
+      brasaoImg.setAttribute('height', '96');
+      if (!brasaoImg.src || !brasaoImg.src.startsWith('data:')) {
+        brasaoImg.src = BRASAO_RIO_CLARO;
       }
-    }, 150);
+    }
+
+    // Regras anti-quebra explícitas no clone para cabeçalho e assinatura
+    const cabecalhoClone = clone.querySelector('#cabecalho-timbrado') || clone.querySelector('.cabecalho-timbrado') || clone.firstElementChild as HTMLElement | null;
+    if (cabecalhoClone && cabecalhoClone instanceof HTMLElement) {
+      cabecalhoClone.style.breakInside = 'avoid';
+      (cabecalhoClone.style as any).pageBreakInside = 'avoid';
+    }
+    const assinaturaClone = clone.querySelector('#assinatura-timbrado') || clone.querySelector('.assinatura-timbrado') as HTMLElement | null;
+    if (assinaturaClone && assinaturaClone instanceof HTMLElement) {
+      assinaturaClone.style.breakInside = 'avoid';
+      (assinaturaClone.style as any).pageBreakInside = 'avoid';
+    }
+
+    captureContainer.appendChild(clone);
+    document.body.appendChild(captureContainer);
+
+    // 6. Normaliza cores oklch -> RGB no DOM clonado antes da chamada do html2pdf
+    normalizeOklchToRgb(clone);
+
+    showToast('Gerando arquivo PDF com Brasão e Timbrado oficial...');
+
+    // 7. Configuração completa solicitada: margens uniformes, PNG puro, anti-quebra de parágrafos/assinatura
+    const opt = {
+      margin: [15, 15, 18, 15], // (mm: topo 15mm, esquerda 15mm, base 18mm, direita 15mm)
+      filename: cleanDocName,
+      image: { type: 'png', quality: 1 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: 794,
+        onclone: (clonedDoc: Document) => {
+          const el = clonedDoc.getElementById('print-area-clone') || clonedDoc.getElementById('print-area-content') || clonedDoc.body;
+          if (el && el instanceof HTMLElement) {
+            normalizeOklchToRgb(el);
+          }
+        }
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: {
+        mode: ['avoid-all', 'css', 'legacy'],
+        avoid: ['img', 'p', 'li', 'tr', 'blockquote', '#cabecalho-timbrado', '#assinatura-timbrado', '.avoid-break']
+      }
+    };
+
+    try {
+      await html2pdf()
+        .set(opt)
+        .from(clone)
+        .save();
+      showToast(`PDF "${cleanDocName}" salvo com sucesso!`);
+    } catch (err: any) {
+      console.warn('Falha na geração via html2pdf, acionando diálogo nativo para PDF:', err);
+      showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
+      setTimeout(() => window.print(), 300);
+    } finally {
+      // 8. Garante a remoção limpa do container temporário do DOM em qualquer cenário
+      if (captureContainer && captureContainer.parentNode) {
+        captureContainer.parentNode.removeChild(captureContainer);
+      }
+    }
   };
 
 
@@ -5076,7 +5211,7 @@ ${headerAndBodyHtml}
             {/* Folha A4 Oficial */}
             <div id="print-area-content" className="p-10 sm:p-14 font-serif leading-relaxed text-slate-900 bg-white print-area-container">
               {/* Brasão Oficial e Cabeçalho DRH Rio Claro */}
-              <div className="flex items-center gap-5 pb-5 border-b-2 border-[#002b82] mb-8">
+              <div id="cabecalho-timbrado" className="cabecalho-timbrado avoid-break flex items-center gap-5 pb-5 border-b-2 border-[#002b82] mb-8" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                 <img
                   src={BRASAO_RIO_CLARO}
                   onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
@@ -5184,7 +5319,7 @@ ${headerAndBodyHtml}
               </div>
 
               {/* Assinatura Oficial */}
-              <div className="text-center pt-8 mt-12 max-w-md mx-auto font-sans">
+              <div id="assinatura-timbrado" className="assinatura-timbrado avoid-break text-center pt-8 mt-12 max-w-md mx-auto font-sans" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
                 <div className="w-64 h-[1px] bg-slate-400 mx-auto mb-2.5"></div>
                 <p className="font-bold text-sm sm:text-base text-slate-900">{redatorSignatario}</p>
                 <p className="text-xs sm:text-sm text-slate-700 italic">{redatorCargo}</p>
