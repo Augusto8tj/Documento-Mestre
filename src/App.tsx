@@ -1576,36 +1576,68 @@ ${headerAndBodyHtml}
     showToast(`Documento ${cleanDocName} exportado para Word com Brasão oficial!`);
   };
 
-  // Exportação para PDF (utiliza html2pdf.js com fallback para impressão nativa)
-  const handleBaixarPdfRedator = () => {
+  // Exportação para PDF (utiliza html2pdf.js com proporções A4 oficiais e Brasão protegido contra deformações)
+  const handleBaixarPdfRedator = async () => {
     const cleanDocName = `${redatorTipo}_${(redatorNumero || 'minuta').replace(/[^a-zA-Z0-9_-]/g, '_')}_RioClaro.pdf`;
     setIsRedatorLetterheadOpen(true);
 
+    // Garante que o motor html2pdf está carregado no escopo global
+    let html2pdf = (window as any).html2pdf;
+    if (!html2pdf) {
+      try {
+        await new Promise((resolve) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+          s.onload = resolve;
+          s.onerror = resolve;
+          document.head.appendChild(s);
+        });
+        html2pdf = (window as any).html2pdf;
+      } catch (e) {}
+    }
+
     setTimeout(() => {
-      const el = document.querySelector('.print-area-container') as HTMLElement | null;
-      const html2pdf = (window as any).html2pdf;
-      if (html2pdf && el) {
+      const elemento = document.getElementById('print-area-content') || (document.querySelector('.print-area-container') as HTMLElement | null);
+      if (!elemento) {
+        showToast('Erro: área de impressão não localizada.', 'Erro', true);
+        return;
+      }
+
+      if (html2pdf) {
         showToast('Gerando arquivo PDF com Brasão e Timbrado oficial...');
         const opt = {
           margin: [10, 10, 10, 10],
           filename: cleanDocName,
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, scrollX: 0 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            scrollY: 0,
+            scrollX: 0
+          },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
-        html2pdf().set(opt).from(el).save().then(() => {
-          showToast(`PDF "${cleanDocName}" salvo com sucesso!`);
-        }).catch((err: any) => {
-          console.warn('Falha no html2pdf, acionando impressão nativa:', err);
-          showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
-          setTimeout(() => window.print(), 300);
-        });
+
+        html2pdf()
+          .set(opt)
+          .from(elemento)
+          .save()
+          .then(() => {
+            showToast(`PDF "${cleanDocName}" salvo com sucesso!`);
+          })
+          .catch((err: any) => {
+            console.warn('Falha no html2pdf, acionando diálogo nativo para PDF:', err);
+            showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
+            setTimeout(() => window.print(), 300);
+          });
       } else {
         showToast("Abrindo prévia de impressão: selecione 'Salvar como PDF' na impressora.");
         setTimeout(() => window.print(), 300);
       }
-    }, 250);
+    }, 150);
   };
+
 
   // Open Variable Modal
   const handleOpenVariableModal = (modelo: ModeloDocumental) => {
@@ -2050,9 +2082,22 @@ ${headerAndBodyHtml}
           <div className="text-center mb-6">
             <img
               src={BRASAO_RIO_CLARO}
-              onError={e => { (e.target as HTMLImageElement).src = '/brasao.png'; }}
+              onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
               alt="Brasão Municipal de Rio Claro - RJ"
-              className="h-16 w-auto mx-auto object-contain drop-shadow mb-2.5"
+              width={69}
+              height={80}
+              style={{
+                width: '69px',
+                height: '80px',
+                minWidth: '69px',
+                minHeight: '80px',
+                maxWidth: '69px',
+                maxHeight: '80px',
+                aspectRatio: '86 / 100',
+                objectFit: 'contain',
+                display: 'block'
+              }}
+              className="brasao-oficial-img mx-auto object-contain drop-shadow mb-2.5"
             />
             <h3 className="font-extrabold text-[11px] uppercase tracking-wider text-[#002b82] dark:text-blue-300">
               ESTADO DO RIO DE JANEIRO
@@ -2149,9 +2194,23 @@ ${headerAndBodyHtml}
           <div className="flex items-center space-x-2.5 bg-slate-800/90 border border-slate-700/80 px-2.5 py-1 rounded-xl shadow-xs">
             <img
               src={BRASAO_RIO_CLARO}
-              onError={e => { (e.target as HTMLImageElement).src = '/brasao.png'; }}
+              onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
               alt="Brasão Municipal de Rio Claro - RJ"
-              className="h-7 w-auto object-contain drop-shadow-xs"
+              width={24}
+              height={28}
+              style={{
+                width: '24px',
+                height: '28px',
+                minWidth: '24px',
+                minHeight: '28px',
+                maxWidth: '24px',
+                maxHeight: '28px',
+                aspectRatio: '86 / 100',
+                objectFit: 'contain',
+                display: 'block',
+                flexShrink: 0
+              }}
+              className="brasao-oficial-img object-contain drop-shadow-xs"
             />
             <div>
               <div className="flex items-center gap-1.5 leading-none">
@@ -2271,12 +2330,20 @@ ${headerAndBodyHtml}
             {/* Top Header - Idêntico ao Standalone HTML de Produção (image_7f1c0232.png) */}
             <header className="bg-slate-900 border-b border-slate-800 text-white shadow-md h-16 flex items-center justify-between px-4 sm:px-6 flex-shrink-0 z-30">
               <div className="flex items-center space-x-3">
-                <div className="bg-slate-800/90 border border-slate-700/80 p-1.5 rounded-xl text-white shadow-xs flex items-center justify-center">
+                <div className="bg-slate-800/90 border border-slate-700/80 p-1 sm:p-1.5 rounded-xl text-white shadow-xs flex items-center justify-center shrink-0">
                   <img
                     src={BRASAO_RIO_CLARO}
-                    onError={e => { (e.target as HTMLImageElement).src = '/brasao.png'; }}
+                    onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
                     alt="Brasão de Rio Claro RJ"
-                    className="h-8 w-auto object-contain drop-shadow-xs"
+                    width={44}
+                    height={52}
+                    style={{
+                      aspectRatio: '86 / 100',
+                      objectFit: 'contain',
+                      display: 'block',
+                      flexShrink: 0
+                    }}
+                    className="brasao-oficial-img object-contain drop-shadow-sm w-9 h-[42px] sm:w-10 sm:h-[48px] md:w-11 md:h-[52px] shrink-0 transition-all"
                   />
                 </div>
                 <div>
@@ -4581,9 +4648,23 @@ ${headerAndBodyHtml}
                       <div className="flex items-center gap-3 pb-3 border-b border-slate-200 mb-3 bg-slate-50 -m-5 sm:-m-6 p-4 rounded-t-xl">
                         <img
                           src={BRASAO_RIO_CLARO}
-                          onError={e => { (e.target as HTMLImageElement).src = '/brasao.png'; }}
+                          onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
                           alt="Brasão Oficial de Rio Claro RJ"
-                          className="h-10 w-auto object-contain shrink-0"
+                          width={35}
+                          height={40}
+                          style={{
+                            width: '35px',
+                            height: '40px',
+                            minWidth: '35px',
+                            minHeight: '40px',
+                            maxWidth: '35px',
+                            maxHeight: '40px',
+                            aspectRatio: '86 / 100',
+                            objectFit: 'contain',
+                            display: 'block',
+                            flexShrink: 0
+                          }}
+                          className="brasao-oficial-img object-contain shrink-0"
                         />
                         <div className="text-[#002b82]">
                           <div className="font-extrabold text-[11px] tracking-wide uppercase leading-tight">
@@ -4666,9 +4747,23 @@ ${headerAndBodyHtml}
                       <div className="flex items-center gap-3.5 pb-4 border-b-2 border-[#002b82]/30 mb-4">
                         <img
                           src={BRASAO_RIO_CLARO}
-                          onError={e => { (e.target as HTMLImageElement).src = '/brasao.png'; }}
+                          onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
                           alt="Brasão Oficial de Rio Claro RJ"
-                          className="h-16 w-auto object-contain shrink-0"
+                          width={60}
+                          height={70}
+                          style={{
+                            width: '60px',
+                            height: '70px',
+                            minWidth: '60px',
+                            minHeight: '70px',
+                            maxWidth: '60px',
+                            maxHeight: '70px',
+                            aspectRatio: '86 / 100',
+                            objectFit: 'contain',
+                            flexShrink: 0,
+                            display: 'block'
+                          }}
+                          className="brasao-oficial-img object-contain shrink-0"
                         />
                         <div className="text-[#002b82] font-sans">
                           <div className="font-extrabold text-[12px] tracking-wide uppercase leading-tight">
@@ -4936,8 +5031,8 @@ ${headerAndBodyHtml}
       {/* MODAL 5: DOCUMENTO OFICIAL TIMBRADO IMPRESSÃO (RIO CLARO – RJ)             */}
       {/* ========================================================================= */}
       {isRedatorLetterheadOpen && (
-        <div className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white text-slate-900 rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden my-auto border border-slate-300">
+        <div id="modal-timbrado-container" className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto modal-timbrado-backdrop">
+          <div id="modal-timbrado-card" className="bg-white text-slate-900 rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden my-auto border border-slate-300 modal-timbrado-card">
             {/* Top Toolbar */}
             <div className="p-4 bg-slate-900 text-white flex items-center justify-between no-print">
               <div className="flex items-center space-x-2">
@@ -4979,14 +5074,28 @@ ${headerAndBodyHtml}
             </div>
 
             {/* Folha A4 Oficial */}
-            <div className="p-10 sm:p-14 font-serif leading-relaxed text-slate-900 bg-white print-area-container">
+            <div id="print-area-content" className="p-10 sm:p-14 font-serif leading-relaxed text-slate-900 bg-white print-area-container">
               {/* Brasão Oficial e Cabeçalho DRH Rio Claro */}
               <div className="flex items-center gap-5 pb-5 border-b-2 border-[#002b82] mb-8">
                 <img
                   src={BRASAO_RIO_CLARO}
-                  onError={e => { (e.target as HTMLImageElement).src = '/brasao.png'; }}
+                  onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
                   alt="Brasão Oficial da Prefeitura Municipal de Rio Claro RJ"
-                  className="h-20 sm:h-24 w-auto object-contain shrink-0"
+                  width={83}
+                  height={96}
+                  style={{
+                    width: '83px',
+                    height: '96px',
+                    minWidth: '83px',
+                    minHeight: '96px',
+                    maxWidth: '83px',
+                    maxHeight: '96px',
+                    aspectRatio: '86 / 100',
+                    objectFit: 'contain',
+                    flexShrink: 0,
+                    display: 'block'
+                  }}
+                  className="brasao-oficial-img object-contain shrink-0"
                 />
                 <div className="text-[#002b82] font-sans">
                   <div className="font-extrabold text-sm sm:text-base tracking-wide uppercase leading-tight">
@@ -5477,7 +5586,7 @@ ${headerAndBodyHtml}
 
       {/* Global Toast */}
       {toastMessage && (
-        <div className={`fixed bottom-6 right-6 z-[120] max-w-sm bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border flex items-center space-x-3 pointer-events-none transition-all duration-300 animate-in slide-in-from-bottom-5 ${
+        <div id="toast" role="status" className={`no-print fixed bottom-6 right-6 z-[120] max-w-sm bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border flex items-center space-x-3 pointer-events-none transition-all duration-300 animate-in slide-in-from-bottom-5 ${
           toastMessage.isError ? 'border-rose-500' : 'border-emerald-500'
         }`}>
           <div className={toastMessage.isError ? 'text-rose-400 text-lg' : 'text-emerald-400 text-lg'}>

@@ -34,25 +34,96 @@
   color: #334155 !important;
 }
 
+/* Proteção estrita de proporção oficial para o Brasão Municipal de Rio Claro RJ */
+img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
+  aspect-ratio: 86 / 100 !important;
+  object-fit: contain !important;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 1.5cm 1.5cm 1.5cm 1.5cm;
+}
+
 @media print {
-  body {
-    background: white !important;
-    color: black !important;
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
-  .no-print, nav, header, aside, button, .no-print * {
+
+  /* Oculta estritamente qualquer controle de tela, menu, navegação, botão e TOAST */
+  .no-print,
+  .no-print *,
+  nav,
+  header,
+  aside,
+  button,
+  #toast,
+  .toast,
+  [role="status"],
+  .fixed.bottom-6.right-6,
+  .fixed.bottom-4.left-4 {
     display: none !important;
+    visibility: hidden !important;
   }
+
+  /* Remove completamente backdrop e estilização de janela modal suspensa */
+  #modal-timbrado-container,
+  .modal-timbrado-backdrop,
+  .fixed.inset-0.z-\[60\],
+  .fixed.inset-0 {
+    position: static !important;
+    display: block !important;
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Remove qualquer card, canto arredondado ou sombra da caixa de diálogo */
+  #modal-timbrado-card,
+  .modal-timbrado-card,
+  .fixed.inset-0.z-\[60\] > div,
+  .fixed.inset-0 > div {
+    position: static !important;
+    display: block !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Folha A4 Oficial: Renderização contínua de documento oficial limpo */
+  #print-area-content,
   .print-area-container {
+    display: block !important;
+    position: static !important;
+    background: #ffffff !important;
+    color: #000000 !important;
     padding: 0 !important;
     margin: 0 !important;
     border: none !important;
+    border-radius: 0 !important;
     box-shadow: none !important;
     max-width: 100% !important;
     width: 100% !important;
-  }
-  @page {
-    size: A4 portrait;
-    margin: 15mm 20mm 15mm 20mm;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }
 

@@ -73,9 +73,18 @@ export const PWAInstallButton: React.FC = () => {
                 <img
                   src={BRASAO_RIO_CLARO}
                   alt="Brasão Rio Claro"
-                  className="w-8 h-8 object-contain"
+                  width={28}
+                  height={32}
+                  style={{
+                    width: '28px',
+                    height: '32px',
+                    aspectRatio: '86 / 100',
+                    objectFit: 'contain',
+                    display: 'block'
+                  }}
+                  className="brasao-oficial-img object-contain"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/brasao.png';
+                    (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO;
                   }}
                 />
               </div>
@@ -142,7 +151,7 @@ export const OfflineIndicator: React.FC = () => {
   if (isOnline) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-xl bg-amber-600/95 text-white px-3.5 py-2 text-xs font-semibold shadow-lg backdrop-blur-xs border border-amber-400/40 animate-pulse">
+    <div className="no-print fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-xl bg-amber-600/95 text-white px-3.5 py-2 text-xs font-semibold shadow-lg backdrop-blur-xs border border-amber-400/40 animate-pulse">
       <WifiOff className="w-4 h-4 text-amber-200" />
       <div>
         <p className="leading-tight">Modo Offline Ativo</p>
