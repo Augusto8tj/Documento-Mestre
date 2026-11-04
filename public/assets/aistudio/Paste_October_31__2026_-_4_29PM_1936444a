@@ -1,0 +1,577 @@
+// =================================================================
+//   Prefeitura Municipal de Rio Claro – RJ
+//   Banco Mestre Administrativo Municipal — Backend API v3.4 (GAS)
+//   Módulos: Modelos, Usuários/Servidores, Numeração Sequencial & Auditoria
+//   Atos Normativos e Expedientes Oficiais:
+//   - DECRETO (Gabinete do Prefeito)
+//   - PORTARIA (Secretarias Municipais e Gabinete)
+//   - MEMORANDO, OFÍCIO, DESPACHO, CIRCULAR, E-MAIL
+// =================================================================
+
+/**
+ * Resposta pré-voo para requisições CORS.
+ * O Google Apps Script Web App injeta automaticamente os cabeçalhos CORS
+ * quando devolvemos um TextOutput com MIME JSON.
+ */
+function doOptions(e) {
+  return ContentService.createTextOutput('')
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Localizador resiliente de índices de colunas (independente de acentuação e maiúsculas/minúsculas).
+ * Resolve: 'Matrícula', 'Matricula', 'MATRÍCULA', 'Senha', 'Nome', etc.
+ */
+function findColumnIndex(headers, possibleNames) {
+  const clean = function(str) {
+    return String(str || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  };
+  const searchTerms = possibleNames.map(clean);
+  for (let i = 0; i < headers.length; i++) {
+    const h = clean(headers[i]);
+    if (searchTerms.some(function(term) { return h === term || h.indexOf(term) !== -1; })) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Autenticação Centralizada de Servidores Municipais.
+ * Trata erros discriminados: Matrícula Inexistente vs Senha Incorreta vs Usuário Desativado.
+ */
+function autenticarServidor(ss, matriculaInformada, senhaInformada) {
+  const sheet = ss.getSheetByName("Usuarios");
+  if (!sheet) {
+    throw new Error("Aba 'Usuarios' não configurada na planilha municipal.");
+  }
+
+  const matInput = String(matriculaInformada || "").trim();
+  const senInput = String(senhaInformada || "").trim();
+
+  if (!matInput) throw new Error("Matrícula funcional não informada.");
+  if (!senInput) throw new Error("Senha de acesso não informada.");
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    throw new Error("Nenhum registro encontrado na aba 'Usuarios'.");
+  }
+
+  const headers = data[0].map(function(h) { return String(h).trim(); });
+  const idxMatricula = findColumnIndex(headers, ["matricula", "mat", "login", "id"]);
+  const idxSenha = findColumnIndex(headers, ["senha", "password", "pass"]);
+  const idxAtivo = findColumnIndex(headers, ["ativo", "status", "situacao"]);
+  const idxNome = findColumnIndex(headers, ["nome", "servidor", "funcionario"]);
+  const idxNivel = findColumnIndex(headers, ["nivelacesso", "nivel", "perfil", "acesso"]);
+  const idxSec = findColumnIndex(headers, ["secretaria", "setor", "lotacao", "orgao"]);
+  const idxCargo = findColumnIndex(headers, ["cargo", "funcao"]);
+
+  if (idxMatricula === -1) {
+    throw new Error("Coluna 'Matrícula' não encontrada no cabeçalho da aba 'Usuarios'. Verifique a planilha.");
+  }
+  if (idxSenha === -1) {
+    throw new Error("Coluna 'Senha' não encontrada no cabeçalho da aba 'Usuarios'. Verifique a planilha.");
+  }
+
+  let matriculaLocalizada = false;
+  let usuarioInativo = false;
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const rawMat = row[idxMatricula];
+    if (rawMat === undefined || rawMat === null || rawMat === '') continue;
+
+    // Converte e normaliza representações numéricas de matrícula (ex: '1001' ou '1001.0')
+    let matSheet = String(rawMat).trim();
+    if (matSheet.endsWith('.0')) matSheet = matSheet.slice(0, -2);
+
+    let matComp = matInput;
+    if (matComp.endsWith('.0')) matComp = matComp.slice(0, -2);
+
+    if (matSheet.toLowerCase() === matComp.toLowerCase()) {
+      matriculaLocalizada = true;
+
+      // Validação de conta ativa
+      if (idxAtivo !== -1) {
+        const valAtivo = String(row[idxAtivo]).trim().toUpperCase();
+        if (valAtivo === 'FALSE' || valAtivo === 'INATIVO' || valAtivo === 'NÃO' || valAtivo === 'NAO') {
+          usuarioInativo = true;
+          break;
+        }
+      }
+
+      const rawSen = row[idxSenha];
+      let senSheet = String(rawSen !== undefined && rawSen !== null ? rawSen : '').trim();
+      if (senSheet.endsWith('.0')) senSheet = senSheet.slice(0, -2);
+
+      if (senSheet === senInput) {
+        const nomeUsuario = (idxNome !== -1 && row[idxNome]) ? String(row[idxNome]).trim() : "Servidor Municipal";
+        const nivelAcesso = (idxNivel !== -1 && row[idxNivel]) ? String(row[idxNivel]).trim().toUpperCase() : "PADRAO";
+        const secretaria = (idxSec !== -1 && row[idxSec]) ? String(row[idxSec]).trim() : "Secretaria Municipal";
+        const cargo = (idxCargo !== -1 && row[idxCargo]) ? String(row[idxCargo]).trim() : "";
+
+        registrarLog(nomeUsuario, "LOGIN", matInput, `Autenticação bem-sucedida (${secretaria})`);
+
+        return createJsonResponse({
+          success: true,
+          usuario: {
+            nome: nomeUsuario,
+            matricula: matInput,
+            nivel: nivelAcesso,
+            secretaria: secretaria,
+            cargo: cargo
+          }
+        });
+      } else {
+        throw new Error("Senha incorreta para a matrícula " + matInput + ". Verifique e tente novamente.");
+      }
+    }
+  }
+
+  if (usuarioInativo) {
+    throw new Error("A matrícula " + matInput + " está desativada no sistema municipal.");
+  }
+
+  if (!matriculaLocalizada) {
+    throw new Error("Matrícula " + matInput + " não cadastrada na base de servidores da Prefeitura.");
+  }
+}
+
+/**
+ * Endpoint GET: Carrega modelos ativos, histórico da numeração oficial e datalists de sugestão
+ * Também suporta autenticação via GET (para compatibilidade total com navegadores e arquivos HTML locais).
+ */
+function doGet(e) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // -------------------------------------------------------------
+    // Suporte a LOGIN via GET (Fallback resiliente para navegadores locais)
+    // -------------------------------------------------------------
+    if (e && e.parameter && e.parameter.action === "LOGIN") {
+      const mat = e.parameter.matricula;
+      const sen = e.parameter.senha;
+      return autenticarServidor(ss, mat, sen);
+    }
+
+    // -------------------------------------------------------------
+    // 1. CARREGAR MODELOS DOCUMENTAIS (Aba "Modelos")
+    // -------------------------------------------------------------
+    const sheetModelos = ss.getSheetByName("Modelos") || ss.getSheets()[0];
+    const dataModelos = sheetModelos.getDataRange().getValues();
+    const records = [];
+
+    if (dataModelos.length > 1) {
+      const headers = dataModelos[0].map(function(h) { return String(h).trim(); });
+
+      for (let i = 1; i < dataModelos.length; i++) {
+        const row = dataModelos[i];
+        if (!row[0]) continue; 
+
+        const record = {};
+        headers.forEach(function(header, index) {
+          let val = row[index];
+          if (val === 'TRUE' || val === true) val = true;
+          else if (val === 'FALSE' || val === false) val = false;
+          record[header] = val !== undefined ? val : '';
+        });
+
+        // Retorna apenas modelos ativos
+        if (record.Ativo !== false && String(record.Ativo).toUpperCase() !== 'FALSE') {
+          records.push(record);
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // 2. EXTRAIR HISTÓRICO COMPLETO E SUGESTÕES DA ABA "NUMERAÇÃO"
+    // Cabeçalhos Oficiais: [DataHora, TipoDocumento, Numero, Assunto, Usuario, Destinatario]
+    // -------------------------------------------------------------
+    const sugestoes = { 
+      destinatarios: [], 
+      assuntos: [],
+      secretarias: [
+        "Secretaria Municipal de Administração (SMA)",
+        "Secretaria Municipal de Saúde (SMS)",
+        "Secretaria Municipal de Educação (SME)",
+        "Secretaria Municipal de Fazenda (SMF)",
+        "Secretaria Municipal de Obras e Serviços Públicos (SMOSP)",
+        "Secretaria Municipal de Assistência Social (SMAS)",
+        "Secretaria Municipal de Meio Ambiente (SMMA)",
+        "Procuradoria-Geral do Município (PGM)",
+        "Gabinete do Prefeito (GP)"
+      ],
+      servidores: []
+    };
+
+    const registrosNumeracao = [];
+    const sheetNum = ss.getSheetByName("Numeração") || ss.getSheetByName("Numeracao");
+    if (sheetNum) {
+      const dataNum = sheetNum.getDataRange().getValues();
+      if (dataNum.length > 1) {
+        const numHeaders = dataNum[0].map(function(h) { return String(h).trim(); });
+        const idxDataHora = findColumnIndex(numHeaders, ["datahora", "data_hora", "data", "hora"]);
+        const idxTipo = findColumnIndex(numHeaders, ["tipodocumento", "tipo_documento", "tipo", "documento"]);
+        const idxNumero = findColumnIndex(numHeaders, ["numero", "num", "numeracao"]);
+        const idxAssunto = findColumnIndex(numHeaders, ["assunto", "ementa", "titulo"]);
+        const idxUsuario = findColumnIndex(numHeaders, ["usuario", "servidor", "autor", "responsavel"]);
+        const idxDestinatario = findColumnIndex(numHeaders, ["destinatario", "destino", "orgao", "para"]);
+
+        const destSet = new Set();
+        const assSet = new Set();
+        
+        for (let i = 1; i < dataNum.length; i++) {
+          const row = dataNum[i];
+          const dataHoraStr = (idxDataHora !== -1 && row[idxDataHora]) ? String(row[idxDataHora]).trim() : (row[0] ? String(row[0]).trim() : '');
+          const tipoStr = (idxTipo !== -1 && row[idxTipo]) ? String(row[idxTipo]).trim().toUpperCase() : (row[1] ? String(row[1]).trim().toUpperCase() : '');
+          const numStr = (idxNumero !== -1 && row[idxNumero]) ? String(row[idxNumero]).trim() : (row[2] ? String(row[2]).trim() : '');
+          const assStr = (idxAssunto !== -1 && row[idxAssunto]) ? String(row[idxAssunto]).trim() : (row[3] ? String(row[3]).trim() : '');
+          const usuStr = (idxUsuario !== -1 && row[idxUsuario]) ? String(row[idxUsuario]).trim() : (row[4] ? String(row[4]).trim() : '');
+          const destStr = (idxDestinatario !== -1 && row[idxDestinatario]) ? String(row[idxDestinatario]).trim() : (row[5] ? String(row[5]).trim() : '');
+
+          if (destStr) destSet.add(destStr);
+          if (assStr) assSet.add(assStr);
+
+          if (numStr) {
+            registrosNumeracao.push({
+              dataHora: dataHoraStr,
+              tipoDocumento: tipoStr,
+              numero: numStr,
+              assunto: assStr,
+              usuario: usuStr,
+              destinatario: destStr
+            });
+          }
+        }
+        sugestoes.destinatarios = Array.from(destSet).filter(Boolean).sort();
+        sugestoes.assuntos = Array.from(assSet).filter(Boolean).sort();
+      }
+    }
+
+    // -------------------------------------------------------------
+    // 3. EXTRAIR LISTA DE SERVIDORES (Aba "Usuarios") PARA AUTO-COMPLETE
+    // Retorna matrícula, nome, secretaria e cargo sem expor senhas
+    // -------------------------------------------------------------
+    const sheetUsers = ss.getSheetByName("Usuarios");
+    if (sheetUsers) {
+      const dataUsers = sheetUsers.getDataRange().getValues();
+      if (dataUsers.length > 1) {
+        const uHeaders = dataUsers[0].map(function(h) { return String(h).trim(); });
+        const idxM = findColumnIndex(uHeaders, ["matricula", "mat", "login", "id"]);
+        const idxN = findColumnIndex(uHeaders, ["nome", "servidor", "funcionario"]);
+        const idxS = findColumnIndex(uHeaders, ["secretaria", "setor", "lotacao", "orgao"]);
+        const idxC = findColumnIndex(uHeaders, ["cargo", "funcao"]);
+        const idxA = findColumnIndex(uHeaders, ["ativo", "status", "situacao"]);
+
+        if (idxM !== -1) {
+          for (let u = 1; u < dataUsers.length; u++) {
+            const uRow = dataUsers[u];
+            if (idxA !== -1) {
+              const uAtivo = String(uRow[idxA]).trim().toUpperCase();
+              if (uAtivo === 'FALSE' || uAtivo === 'INATIVO' || uAtivo === 'NÃO') continue;
+            }
+            let uMat = String(uRow[idxM] !== undefined ? uRow[idxM] : '').trim();
+            if (uMat.endsWith('.0')) uMat = uMat.slice(0, -2);
+            if (!uMat) continue;
+
+            const uNome = (idxN !== -1 && uRow[idxN]) ? String(uRow[idxN]).trim() : "";
+            const uSec = (idxS !== -1 && uRow[idxS]) ? String(uRow[idxS]).trim() : "";
+            const uCargo = (idxC !== -1 && uRow[idxC]) ? String(uRow[idxC]).trim() : "";
+
+            sugestoes.servidores.push({
+              matricula: uMat,
+              nome: uNome,
+              secretaria: uSec,
+              cargo: uCargo
+            });
+          }
+        }
+      }
+    }
+
+    // Inverte para exibir os documentos mais recentes no topo do histórico
+    const listaNumeracaoOrdenada = registrosNumeracao.reverse();
+
+    return createJsonResponse({ 
+      success: true, 
+      data: records, 
+      sugestoes: sugestoes,
+      registrosNumeracao: listaNumeracaoOrdenada,
+      versao: "3.4"
+    });
+
+  } catch (error) {
+    return createJsonResponse({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Endpoint POST: Trata Ações de Login, Salvar Modelo, Geração de Número e Alteração de Senha
+ */
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  // Trava para concorrência atômica de até 10 segundos
+  lock.waitLock(10000); 
+
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      throw new Error("Payload da requisição não fornecido.");
+    }
+
+    const req = JSON.parse(e.postData.contents);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // -------------------------------------------------------------
+    // AÇÃO 1: AUTENTICAÇÃO DE USUÁRIO (Aba "Usuarios")
+    // -------------------------------------------------------------
+    if (req.action === "LOGIN") {
+      return autenticarServidor(ss, req.matricula, req.senha);
+    }
+
+    // -------------------------------------------------------------
+    // AÇÃO 2: CRUD - CRIAR / EDITAR MODELO DOCUMENTAL (Aba "Modelos")
+    // -------------------------------------------------------------
+    if (req.action === "SALVAR_MODELO") {
+      const sheet = ss.getSheetByName("Modelos");
+      if (!sheet) throw new Error("Aba 'Modelos' não encontrada.");
+
+      const data = sheet.getDataRange().getValues();
+      const headers = data[0].map(function(h) { return String(h).trim(); });
+      const payload = req.documento || {};
+      
+      let rowIndex = -1;
+      
+      if (payload.ID) {
+        const idCol = headers.indexOf("ID");
+        for (let i = 1; i < data.length; i++) {
+          if (String(data[i][idCol]).trim() === String(payload.ID).trim()) {
+            rowIndex = i + 1;
+            break;
+          }
+        }
+      }
+
+      if (rowIndex !== -1) {
+        // Atualização de registro existente
+        headers.forEach(function(h, colIndex) {
+          if (payload[h] !== undefined && h !== "ID") {
+            sheet.getRange(rowIndex, colIndex + 1).setValue(payload[h]);
+          }
+        });
+        registrarLog(req.usuarioLogado || "Sistema", "EDITAR_MODELO", payload.ID, `Edição de ${payload.TipoDocumento}: ${payload.Titulo}`);
+        return createJsonResponse({ success: true, message: "Modelo atualizado com sucesso." });
+      } else {
+        // Novo Registro
+        const novoID = "MOD-" + Utilities.getUuid().split('-')[0].toUpperCase();
+        payload.ID = novoID;
+        payload.Ativo = true;
+        payload.UsoFrequente = 0;
+        payload.Versao = "1.0";
+        
+        const newRow = headers.map(function(h) { return payload[h] !== undefined ? payload[h] : ''; });
+        sheet.appendRow(newRow);
+        registrarLog(req.usuarioLogado || "Sistema", "CRIAR_MODELO", novoID, `Criação de ${payload.TipoDocumento}: ${payload.Titulo}`);
+        return createJsonResponse({ success: true, message: "Novo modelo cadastrado.", novoID: novoID });
+      }
+    }
+
+    // -------------------------------------------------------------
+    // AÇÃO 3: GERAÇÃO DE NÚMERO OFICIAL (CONCORRENTE E COM AUDITORIA DUPLA)
+    // Suporta: DECRETO, PORTARIA, MEMORANDO, OFÍCIO, DESPACHO, CIRCULAR
+    // Estrutura Fixa de 6 Colunas:
+    // [DataHora, TipoDocumento, Numero, Assunto, Usuario, Destinatario]
+    // -------------------------------------------------------------
+    if (req.action === "GERAR_NUMERO") {
+      let sheetNum = ss.getSheetByName("Numeração") || ss.getSheetByName("Numeracao");
+      if (!sheetNum) {
+        sheetNum = ss.insertSheet("Numeração");
+        sheetNum.appendRow(["DataHora", "TipoDocumento", "Numero", "Assunto", "Usuario", "Destinatario"]);
+      }
+
+      const tipoDoc = req.tipoDocumento ? String(req.tipoDocumento).trim().toUpperCase() : "MEMORANDO";
+      const anoCorrente = new Date().getFullYear().toString();
+      const prefixoRegex = new RegExp(`^(\\d+)[/-]${anoCorrente}$`);
+
+      // Obter cabeçalhos atuais da aba Numeração
+      const numRows = sheetNum.getLastRow();
+      const numCols = Math.max(sheetNum.getLastColumn(), 6);
+      const headers = sheetNum.getRange(1, 1, 1, numCols).getValues()[0].map(function(h) { return String(h).trim(); });
+      
+      const idxDataHora = findColumnIndex(headers, ["datahora", "data_hora", "data", "hora"]);
+      const idxTipo = findColumnIndex(headers, ["tipodocumento", "tipo_documento", "tipo", "documento"]);
+      const idxNumero = findColumnIndex(headers, ["numero", "num", "numeracao"]);
+      const idxAssunto = findColumnIndex(headers, ["assunto", "ementa", "titulo"]);
+      const idxUsuario = findColumnIndex(headers, ["usuario", "servidor", "autor", "responsavel"]);
+      const idxDestinatario = findColumnIndex(headers, ["destinatario", "destino", "orgao", "para"]);
+
+      const colTipo = idxTipo !== -1 ? idxTipo + 1 : 2;
+      const colNum = idxNumero !== -1 ? idxNumero + 1 : 3;
+
+      let maiorSequencial = 0;
+      if (numRows > 1) {
+        const tiposRange = sheetNum.getRange(2, colTipo, numRows - 1, 1).getValues();
+        const numerosRange = sheetNum.getRange(2, colNum, numRows - 1, 1).getValues();
+
+        for (let i = 0; i < tiposRange.length; i++) {
+          const t = String(tiposRange[i][0]).trim().toUpperCase();
+          const n = String(numerosRange[i][0]).trim();
+
+          if (t === tipoDoc && n) {
+            const match = n.match(prefixoRegex);
+            if (match && match[1]) {
+              const seqInt = parseInt(match[1], 10);
+              if (!isNaN(seqInt) && seqInt > maiorSequencial) {
+                maiorSequencial = seqInt;
+              }
+            }
+          }
+        }
+      }
+
+      const proximoSequencial = maiorSequencial + 1;
+      const numeroFormatado = ("000" + proximoSequencial).slice(-3);
+      const novoNumero = `${numeroFormatado}/${anoCorrente}`;
+
+      const dataHoraIso = new Date().toISOString();
+      const assuntoFinal = req.assunto ? String(req.assunto).trim() : "Sem assunto informado";
+      const destinatarioFinal = req.destinatario ? String(req.destinatario).trim() : "Administração Geral";
+      const usuarioFinal = req.usuarioLogado ? String(req.usuarioLogado).trim() : "Servidor Municipal";
+
+      // Gravação adaptativa respeitando as colunas exatas:
+      // DataHora, TipoDocumento, Numero, Assunto, Usuario, Destinatario
+      const totalColunas = Math.max(headers.length, 6);
+      const rowToAppend = new Array(totalColunas);
+      for (let c = 0; c < totalColunas; c++) rowToAppend[c] = "";
+
+      const pDataHora = idxDataHora !== -1 ? idxDataHora : 0;
+      const pTipo = idxTipo !== -1 ? idxTipo : 1;
+      const pNumero = idxNumero !== -1 ? idxNumero : 2;
+      const pAssunto = idxAssunto !== -1 ? idxAssunto : 3;
+      const pUsuario = idxUsuario !== -1 ? idxUsuario : 4;
+      const pDestinatario = idxDestinatario !== -1 ? idxDestinatario : 5;
+
+      rowToAppend[pDataHora] = dataHoraIso;
+      rowToAppend[pTipo] = tipoDoc;
+      rowToAppend[pNumero] = novoNumero;
+      rowToAppend[pAssunto] = assuntoFinal;
+      rowToAppend[pUsuario] = usuarioFinal;
+      rowToAppend[pDestinatario] = destinatarioFinal;
+
+      sheetNum.appendRow(rowToAppend);
+
+      // 2. Gravação de Segurança e Rastreabilidade na aba "Logs_Auditoria"
+      const detalhesLog = `Emitiu ${tipoDoc} nº ${novoNumero} | Dest: ${destinatarioFinal} | Assunto: ${assuntoFinal}`;
+      registrarLog(usuarioFinal, "GERAR_NUMERO", novoNumero, detalhesLog);
+
+      return createJsonResponse({ 
+        success: true, 
+        numeroGerado: novoNumero,
+        tipoDocumento: tipoDoc,
+        assunto: assuntoFinal,
+        destinatario: destinatarioFinal,
+        dataHora: dataHoraIso
+      });
+    }
+
+    // -------------------------------------------------------------
+    // AÇÃO 4: ALTERAÇÃO DE SENHA DO USUÁRIO
+    // -------------------------------------------------------------
+    if (req.action === "ALTERAR_SENHA") {
+      const sheet = ss.getSheetByName("Usuarios");
+      if (!sheet) throw new Error("Aba 'Usuarios' não configurada na planilha.");
+
+      const matricula = String(req.matricula || "").trim();
+      const senhaAtual = String(req.senhaAtual || "").trim();
+      const novaSenha = String(req.novaSenha || "").trim();
+
+      if (!matricula || !novaSenha) {
+        throw new Error("Matrícula e nova senha são obrigatórias.");
+      }
+      if (novaSenha.length < 3) {
+        throw new Error("A nova senha deve possuir pelo menos 3 caracteres.");
+      }
+
+      const data = sheet.getDataRange().getValues();
+      const headers = data[0].map(function(h) { return String(h).trim(); });
+      const idxMatricula = findColumnIndex(headers, ["matricula", "mat", "login", "id"]);
+      const idxSenha = findColumnIndex(headers, ["senha", "password", "pass"]);
+      const idxNome = findColumnIndex(headers, ["nome", "servidor", "funcionario"]);
+
+      if (idxMatricula === -1 || idxSenha === -1) {
+        throw new Error("Colunas 'Matrícula' ou 'Senha' não encontradas na aba Usuarios.");
+      }
+
+      let encontrado = false;
+      for (let i = 1; i < data.length; i++) {
+        let matSheet = String(data[i][idxMatricula] !== undefined ? data[i][idxMatricula] : '').trim();
+        if (matSheet.endsWith('.0')) matSheet = matSheet.slice(0, -2);
+
+        let matComp = matricula;
+        if (matComp.endsWith('.0')) matComp = matComp.slice(0, -2);
+
+        if (matSheet.toLowerCase() === matComp.toLowerCase()) {
+          encontrado = true;
+          let senSheet = String(data[i][idxSenha] !== undefined ? data[i][idxSenha] : '').trim();
+          if (senSheet.endsWith('.0')) senSheet = senSheet.slice(0, -2);
+
+          if (senhaAtual && senSheet !== senhaAtual) {
+            throw new Error("A senha atual informada está incorreta.");
+          }
+
+          sheet.getRange(i + 1, idxSenha + 1).setValue(novaSenha);
+          const nomeUsuario = idxNome !== -1 && data[i][idxNome] ? data[i][idxNome] : matricula;
+
+          registrarLog(nomeUsuario, "ALTERAR_SENHA", matricula, "Senha de acesso alterada pelo próprio usuário.");
+
+          return createJsonResponse({ 
+            success: true, 
+            message: "Senha alterada com sucesso!" 
+          });
+        }
+      }
+
+      if (!encontrado) {
+        throw new Error("Servidor com matrícula " + matricula + " não encontrado na base de dados.");
+      }
+    }
+
+    throw new Error("Ação '" + (req.action || 'desconhecida') + "' não reconhecida pelo backend.");
+
+  } catch (error) {
+    return createJsonResponse({ success: false, error: error.message });
+  } finally {
+    // Libera a trava atômica do Google Apps Script
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Função Auxiliar: Gravação padronizada em Logs_Auditoria
+ * Colunas: [DataHora, Usuario, Acao, DocID_Numero, Detalhes]
+ */
+function registrarLog(usuario, acao, idDoc, detalhes) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheetLogs = ss.getSheetByName("Logs_Auditoria");
+    if (!sheetLogs) {
+      sheetLogs = ss.insertSheet("Logs_Auditoria");
+      sheetLogs.appendRow(["DataHora", "Usuario", "Acao", "DocID_Numero", "Detalhes"]);
+    }
+    const dataHora = new Date().toISOString(); 
+    sheetLogs.appendRow([dataHora, usuario || "Sistema", acao, idDoc, detalhes]);
+  } catch(e) {
+    console.error("Falha ao registrar log de auditoria", e);
+  }
+}
+
+/**
+ * Encapsula objetos em TextOutput JSON com cabeçalhos nativos do Apps Script
+ */
+function createJsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}

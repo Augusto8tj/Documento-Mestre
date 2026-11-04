@@ -1,0 +1,6 @@
+{
+  "name": "Banco Mestre Administrativo - CMS Documental RH",
+  "description": "Sistema de gestão documental e numeração oficial para o RH da Prefeitura Municipal com frontend Vanilla JS/Tailwind e backend Google Apps Script.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

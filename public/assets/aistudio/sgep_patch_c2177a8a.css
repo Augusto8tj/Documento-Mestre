@@ -1,0 +1,63 @@
+/* ===== SGEP PATCH v1 — CSS ===== */
+
+/* --- Folha A4 (pré-visualização e impressão) com margens ABNT: 3cm sup/esq, 2cm inf/dir --- */
+@page { size: A4 portrait; margin: 3cm 2cm 2cm 3cm; }
+
+#modal-timbrado-impressao > div { max-width: calc(21cm + 2px) !important; }
+#print-area-content {
+    width: 21cm; max-width: 100%; min-height: 29.7cm; box-sizing: border-box;
+    padding: 3cm 2cm 2cm 3cm !important;
+    font-family: 'Times New Roman', Times, serif;
+}
+/* A folha é papel: continua branca mesmo no modo noturno */
+html.dark #print-area-content, html.dark #print-area-content.bg-white { background:#fff !important; color:#0f172a !important; }
+html.dark #print-area-content .text-slate-900, html.dark #print-area-content .text-slate-800,
+html.dark #print-area-content .text-slate-700 { color:#0f172a !important; }
+html.dark #print-area-content .text-slate-600, html.dark #print-area-content .text-slate-500 { color:#475569 !important; }
+html.dark #print-area-content .border-slate-300 { border-color:#cbd5e1 !important; }
+
+/* --- Texto rico (negrito/itálico/marcadores) --- */
+.sgep-rich p { margin: 0 0 .7em; }
+.sgep-rich ul { list-style: disc; margin: 0 0 .7em 1.6em; padding: 0; text-indent: 0; }
+.sgep-rich li { margin: 0 0 .2em; }
+.sgep-rich strong { font-weight: 700; }
+.sgep-rich em { font-style: italic; }
+
+/* --- Barra de formatação e avisos do Redator --- */
+.sgep-toolbar { display:flex; gap:.25rem; margin-bottom:.35rem; }
+.sgep-toolbar button { min-width:2rem; padding:.2rem .5rem; border:1px solid #cbd5e1; border-radius:.4rem;
+    background:#f8fafc; color:#334155; font-size:.75rem; line-height:1.2; cursor:pointer; }
+.sgep-toolbar button:hover { background:#e2e8f0; }
+html.dark .sgep-toolbar button { background:#1e293b; color:#e2e8f0; border-color:#475569; }
+.sgep-box { margin:.5rem 0; padding:.6rem .8rem; border-radius:.6rem; font-size:.75rem; border:1px solid; }
+.sgep-box--warn { background:#fffbeb; border-color:#fcd34d; color:#78350f; }
+.sgep-box--err  { background:#fff1f2; border-color:#fda4af; color:#9f1239; }
+html.dark .sgep-box--warn { background:#422006 !important; border-color:#a16207; color:#fde68a !important; }
+html.dark .sgep-box--err  { background:#4c0519 !important; border-color:#9f1239; color:#fecdd3 !important; }
+.sgep-box button, .sgep-box select { margin-left:.4rem; padding:.15rem .5rem; border-radius:.35rem; border:1px solid currentColor; background:transparent; color:inherit; font-size:.7rem; }
+[aria-invalid="true"] { outline: 2px solid #e11d48 !important; outline-offset: 1px; }
+
+/* --- Faixa de conectividade --- */
+#sgep-net-banner { position:fixed; top:0; left:0; right:0; z-index:200; text-align:center; font-size:.75rem; font-weight:600;
+    padding:.3rem .5rem; background:#92400e; color:#fff; display:none; }
+#sgep-net-banner.on { display:block; }
+
+/* --- Foco visível para teclado --- */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+[tabindex]:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+/* --- IMPRESSÃO: imprime somente a folha timbrada, nunca o app inteiro --- */
+@media print {
+    html, body { background:#fff !important; color:#000 !important; height:auto !important; overflow:visible !important; }
+    body > *:not(#modal-timbrado-impressao) { display:none !important; }
+    #modal-timbrado-impressao.hidden { display:none !important; }
+    #modal-timbrado-impressao { position:static !important; display:block !important; background:none !important;
+        backdrop-filter:none !important; padding:0 !important; overflow:visible !important; }
+    #modal-timbrado-impressao > div { box-shadow:none !important; border:0 !important; border-radius:0 !important;
+        max-width:none !important; width:auto !important; margin:0 !important; overflow:visible !important; }
+    .no-print { display:none !important; }
+    #print-area-content { width:auto !important; min-height:0 !important; padding:0 !important; }
+    #print-area-content { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .sgep-rich p, .sgep-rich li { orphans:3; widows:3; }
+    #print-area-content > div:last-child { page-break-inside:avoid; }
+}

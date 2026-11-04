@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prefeitura Municipal de Rio Claro – RJ — Banco Mestre Administrativo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4', 100: '#dcfce7', 500: '#22c55e',
+                            600: '#16a34a', 700: '#15803d', 800: '#166534', 900: '#14532d',
+                        }
+                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .highlight-bracket {
+            background-color: #fef08a; color: #854d0e; padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem; font-weight: 500; border: 1px dashed #facc15;
+        }
+        .dark .highlight-bracket {
+            background-color: #422006; color: #fde047; border-color: #a16207;
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .dark ::-webkit-scrollbar-thumb { background: #334155; }
+        /* Impede scroll no body quando modal aberto */
+        body.modal-open { overflow: hidden; }
+    </style>
+</head>
+<body class="h-full bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-200 overflow-hidden">
+
+    <!-- TELA DE LOGIN OVERLAY (Cobre todo o app até autenticar) -->
+    <div id="login-overlay" class="fixed inset-0 z-[100] bg-slate-100 dark:bg-slate-950 flex items-center justify-center">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 mb-3">
+                    <i class="fa-solid fa-landmark text-xl"></i>
+                </div>
+                <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100">Acesso Restrito</h2>
+                <p class="text-xs text-slate-500 mt-1">Prefeitura de Rio Claro - RJ</p>
+            </div>
+            
+            <form id="login-form" class="space-y-4" onsubmit="realizarLogin(event)">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Matrícula</label>
+                    <input type="text" id="login-matricula" required class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Senha</label>
+                    <input type="password" id="login-senha" required class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <button type="submit" id="btn-login" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors mt-2">
+                    Entrar no Sistema
+                </button>
+                <p id="login-error" class="text-xs text-rose-500 text-center font-medium mt-2 hidden"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APP WRAPPER (Oculto inicialmente) -->
+    <div id="main-app" class="flex flex-col h-full hidden opacity-0 transition-opacity duration-500">
+        
+        <!-- Top Header -->
+        <header class="bg-slate-900 dark:bg-slate-900 border-b border-slate-800 text-white shadow-sm h-16 flex items-center justify-between px-6 flex-shrink-0 z-30">
+            <div class="flex items-center space-x-3">
+                <div class="bg-emerald-600 p-2 rounded-lg text-white">
+                    <i class="fa-solid fa-landmark text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-sm sm:text-base tracking-tight">Prefeitura Municipal de Rio Claro – RJ</h1>
+                    <p class="text-xs text-slate-400">Banco Mestre Administrativo Municipal</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-3">
+                <!-- Botão Admin Novo Modelo -->
+                <button id="btn-novo-modelo" onclick="openCrudModal()" class="hidden items-center space-x-2 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Novo Modelo</span>
+                </button>
+
+                <div class="h-6 w-px bg-slate-700 mx-2 hidden sm:block"></div>
+                
+                <div class="flex items-center text-xs font-medium text-slate-300 mr-2">
+                    <i class="fa-solid fa-user-circle mr-1.5"></i>
+                    <span id="display-user-name">Usuário</span>
+                </div>
+                
+                <button onclick="carregarDadosDaNuvem()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700" title="Sincronizar">
+                    <i class="fa-solid fa-sync"></i>
+                </button>
+                <button id="theme-toggle" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700" title="Modo Escuro">
+                    <i class="fa-solid fa-moon dark:hidden"></i>
+                    <i class="fa-solid fa-sun hidden dark:inline"></i>
+                </button>
+                <button onclick="realizarLogout()" class="p-2 rounded-lg bg-rose-900/50 hover:bg-rose-800 text-rose-300 transition-colors border border-rose-800/50" title="Sair">
+                    <i class="fa-solid fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dashboard Cards Bar -->
+        <div class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex-shrink-0">
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 text-center">
+                <div class="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <p class="text-[10px] text-slate-500 uppercase font-semibold">Total</p>
+                    <p id="stat-total" class="text-base font-bold text-slate-800 dark:text-slate-100">0</p>
+                </div>
+                <div class="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <p class="text-[10px] text-slate-500 uppercase font-semibold">Despachos</p>
+                    <p id="stat-despacho" class="text-base font-bold text-blue-600 dark:text-blue-400">0</p>
+                </div>
+                <div class="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <p class="text-[10px] text-slate-500 uppercase font-semibold">Pareceres</p>
+                    <p id="stat-parecer" class="text-base font-bold text-amber-600 dark:text-amber-400">0</p>
+                </div>
+                <div class="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <p class="text-[10px] text-slate-500 uppercase font-semibold">E-mails</p>
+                    <p id="stat-email" class="text-base font-bold text-purple-600 dark:text-purple-400">0</p>
+                </div>
+                <div class="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <p class="text-[10px] text-slate-500 uppercase font-semibold">Ofícios</p>
+                    <p id="stat-oficio" class="text-base font-bold text-emerald-600 dark:text-emerald-400">0</p>
+                </div>
+                <div class="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <p class="text-[10px] text-slate-500 uppercase font-semibold">Checklists</p>
+                    <p id="stat-checklist" class="text-base font-bold text-rose-600 dark:text-rose-400">0</p>
+                </div>
+                <div class="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700 col-span-2 sm:col-span-1">
+                    <p class="text-[10px] text-slate-500 uppercase font-semibold">Favoritos</p>
+                    <p id="stat-favorito" class="text-base font-bold text-yellow-500">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Workspace -->
+        <div class="flex-1 flex overflow-hidden max-w-[1600px] w-full mx-auto p-4 sm:p-6 gap-6">
+            <!-- Sidebar -->
+            <aside class="w-72 flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+                <div class="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-between">
+                    <h2 class="font-semibold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">Filtros por Tipo</h2>
+                </div>
+                <div id="type-filters" class="p-3 space-y-1 overflow-y-auto border-b border-slate-100 dark:border-slate-800"></div>
+                <div class="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+                    <h2 class="font-semibold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">Índice por Categoria</h2>
+                </div>
+                <nav id="category-list" class="flex-1 overflow-y-auto p-3 space-y-1"></nav>
+            </aside>
+
+            <!-- Content Area -->
+            <main class="flex-1 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+                <div class="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col sm:flex-row gap-3 items-center justify-between">
+                    <div class="relative w-full sm:w-[450px]">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i class="fa-solid fa-search"></i>
+                        </span>
+                        <input type="text" id="search-input" placeholder="Pesquisar por título, texto, base legal, tags..." class="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-slate-100">
+                    </div>
+                    <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                        <span id="active-filter-badge" class="text-xs font-medium px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                            Todos os Modelos
+                        </span>
+                        <button onclick="resetFilters()" class="text-xs text-slate-500 hover:text-emerald-600 underline px-2 py-1">Limpar</button>
+                    </div>
+                </div>
+
+                <div id="content-scroll-area" class="flex-1 overflow-y-auto p-6 space-y-4"></div>
+            </main>
+        </div>
+    </div> <!-- Fim Main App -->
+
+    <!-- MODAL DE VARIÁVEIS -->
+    <div id="variable-modal" class="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                <h3 id="modal-title" class="font-bold text-base text-slate-800 dark:text-slate-100">Personalizar Modelo</h3>
+                <button onclick="closeVariableModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
+                <div class="space-y-4">
+                    <h4 class="text-xs font-bold uppercase text-slate-500 tracking-wider">Campos Identificados</h4>
+                    <div id="dynamic-form-fields" class="space-y-3"></div>
+                </div>
+                <div class="space-y-4 flex flex-col">
+                    <h4 class="text-xs font-bold uppercase text-slate-500 tracking-wider">Pré-Visualização em Tempo Real</h4>
+                    <div id="preview-box" class="flex-1 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-mono whitespace-pre-wrap overflow-y-auto max-h-[350px]"></div>
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-end space-x-3">
+                <button onclick="closeVariableModal()" class="px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium">Cancelar</button>
+                <button onclick="copyProcessedText()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium flex items-center space-x-2">
+                    <i class="fa-regular fa-copy"></i>
+                    <span>Copiar Texto Personalizado</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CRUD (Criação/Edição) -->
+    <div id="crud-modal" class="fixed inset-0 z-[60] bg-slate-900/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
+            <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/20">
+                <h3 id="crud-title" class="font-bold text-base text-emerald-800 dark:text-emerald-400">Criar Novo Modelo</h3>
+                <button onclick="closeCrudModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            
+            <form id="crud-form" class="flex flex-col overflow-hidden" onsubmit="salvarModeloAPI(event)">
+                <input type="hidden" id="crud-id">
+                <div class="p-6 overflow-y-auto space-y-4 flex-1">
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Tipo de Documento *</label>
+                            <select id="crud-tipo" required class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <option value="DESPACHO">Despacho</option>
+                                <option value="PARECER">Parecer</option>
+                                <option value="EMAIL">E-mail</option>
+                                <option value="OFICIO">Ofício</option>
+                                <option value="MEMORANDO">Memorando</option>
+                                <option value="CHECKLIST">Checklist</option>
+                                <option value="CERTIDAO">Certidão</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Categoria (Índice) *</label>
+                            <input type="text" id="crud-categoria" required placeholder="Ex: 1. Recursos Humanos" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Título do Modelo *</label>
+                        <input type="text" id="crud-titulo" required class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Texto (Use colchetes para variáveis: [NOME]) *</label>
+                        <textarea id="crud-texto" required rows="7" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"></textarea>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Palavras-Chave (Separadas por vírgula)</label>
+                            <input type="text" id="crud-tags" placeholder="férias, rh, servidor" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Base Legal (Opcional)</label>
+                            <input type="text" id="crud-baselegal" placeholder="Ex: Lei 1.234/2010" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-end space-x-3">
+                    <button type="button" onclick="closeCrudModal()" class="px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium">Cancelar</button>
+                    <button type="submit" id="btn-save-crud" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium flex items-center space-x-2">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>Salvar na Planilha Oficial</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 z-[120] transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl border border-slate-700 flex items-center space-x-3">
+        <div class="text-emerald-400 text-lg"><i class="fa-solid fa-circle-check"></i></div>
+        <div><p id="toast-message" class="text-sm font-medium">Sucesso!</p></div>
+    </div>
+
+    <!-- CORE JAVASCRIPT -->
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbws_QQlzKhVKwzwDC7wuBrs_XxN-xsrSv5jynG1jrFQHLsz1tTANmBCteUdAUf3-PnQCw/exec";
+
+        let masterData = [];
+        let currentTypeFilter = 'TODOS';
+        let currentCategoryFilter = null;
+        let searchQuery = "";
+        let activeRecordForModal = null;
+        let currentUser = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Theme Init
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+            document.getElementById('theme-toggle').addEventListener('click', () => {
+                document.documentElement.classList.toggle('dark');
+                localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+            });
+
+            // Search Listener
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                searchQuery = e.target.value.trim().toLowerCase();
+                renderContent();
+            });
+
+            // Checa Sessão Local
+            const savedSession = localStorage.getItem('sgep_user_session');
+            if (savedSession) {
+                currentUser = JSON.parse(savedSession);
+                liberarInterface(currentUser);
+                carregarDadosDaNuvem();
+            }
+            // Se não tem sessão, a div #login-overlay fica visível cobrindo tudo.
+        });
+
+        // ==========================================
+        // MÓDULO 1: AUTENTICAÇÃO
+        // ==========================================
+        async function realizarLogin(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-login');
+            const errEl = document.getElementById('login-error');
+            const mat = document.getElementById('login-matricula').value.trim();
+            const sen = document.getElementById('login-senha').value.trim();
+            
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Autenticando...';
+            btn.disabled = true;
+            errEl.classList.add('hidden');
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: "LOGIN", matricula: mat, senha: sen })
+                });
+                
+                // Devido ao CORS nativo opaco de algumas redes, usamos .text() primeiro
+                const textResp = await response.text();
+                const result = JSON.parse(textResp);
+
+                if (result.success) {
+                    currentUser = result.usuario;
+                    localStorage.setItem('sgep_user_session', JSON.stringify(currentUser));
+                    liberarInterface(currentUser);
+                    carregarDadosDaNuvem();
+                    showToast(`Bem-vindo(a), ${currentUser.nome}!`);
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                errEl.textContent = error.message || "Erro de conexão com o servidor. Tente novamente.";
+                errEl.classList.remove('hidden');
+            } finally {
+                btn.innerHTML = 'Entrar no Sistema';
+                btn.disabled = false;
+            }
+        }
+
+        function liberarInterface(user) {
+            document.getElementById('login-overlay').classList.add('hidden');
+            document.getElementById('display-user-name').textContent = user.nome.split(' ')[0];
+            
+            const appEl = document.getElementById('main-app');
+            appEl.classList.remove('hidden');
+            // Timeout to allow DOM render before opacity transition
+            setTimeout(() => appEl.classList.remove('opacity-0'), 50);
+
+            // Permissões Admin
+            if (user.nivel === 'ADMIN') {
+                document.getElementById('btn-novo-modelo').classList.replace('hidden', 'inline-flex');
+            }
+        }
+
+        function realizarLogout() {
+            localStorage.removeItem('sgep_user_session');
+            window.location.reload();
+        }
+
+        // ==========================================
+        // MÓDULO 2: CARREGAMENTO E RENDERIZAÇÃO
+        // ==========================================
+        async function carregarDadosDaNuvem() {
+            const container = document.getElementById('content-scroll-area');
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-slate-400">
+                    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-emerald-500 mb-3"></i>
+                    <p class="text-sm">Sincronizando banco de dados...</p>
+                </div>
+            `;
+            try {
+                const response = await fetch(`${API_URL}?t=${Date.now()}`);
+                const result = await response.json();
+                if (!result.success) throw new Error(result.error);
+                
+                masterData = result.data;
+                updateDashboardStats();
+                renderTypeFilters();
+                renderSidebarCategories();
+                renderContent();
+            } catch (err) {
+                console.error(err);
+                container.innerHTML = `
+                    <div class="text-center py-12 text-rose-500">
+                        <i class="fa-solid fa-triangle-exclamation text-3xl mb-2"></i>
+                        <p class="font-medium text-sm">Erro ao carregar dados da nuvem.</p>
+                        <button onclick="carregarDadosDaNuvem()" class="mt-3 px-3 py-1.5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs">Tentar Novamente</button>
+                    </div>
+                `;
+            }
+        }
+
+        function updateDashboardStats() {
+            document.getElementById('stat-total').textContent = masterData.length;
+            document.getElementById('stat-despacho').textContent = masterData.filter(i => i.TipoDocumento === 'DESPACHO').length;
+            document.getElementById('stat-parecer').textContent = masterData.filter(i => i.TipoDocumento === 'PARECER').length;
+            document.getElementById('stat-email').textContent = masterData.filter(i => i.TipoDocumento === 'EMAIL').length;
+            document.getElementById('stat-oficio').textContent = masterData.filter(i => i.TipoDocumento === 'OFICIO').length;
+            document.getElementById('stat-checklist').textContent = masterData.filter(i => i.TipoDocumento === 'CHECKLIST').length;
+            const favs = JSON.parse(localStorage.getItem('favs') || '[]');
+            document.getElementById('stat-favorito').textContent = favs.length;
+        }
+
+        function renderTypeFilters() {
+            const types = ['TODOS', 'FAVORITOS', 'DESPACHO', 'EMAIL', 'OFICIO', 'PARECER', 'MEMORANDO', 'CHECKLIST', 'CERTIDAO', 'NOTIFICACAO'];
+            const container = document.getElementById('type-filters');
+            container.innerHTML = types.map(t => `
+                <button onclick="setTypeFilter('${t}')" class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${currentTypeFilter === t ? 'bg-emerald-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}">
+                    <span>${t.charAt(0) + t.slice(1).toLowerCase()}</span>
+                </button>
+            `).join('');
+        }
+
+        function setTypeFilter(type) {
+            currentTypeFilter = type; currentCategoryFilter = null;
+            renderTypeFilters(); renderContent();
+        }
+
+        function renderSidebarCategories() {
+            const cats = [...new Set(masterData.map(i => i.Categoria).filter(Boolean))];
+            const container = document.getElementById('category-list');
+            container.innerHTML = cats.map(cat => `
+                <button onclick="setCategoryFilter('${cat}')" class="w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors truncate ${currentCategoryFilter === cat ? 'bg-emerald-600 text-white' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}">
+                    ${cat}
+                </button>
+            `).join('');
+        }
+
+        function setCategoryFilter(cat) {
+            currentCategoryFilter = cat; renderContent();
+        }
+
+        function resetFilters() {
+            currentTypeFilter = 'TODOS'; currentCategoryFilter = null; searchQuery = "";
+            document.getElementById('search-input').value = "";
+            renderTypeFilters(); renderContent();
+        }
+
+        function toggleFavorite(id) {
+            let favs = JSON.parse(localStorage.getItem('favs') || '[]');
+            if (favs.includes(id)) favs = favs.filter(f => f !== id); else favs.push(id);
+            localStorage.setItem('favs', JSON.stringify(favs));
+            updateDashboardStats(); renderContent();
+        }
+
+        function sanitizeHTML(str) {
+            const temp = document.createElement('div');
+            temp.textContent = str;
+            return temp.innerHTML;
+        }
+
+        function highlightBrackets(text) {
+            const safe = sanitizeHTML(text || "");
+            return safe.replace(/\[([^\]]+)\]/g, '<span class="highlight-bracket">[$1]</span>').replace(/\n/g, '<br>');
+        }
+
+        function renderContent() {
+            const favs = JSON.parse(localStorage.getItem('favs') || '[]');
+            
+            const filtered = masterData.filter(item => {
+                if (currentTypeFilter === 'FAVORITOS' && !favs.includes(item.ID)) return false;
+                if (currentTypeFilter !== 'TODOS' && currentTypeFilter !== 'FAVORITOS' && item.TipoDocumento !== currentTypeFilter) return false;
+                if (currentCategoryFilter && item.Categoria !== currentCategoryFilter) return false;
+                if (searchQuery) {
+                    const combined = `${item.Titulo} ${item.Texto} ${item.PalavrasChave} ${item.BaseLegal}`.toLowerCase();
+                    if (!combined.includes(searchQuery)) return false;
+                }
+                return true;
+            });
+
+            const container = document.getElementById('content-scroll-area');
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="text-center py-16 text-slate-400 text-xs">Nenhum documento encontrado.</div>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(item => {
+                const isFav = favs.includes(item.ID);
+                const tags = (item.PalavrasChave || '').split(',').map(tag => tag.trim()).filter(Boolean);
+                
+                // Botão de Editar apenas para ADMIN
+                const editBtn = currentUser && currentUser.nivel === 'ADMIN' ? 
+                    `<button onclick="openCrudModal('${item.ID}')" class="text-slate-400 hover:text-blue-500 mr-2" title="Editar Modelo"><i class="fa-solid fa-pen-to-square"></i></button>` : '';
+
+                return `
+                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm hover:border-emerald-500 transition-all flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center space-x-2">
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">${item.TipoDocumento}</span>
+                                    <span class="text-xs text-slate-500">${item.Categoria || ''}</span>
+                                </div>
+                                <div class="flex items-center">
+                                    ${editBtn}
+                                    <button onclick="toggleFavorite('${item.ID}')" class="text-sm mr-3 ${isFav ? 'text-yellow-500' : 'text-slate-300 hover:text-yellow-500'}"><i class="fa-solid fa-star"></i></button>
+                                    <button onclick="openVariableModal('${item.ID}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium flex items-center space-x-1.5">
+                                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                        <span>Personalizar</span>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <h4 class="font-semibold text-sm text-slate-800 dark:text-slate-100 mb-2">${sanitizeHTML(item.Titulo)}</h4>
+                            
+                            <div class="bg-slate-50 dark:bg-slate-950/60 p-4 rounded-lg border border-slate-100 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-sans mb-3 select-all">
+                                ${highlightBrackets(item.Texto)}
+                            </div>
+
+                            ${item.BaseLegal ? `
+                                <div class="mb-3 text-[11px] text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 p-2 rounded border border-blue-200 dark:border-blue-900/40">
+                                    <strong>Base Legal:</strong> ${sanitizeHTML(item.BaseLegal)}
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-1.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                            ${tags.map(t => `<span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded text-[10px]">#${t}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ==========================================
+        // MÓDULO 3: GERAÇÃO VARIÁVEIS / NUMERAÇÃO
+        // ==========================================
+        function openVariableModal(id) {
+            activeRecordForModal = masterData.find(i => i.ID === id);
+            if (!activeRecordForModal) return;
+
+            document.getElementById('modal-title').textContent = `Personalizar: ${activeRecordForModal.Titulo}`;
+            
+            const matches = [...new Set(activeRecordForModal.Texto.match(/\[([^\]]+)\]/g) || [])];
+            const formContainer = document.getElementById('dynamic-form-fields');
+            
+            if (matches.length === 0) {
+                formContainer.innerHTML = `<p class="text-xs text-slate-500">Este modelo não possui variáveis entre colchetes para preenchimento dinâmico.</p>`;
+            } else {
+                formContainer.innerHTML = matches.map(m => {
+                    const cleanName = m.replace(/[\[\]]/g, '');
+                    const isNumero = cleanName.toUpperCase().includes('NUMERO') || cleanName.toUpperCase().includes('NÚMERO');
+                    
+                    if (isNumero) {
+                        const tipoDocStr = activeRecordForModal.TipoDocumento; // Passa o tipo do doc atual pra API
+                        return `
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">${cleanName}:</label>
+                                <div class="flex space-x-2">
+                                    <input type="text" id="input-${cleanName}" data-var="${m}" oninput="updatePreview()" class="var-input flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 placeholder-slate-400" placeholder="Digite ou gere auto">
+                                    <button onclick="gerarNumeroAPI('${cleanName}', '${tipoDocStr}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors shadow-sm whitespace-nowrap">
+                                        <i class="fa-solid fa-list-ol mr-1"></i> Gerar Oficial
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        return `
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">${cleanName}:</label>
+                                <input type="text" data-var="${m}" oninput="updatePreview()" class="var-input w-full px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500">
+                            </div>
+                        `;
+                    }
+                }).join('');
+            }
+
+            updatePreview();
+            document.getElementById('variable-modal').classList.remove('hidden');
+        }
+
+        function closeVariableModal() {
+            document.getElementById('variable-modal').classList.add('hidden');
+            activeRecordForModal = null;
+        }
+
+        function updatePreview() {
+            if (!activeRecordForModal) return;
+            let text = activeRecordForModal.Texto;
+            
+            document.querySelectorAll('.var-input').forEach(input => {
+                const variable = input.getAttribute('data-var');
+                const val = input.value || variable;
+                text = text.replaceAll(variable, val);
+            });
+
+            document.getElementById('preview-box').textContent = text;
+        }
+
+        function copyProcessedText() {
+            const text = document.getElementById('preview-box').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast("Texto personalizado copiado para a área de transferência!");
+                closeVariableModal();
+            });
+        }
+
+        async function gerarNumeroAPI(cleanName, tipoDocumento) {
+            const inputField = document.getElementById(`input-${cleanName}`);
+            const originalText = inputField.value;
+            inputField.value = "Gerando na nuvem...";
+            inputField.disabled = true;
+
+            // MÁGICA: O sistema varre os outros campos que o usuário já preencheu na tela!
+            let assuntoDigitado = activeRecordForModal.Titulo; // Usa o título como padrão
+            let destinatarioDigitado = "Não informado";
+
+            document.querySelectorAll('.var-input').forEach(input => {
+                const varName = input.getAttribute('data-var').toUpperCase();
+                // Se existir um campo [ASSUNTO], pega o que foi digitado nele
+                if (varName.includes('ASSUNTO')) {
+                    assuntoDigitado = input.value || assuntoDigitado;
+                }
+                // Se existir um campo [DESTINATARIO] ou [DESTINATÁRIO], pega o que foi digitado
+                if (varName.includes('DESTINATARIO') || varName.includes('DESTINATÁRIO')) {
+                    destinatarioDigitado = input.value || destinatarioDigitado;
+                }
+            });
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: "GERAR_NUMERO",
+                        tipoDocumento: tipoDocumento,
+                        assunto: assuntoDigitado,
+                        destinatario: destinatarioDigitado,
+                        usuarioLogado: currentUser.nome
+                    })
+                });
+
+                const textResp = await response.text();
+                const result = JSON.parse(textResp);
+                
+                if (result.success) {
+                    inputField.value = result.numeroGerado;
+                    showToast(`Número oficial ${result.numeroGerado} registrado!`);
+                    updatePreview();
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                console.error(error);
+                inputField.value = originalText;
+                showToast("Erro ao gerar número no servidor.", true);
+            } finally {
+                inputField.disabled = false;
+            }
+        }
+
+        // ==========================================
+        // MÓDULO 4: ADMIN CRUD (Criar e Editar)
+        // ==========================================
+        function openCrudModal(id = null) {
+            const modal = document.getElementById('crud-modal');
+            const title = document.getElementById('crud-title');
+            
+            if (id) {
+                const doc = masterData.find(i => i.ID === id);
+                if (!doc) return;
+                title.textContent = "Editar Modelo Oficial";
+                document.getElementById('crud-id').value = doc.ID;
+                document.getElementById('crud-tipo').value = doc.TipoDocumento;
+                document.getElementById('crud-categoria').value = doc.Categoria;
+                document.getElementById('crud-titulo').value = doc.Titulo;
+                document.getElementById('crud-texto').value = doc.Texto;
+                document.getElementById('crud-tags').value = doc.PalavrasChave || '';
+                document.getElementById('crud-baselegal').value = doc.BaseLegal || '';
+            } else {
+                title.textContent = "Criar Novo Modelo Oficial";
+                document.getElementById('crud-form').reset();
+                document.getElementById('crud-id').value = '';
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closeCrudModal() {
+            document.getElementById('crud-modal').classList.add('hidden');
+            document.getElementById('crud-form').reset();
+        }
+
+        async function salvarModeloAPI(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btn-save-crud');
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Salvando...';
+            btn.disabled = true;
+
+            const docData = {
+                ID: document.getElementById('crud-id').value,
+                TipoDocumento: document.getElementById('crud-tipo').value,
+                Categoria: document.getElementById('crud-categoria').value,
+                Titulo: document.getElementById('crud-titulo').value,
+                Texto: document.getElementById('crud-texto').value,
+                PalavrasChave: document.getElementById('crud-tags').value,
+                BaseLegal: document.getElementById('crud-baselegal').value
+            };
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: "SALVAR_MODELO",
+                        documento: docData,
+                        usuarioLogado: currentUser.nome
+                    })
+                });
+
+                const textResp = await response.text();
+                const result = JSON.parse(textResp);
+                
+                if (result.success) {
+                    showToast(result.message);
+                    closeCrudModal();
+                    carregarDadosDaNuvem(); // Atualiza a tela com o novo modelo
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                console.error(error);
+                showToast(error.message || "Erro de conexão ao salvar modelo.", true);
+            } finally {
+                btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i><span>Salvar na Planilha Oficial</span>';
+                btn.disabled = false;
+            }
+        }
+
+        // ==========================================
+        // UTILITÁRIOS
+        // ==========================================
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').textContent = msg;
+            toast.classList.toggle('border-rose-500', isError);
+            toast.querySelector('i').className = isError ? "fa-solid fa-triangle-exclamation text-rose-500" : "fa-solid fa-circle-check text-emerald-400";
+            
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 3500);
+        }
+    </script>
+</body>
+</html>

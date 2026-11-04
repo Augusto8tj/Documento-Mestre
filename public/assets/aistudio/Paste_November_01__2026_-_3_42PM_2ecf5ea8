@@ -1,0 +1,928 @@
+// =================================================================
+//   Prefeitura Municipal de Rio Claro – RJ
+//   Banco Mestre Administrativo Municipal — Backend API v3.6 (GAS)
+//   Versão Unificada e Incremental (Merge v3.5 + Gestão Admin de Servidores)
+//
+//   Resumo das Melhorias e Correções Integradas sem Regressões:
+//   1. Painel de Gestão Administrativa de Servidores e Senhas:
+//      Endpoints atômicos 'SALVAR_USUARIO' e 'ALTERAR_STATUS_USUARIO'
+//      para criar novos servidores, redefinir senhas e gerenciar lotação
+//      diretamente pelo sistema sem necessidade de abrir a planilha manualmente.
+//   2. Correção Crítica de Matrícula (findColumnIndex):
+//      Busca exata prioritária e remoção de "id" dos candidatos para
+//      evitar colisão com a coluna "ID" (USR-001 vs Matrícula 20851).
+//   3. Blindagem contra Datas na Numeração (setNumberFormat('@')):
+//      Formata a coluna como texto antes de gravar para impedir que
+//      '001/2026' seja convertido em '01/01/2026' pelo Google Sheets.
+//   4. Normalização de Tipos de Documento (normTipo):
+//      Unifica a contagem sequencial de 'OFÍCIO' e 'OFICIO' na mesma série.
+//   5. Suporte a Sequenciais Maiores que 999 (pad3):
+//      Evita truncamento de sequenciais de 4 dígitos (ex: 1000/2026).
+//   6. Autenticação Híbrida Transparente (Sem risco de bloqueio):
+//      Reconhece senhas em texto puro e senhas migradas para SHA-256 + salt.
+//   7. Proteção contra Força Bruta:
+//      Bloqueio temporário (15 min) após 5 tentativas incorretas consecutivas.
+//   8. Contrato doGet 100% Preservado:
+//      Disponibiliza modelos ativos, sugestões completas e fallback GET.
+// =================================================================
+
+const VERSAO = '3.6';
+const TZ = 'America/Sao_Paulo';
+const SESSAO_SEG = 12 * 3600; // Validade do token: 12 horas
+const MAX_FALHAS = 5;
+
+// -------------------------------------------------------------
+// Resposta pré-voo para requisições CORS
+// -------------------------------------------------------------
+function doOptions(e) {
+  return ContentService.createTextOutput('')
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// -------------------------------------------------------------
+// Utilitários de Normalização de Texto e Datas
+// -------------------------------------------------------------
+function norm(str) {
+  return String(str == null ? '' : str)
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function normTipo(str) {
+  return norm(str).toUpperCase();
+}
+
+function pad3(num) {
+  const n = parseInt(num, 10);
+  if (isNaN(n)) return String(num || '');
+  return n < 1000 ? ('000' + n).slice(-3) : String(n);
+}
+
+function textoNumero(v) {
+  if (v instanceof Date) {
+    const diaOuMes = v.getDate() === 1 ? v.getMonth() + 1 : v.getDate();
+    return pad3(diaOuMes) + '/' + v.getFullYear();
+  }
+  return String(v == null ? '' : v).trim();
+}
+
+function textoData(v) {
+  if (v instanceof Date) {
+    return Utilities.formatDate(v, TZ, "yyyy-MM-dd'T'HH:mm:ss");
+  }
+  return String(v == null ? '' : v).trim();
+}
+
+// -------------------------------------------------------------
+// Localizador Resiliente de Colunas (Exato Primeiro, Substring Depois)
+// -------------------------------------------------------------
+function findColumnIndex(headers, possibleNames) {
+  const cleanHeaders = headers.map(norm);
+  const searchTerms = possibleNames.map(norm);
+
+  // 1ª Passagem: Correspondência exata (evita que 'id' case com 'matricula' ou vice-versa)
+  for (let i = 0; i < searchTerms.length; i++) {
+    const term = searchTerms[i];
+    const idx = cleanHeaders.indexOf(term);
+    if (idx !== -1) return idx;
+  }
+
+  // 2ª Passagem: Correspondência parcial
+  for (let i = 0; i < searchTerms.length; i++) {
+    const term = searchTerms[i];
+    const idx = cleanHeaders.findIndex(function(h) { return h.indexOf(term) !== -1; });
+    if (idx !== -1) return idx;
+  }
+
+  return -1;
+}
+
+// -------------------------------------------------------------
+// Criptografia e Verificação Híbrida de Senhas (SHA-256 + Salt)
+// -------------------------------------------------------------
+function hashSenha(senha, sal) {
+  sal = sal || Utilities.getUuid().replace(/-/g, '');
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    sal + ':' + senha,
+    Utilities.Charset.UTF_8
+  );
+  const hex = digest.map(function(b) {
+    return ('0' + (b & 0xff).toString(16)).slice(-2);
+  }).join('');
+  return 'sha256$' + sal + '$' + hex;
+}
+
+function confereSenha(armazenada, informada) {
+  const arm = String(armazenada == null ? '' : armazenada).trim();
+  const inf = String(informada == null ? '' : informada).trim();
+
+  // Senha já migrada com hash SHA-256
+  if (arm.indexOf('sha256$') === 0) {
+    const partes = arm.split('$');
+    if (partes.length >= 3) {
+      return hashSenha(inf, partes[1]) === arm;
+    }
+  }
+
+  // Senha legada em texto puro (remove sufixo .0 de formatação numérica do Sheets)
+  let senSheet = arm;
+  if (senSheet.endsWith('.0')) senSheet = senSheet.slice(0, -2);
+  let senComp = inf;
+  if (senComp.endsWith('.0')) senComp = senComp.slice(0, -2);
+
+  return senSheet === senComp;
+}
+
+// -------------------------------------------------------------
+// Gerenciamento de Sessão por Token (CacheService)
+// -------------------------------------------------------------
+function criarSessao(usuario) {
+  const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  const cache = CacheService.getScriptCache();
+  cache.put('sess_' + token, JSON.stringify(usuario), SESSAO_SEG);
+  return token;
+}
+
+function validarSessao(token) {
+  if (!token) return null;
+  const cache = CacheService.getScriptCache();
+  const raw = cache.get('sess_' + token);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+// -------------------------------------------------------------
+// Autenticação Centralizada de Servidores Municipais
+// -------------------------------------------------------------
+function autenticarServidor(ss, matriculaInformada, senhaInformada) {
+  const sheet = ss.getSheetByName('Usuarios');
+  if (!sheet) {
+    throw new Error("Aba 'Usuarios' não configurada na planilha municipal.");
+  }
+
+  const matInput = String(matriculaInformada || '').trim();
+  const senInput = String(senhaInformada || '').trim();
+
+  if (!matInput) throw new Error('Matrícula funcional não informada.');
+  if (!senInput) throw new Error('Senha de acesso não informada.');
+
+  // Verificação de bloqueio por tentativas excessivas (Brute Force Protection)
+  const cache = CacheService.getScriptCache();
+  const chaveBloqueio = 'lock_mat_' + norm(matInput);
+  const bloqueadoAte = cache.get(chaveBloqueio);
+  if (bloqueadoAte) {
+    const segundosRestantes = Math.max(1, Math.round((parseInt(bloqueadoAte, 10) - Date.now()) / 1000));
+    const minutos = Math.ceil(segundosRestantes / 60);
+    throw new Error('Matrícula temporariamente bloqueada por segurança (' + minutos + ' min restantes após sucessivos erros).');
+  }
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    throw new Error("Nenhum registro encontrado na aba 'Usuarios'.");
+  }
+
+  const headers = data[0].map(function(h) { return String(h).trim(); });
+
+  // Busca exata e sem colisão: Matrícula NUNCA deve incluir 'id'
+  const idxMatricula = findColumnIndex(headers, ['matricula', 'mat', 'login']);
+  const idxSenha = findColumnIndex(headers, ['senha', 'password', 'pass']);
+  const idxAtivo = findColumnIndex(headers, ['ativo', 'status', 'situacao']);
+  const idxNome = findColumnIndex(headers, ['nome', 'servidor', 'funcionario']);
+  const idxNivel = findColumnIndex(headers, ['nivelacesso', 'nivel', 'perfil', 'acesso']);
+  const idxSec = findColumnIndex(headers, ['secretaria', 'setor', 'lotacao', 'orgao']);
+  const idxCargo = findColumnIndex(headers, ['cargo', 'funcao']);
+
+  if (idxMatricula === -1) {
+    throw new Error("Coluna 'Matrícula' não encontrada no cabeçalho da aba 'Usuarios'. Verifique a planilha.");
+  }
+  if (idxSenha === -1) {
+    throw new Error("Coluna 'Senha' não encontrada no cabeçalho da aba 'Usuarios'. Verifique a planilha.");
+  }
+
+  let matriculaLocalizada = false;
+  let usuarioInativo = false;
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const rawMat = row[idxMatricula];
+    if (rawMat === undefined || rawMat === null || rawMat === '') continue;
+
+    let matSheet = String(rawMat).trim();
+    if (matSheet.endsWith('.0')) matSheet = matSheet.slice(0, -2);
+
+    let matComp = matInput;
+    if (matComp.endsWith('.0')) matComp = matComp.slice(0, -2);
+
+    if (matSheet.toLowerCase() === matComp.toLowerCase()) {
+      matriculaLocalizada = true;
+
+      // Validação de conta ativa
+      if (idxAtivo !== -1) {
+        const valAtivo = String(row[idxAtivo]).trim().toUpperCase();
+        if (valAtivo === 'FALSE' || valAtivo === 'INATIVO' || valAtivo === 'NÃO' || valAtivo === 'NAO' || valAtivo === '0') {
+          usuarioInativo = true;
+          break;
+        }
+      }
+
+      const rawSen = row[idxSenha];
+
+      // Verificação de senha resiliente (SHA-256 ou Texto Puro)
+      if (confereSenha(rawSen, senInput)) {
+        // Limpa tentativas falhas após sucesso
+        cache.remove('falhas_mat_' + norm(matInput));
+
+        const nomeUsuario = (idxNome !== -1 && row[idxNome]) ? String(row[idxNome]).trim() : 'Servidor Municipal';
+        const nivelAcesso = (idxNivel !== -1 && row[idxNivel]) ? String(row[idxNivel]).trim().toUpperCase() : 'PADRAO';
+        const secretaria = (idxSec !== -1 && row[idxSec]) ? String(row[idxSec]).trim() : 'Secretaria Municipal';
+        const cargo = (idxCargo !== -1 && row[idxCargo]) ? String(row[idxCargo]).trim() : '';
+
+        // Migração suave: se a senha ainda estava em texto puro, converte no banco
+        const senhaStr = String(rawSen || '').trim();
+        if (senhaStr.indexOf('sha256$') !== 0) {
+          try {
+            sheet.getRange(i + 1, idxSenha + 1).setNumberFormat('@').setValue(hashSenha(senInput));
+          } catch (e) {
+            console.warn('Não foi possível gravar hash da senha no Sheets:', e);
+          }
+        }
+
+        const usuarioObj = {
+          nome: nomeUsuario,
+          matricula: matInput,
+          nivel: nivelAcesso,
+          secretaria: secretaria,
+          cargo: cargo
+        };
+
+        // Gera token de sessão seguro
+        const token = criarSessao(usuarioObj);
+        usuarioObj.token = token;
+
+        registrarLog(nomeUsuario, 'LOGIN', matInput, 'Autenticação bem-sucedida (' + secretaria + ')');
+
+        return createJsonResponse({
+          success: true,
+          usuario: usuarioObj,
+          token: token
+        });
+      } else {
+        // Incrementa falhas de senha
+        const chaveFalhas = 'falhas_mat_' + norm(matInput);
+        let falhas = parseInt(cache.get(chaveFalhas) || '0', 10) + 1;
+        cache.put(chaveFalhas, String(falhas), 15 * 60);
+
+        registrarLog(matInput, 'LOGIN_FALHA', matInput, 'Senha incorreta (Tentativa ' + falhas + '/' + MAX_FALHAS + ')');
+
+        if (falhas >= MAX_FALHAS) {
+          cache.put(chaveBloqueio, String(Date.now() + 15 * 60 * 1000), 15 * 60);
+          throw new Error('Limite de 5 tentativas atingido. Matrícula bloqueada temporariamente por 15 minutos.');
+        }
+
+        throw new Error('Senha incorreta para a matrícula ' + matInput + '. Tentativa ' + falhas + ' de ' + MAX_FALHAS + '.');
+      }
+    }
+  }
+
+  if (usuarioInativo) {
+    throw new Error('A matrícula ' + matInput + ' está desativada no sistema municipal.');
+  }
+
+  if (!matriculaLocalizada) {
+    throw new Error('Matrícula ' + matInput + ' não cadastrada na base de servidores da Prefeitura.');
+  }
+}
+
+// -------------------------------------------------------------
+// Endpoint GET: Modelos, Histórico, Sugestões e Fallback de Login
+// -------------------------------------------------------------
+function doGet(e) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // Suporte a LOGIN via GET (compatibilidade direta com execução local e navegador)
+    if (e && e.parameter && e.parameter.action === 'LOGIN') {
+      const mat = e.parameter.matricula;
+      const sen = e.parameter.senha;
+      return autenticarServidor(ss, mat, sen);
+    }
+
+    // 1. Carregar Modelos Documentais Ativos (Aba 'Modelos')
+    const sheetModelos = ss.getSheetByName('Modelos') || ss.getSheets()[0];
+    const dataModelos = sheetModelos.getDataRange().getValues();
+    const records = [];
+
+    if (dataModelos.length > 1) {
+      const headers = dataModelos[0].map(function(h) { return String(h).trim(); });
+
+      for (let i = 1; i < dataModelos.length; i++) {
+        const row = dataModelos[i];
+        if (!row[0]) continue;
+
+        const record = {};
+        headers.forEach(function(header, index) {
+          let val = row[index];
+          if (val === 'TRUE' || val === true) val = true;
+          else if (val === 'FALSE' || val === false) val = false;
+          record[header] = val !== undefined ? val : '';
+        });
+
+        if (record.Ativo !== false && String(record.Ativo).toUpperCase() !== 'FALSE') {
+          records.push(record);
+        }
+      }
+    }
+
+    // 2. Extrair Histórico e Sugestões da Aba 'Numeração'
+    const sugestoes = {
+      destinatarios: [],
+      assuntos: [],
+      secretarias: [
+        'Secretaria Municipal de Administração (SMA)',
+        'Secretaria Municipal de Saúde (SMS)',
+        'Secretaria Municipal de Educação (SME)',
+        'Secretaria Municipal de Fazenda (SMF)',
+        'Secretaria Municipal de Obras e Serviços Públicos (SMOSP)',
+        'Secretaria Municipal de Assistência Social (SMAS)',
+        'Secretaria Municipal de Meio Ambiente (SMMA)',
+        'Procuradoria-Geral do Município (PGM)',
+        'Gabinete do Prefeito (GP)'
+      ],
+      servidores: []
+    };
+
+    const registrosNumeracao = [];
+    const sheetNum = ss.getSheetByName('Numeração') || ss.getSheetByName('Numeracao');
+    if (sheetNum) {
+      const dataNum = sheetNum.getDataRange().getValues();
+      if (dataNum.length > 1) {
+        const numHeaders = dataNum[0].map(function(h) { return String(h).trim(); });
+        const idxDataHora = findColumnIndex(numHeaders, ['datahora', 'data_hora', 'data', 'hora']);
+        const idxTipo = findColumnIndex(numHeaders, ['tipodocumento', 'tipo_documento', 'tipo', 'documento']);
+        const idxNumero = findColumnIndex(numHeaders, ['numero', 'num', 'numeracao']);
+        const idxAssunto = findColumnIndex(numHeaders, ['assunto', 'ementa', 'titulo']);
+        const idxUsuario = findColumnIndex(numHeaders, ['usuario', 'servidor', 'autor', 'responsavel']);
+        const idxDestinatario = findColumnIndex(numHeaders, ['destinatario', 'destino', 'orgao', 'para']);
+        const idxSecretaria = findColumnIndex(numHeaders, ['secretaria', 'secretariaorigem', 'setor', 'lotacao', 'orgao']);
+
+        const destSet = new Set();
+        const assSet = new Set();
+
+        for (let i = 1; i < dataNum.length; i++) {
+          const row = dataNum[i];
+          const rawData = idxDataHora !== -1 ? row[idxDataHora] : row[0];
+          const rawTipo = idxTipo !== -1 ? row[idxTipo] : row[1];
+          const rawNum = idxNumero !== -1 ? row[idxNumero] : row[2];
+          const rawAss = idxAssunto !== -1 ? row[idxAssunto] : row[3];
+          const rawUsu = idxUsuario !== -1 ? row[idxUsuario] : row[4];
+          const rawDest = idxDestinatario !== -1 ? row[idxDestinatario] : row[5];
+          const rawSec = idxSecretaria !== -1 ? row[idxSecretaria] : (row.length > 6 ? row[6] : '');
+
+          const dataHoraStr = textoData(rawData);
+          const tipoStr = String(rawTipo || '').trim().toUpperCase();
+          const numStr = textoNumero(rawNum); // Converte data 01/01/2026 de volta para 001/2026 se necessário
+          const assStr = String(rawAss || '').trim();
+          const usuStr = String(rawUsu || '').trim();
+          const destStr = String(rawDest || '').trim();
+          const secStr = String(rawSec || '').trim() || 'Secretaria Municipal de Administração (SMA)';
+
+          if (destStr && destStr !== 'Não informado') destSet.add(destStr);
+          if (assStr && assStr !== 'Sem Assunto') assSet.add(assStr);
+
+          if (numStr) {
+            registrosNumeracao.push({
+              dataHora: dataHoraStr,
+              tipoDocumento: tipoStr,
+              numero: numStr,
+              assunto: assStr,
+              usuario: usuStr,
+              destinatario: destStr,
+              secretaria: secStr
+            });
+          }
+        }
+        sugestoes.destinatarios = Array.from(destSet).filter(Boolean).sort();
+        sugestoes.assuntos = Array.from(assSet).filter(Boolean).sort();
+      }
+    }
+
+    // 3. Extrair Lista Pública de Servidores para Autocomplete do Login (Sem Senhas)
+    const sheetUsers = ss.getSheetByName('Usuarios');
+    if (sheetUsers) {
+      const dataUsers = sheetUsers.getDataRange().getValues();
+      if (dataUsers.length > 1) {
+        const uHeaders = dataUsers[0].map(function(h) { return String(h).trim(); });
+        const idxM = findColumnIndex(uHeaders, ['matricula', 'mat', 'login']);
+        const idxN = findColumnIndex(uHeaders, ['nome', 'servidor', 'funcionario']);
+        const idxS = findColumnIndex(uHeaders, ['secretaria', 'setor', 'lotacao', 'orgao']);
+        const idxC = findColumnIndex(uHeaders, ['cargo', 'funcao']);
+        const idxA = findColumnIndex(uHeaders, ['ativo', 'status', 'situacao']);
+
+        if (idxM !== -1) {
+          for (let u = 1; u < dataUsers.length; u++) {
+            const uRow = dataUsers[u];
+            if (idxA !== -1) {
+              const uAtivo = String(uRow[idxA]).trim().toUpperCase();
+              if (uAtivo === 'FALSE' || uAtivo === 'INATIVO' || uAtivo === 'NÃO' || uAtivo === '0') continue;
+            }
+            let uMat = String(uRow[idxM] !== undefined ? uRow[idxM] : '').trim();
+            if (uMat.endsWith('.0')) uMat = uMat.slice(0, -2);
+            if (!uMat) continue;
+
+            const uNome = (idxN !== -1 && uRow[idxN]) ? String(uRow[idxN]).trim() : '';
+            const uSec = (idxS !== -1 && uRow[idxS]) ? String(uRow[idxS]).trim() : '';
+            const uCargo = (idxC !== -1 && uRow[idxC]) ? String(uRow[idxC]).trim() : '';
+
+            sugestoes.servidores.push({
+              matricula: uMat,
+              nome: uNome,
+              secretaria: uSec,
+              cargo: uCargo
+            });
+          }
+        }
+      }
+    }
+
+    const listaNumeracaoOrdenada = registrosNumeracao.reverse();
+
+    return createJsonResponse({
+      success: true,
+      data: records,
+      sugestoes: sugestoes,
+      registrosNumeracao: listaNumeracaoOrdenada,
+      versao: VERSAO
+    });
+
+  } catch (error) {
+    return createJsonResponse({ success: false, error: error.message });
+  }
+}
+
+// -------------------------------------------------------------
+// Endpoint POST: Ações Transacionais (Lock Atômico de Concorrência)
+// -------------------------------------------------------------
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000); // 15 segundos de trava atômica
+
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      throw new Error('Payload da requisição não fornecido.');
+    }
+
+    const req = JSON.parse(e.postData.contents);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // 1. AÇÃO: LOGIN
+    if (req.action === 'LOGIN') {
+      return autenticarServidor(ss, req.matricula, req.senha);
+    }
+
+    // 2. AÇÃO: LOGOUT
+    if (req.action === 'LOGOUT') {
+      if (req.token) {
+        CacheService.getScriptCache().remove('sess_' + req.token);
+      }
+      return createJsonResponse({ success: true, message: 'Sessão encerrada com sucesso.' });
+    }
+
+    // 3. AÇÃO: CARREGAR (Equivalente ao doGet, útil para POST)
+    if (req.action === 'CARREGAR') {
+      return doGet(null);
+    }
+
+    // 4. AÇÃO: SALVAR_USUARIO (Gestão Administrativa de Servidores e Senhas)
+    if (req.action === 'SALVAR_USUARIO') {
+      const sheet = ss.getSheetByName('Usuarios');
+      if (!sheet) throw new Error("Aba 'Usuarios' não configurada na planilha municipal.");
+
+      const data = sheet.getDataRange().getValues();
+      const headers = data[0].map(function(h) { return String(h).trim(); });
+      const idxMat = findColumnIndex(data[0], ['matricula', 'mat']);
+      const idxNome = findColumnIndex(data[0], ['nome', 'servidor']);
+      const idxSenha = findColumnIndex(data[0], ['senha', 'password', 'pass']);
+      const idxNivel = findColumnIndex(data[0], ['nivelacesso', 'nivel', 'perfil']);
+      const idxSec = findColumnIndex(data[0], ['secretaria', 'lotacao', 'orgao']);
+      const idxAtivo = findColumnIndex(data[0], ['ativo', 'status', 'liberado']);
+
+      if (idxMat === -1) throw new Error("Coluna 'Matricula' não encontrada na aba Usuarios.");
+
+      const matInput = String(req.matricula || '').trim();
+      if (!matInput) throw new Error("Matrícula funcional é obrigatória.");
+
+      let rowIndex = -1;
+      for (let i = 1; i < data.length; i++) {
+        let cellMat = String(data[i][idxMat] == null ? '' : data[i][idxMat]).trim();
+        if (cellMat.endsWith('.0')) cellMat = cellMat.slice(0, -2);
+        if (norm(cellMat) === norm(matInput)) {
+          rowIndex = i + 1;
+          break;
+        }
+      }
+
+      if (rowIndex !== -1) {
+        // Atualização de Servidor Existente
+        if (idxNome !== -1 && req.nome) sheet.getRange(rowIndex, idxNome + 1).setValue(req.nome);
+        if (idxNivel !== -1 && req.nivel) sheet.getRange(rowIndex, idxNivel + 1).setValue(req.nivel);
+        if (idxSec !== -1 && req.secretaria) sheet.getRange(rowIndex, idxSec + 1).setValue(req.secretaria);
+        if (idxAtivo !== -1 && req.ativo !== undefined) sheet.getRange(rowIndex, idxAtivo + 1).setValue(req.ativo ? true : false);
+        if (idxSenha !== -1 && req.senha && String(req.senha).trim()) {
+          const novaSenha = String(req.senha).trim();
+          sheet.getRange(rowIndex, idxSenha + 1).setNumberFormat('@').setValue(hashSenha(novaSenha));
+        }
+        registrarLog(req.usuarioAdmin || 'Administrador', 'EDITAR_SERVIDOR', matInput, 'Atualização cadastral do servidor ' + (req.nome || matInput));
+        return createJsonResponse({ success: true, message: 'Servidor atualizado com sucesso na aba Usuarios.' });
+      } else {
+        // Cadastro de Novo Servidor
+        const novoID = 'USR-' + ('000' + data.length).slice(-3);
+        const senhaDef = req.senha && String(req.senha).trim() ? hashSenha(String(req.senha).trim()) : hashSenha('123456');
+        const novaLinha = headers.map(function(h) {
+          const nh = norm(h);
+          if (nh.indexOf('id') !== -1) return novoID;
+          if (nh.indexOf('nome') !== -1) return req.nome || 'Servidor';
+          if (nh.indexOf('matricula') !== -1 || nh.indexOf('mat') !== -1) return matInput;
+          if (nh.indexOf('senha') !== -1 || nh.indexOf('password') !== -1) return senhaDef;
+          if (nh.indexOf('nivel') !== -1) return req.nivel || 'PADRAO';
+          if (nh.indexOf('secretaria') !== -1 || nh.indexOf('lotacao') !== -1) return req.secretaria || 'SMA';
+          if (nh.indexOf('ativo') !== -1) return req.ativo !== undefined ? (req.ativo ? true : false) : true;
+          return '';
+        });
+        sheet.appendRow(novaLinha);
+        sheet.getRange(sheet.getLastRow(), idxMat + 1).setNumberFormat('@').setValue(matInput);
+        registrarLog(req.usuarioAdmin || 'Administrador', 'CRIAR_SERVIDOR', matInput, 'Cadastro do servidor ' + (req.nome || matInput));
+        return createJsonResponse({ success: true, message: 'Novo servidor cadastrado com sucesso!', novoID: novoID });
+      }
+    }
+
+    // 5. AÇÃO: ALTERAR_STATUS_USUARIO (Ativar/Desativar Servidor)
+    if (req.action === 'ALTERAR_STATUS_USUARIO') {
+      const sheet = ss.getSheetByName('Usuarios');
+      if (!sheet) throw new Error("Aba 'Usuarios' não configurada.");
+
+      const data = sheet.getDataRange().getValues();
+      const idxMat = findColumnIndex(data[0], ['matricula', 'mat']);
+      const idxAtivo = findColumnIndex(data[0], ['ativo', 'status', 'liberado']);
+      if (idxMat === -1 || idxAtivo === -1) throw new Error("Colunas obrigatórias não encontradas.");
+
+      const matInput = String(req.matricula || '').trim();
+      let rowIndex = -1;
+      for (let i = 1; i < data.length; i++) {
+        let cellMat = String(data[i][idxMat] == null ? '' : data[i][idxMat]).trim();
+        if (cellMat.endsWith('.0')) cellMat = cellMat.slice(0, -2);
+        if (norm(cellMat) === norm(matInput)) {
+          rowIndex = i + 1;
+          break;
+        }
+      }
+
+      if (rowIndex === -1) throw new Error("Servidor não localizado na aba Usuarios.");
+      const novoStatus = req.ativo ? true : false;
+      sheet.getRange(rowIndex, idxAtivo + 1).setValue(novoStatus);
+      registrarLog(req.usuarioAdmin || 'Administrador', 'ALTERAR_STATUS', matInput, (novoStatus ? 'Ativação' : 'Desativação') + ' do servidor matrícula ' + matInput);
+      return createJsonResponse({ success: true, message: 'Status do servidor alterado para ' + (novoStatus ? 'ATIVO' : 'INATIVO') + '.' });
+    }
+
+    // 6. AÇÃO: SALVAR MODELO (CRUD)
+    if (req.action === 'SALVAR_MODELO') {
+      const sheet = ss.getSheetByName('Modelos');
+      if (!sheet) throw new Error("Aba 'Modelos' não encontrada.");
+
+      const data = sheet.getDataRange().getValues();
+      const headers = data[0].map(function(h) { return String(h).trim(); });
+      const payload = req.documento || {};
+
+      let rowIndex = -1;
+      if (payload.ID) {
+        const idCol = headers.indexOf('ID');
+        for (let i = 1; i < data.length; i++) {
+          if (String(data[i][idCol]).trim() === String(payload.ID).trim()) {
+            rowIndex = i + 1;
+            break;
+          }
+        }
+      }
+
+      if (rowIndex !== -1) {
+        // Atualização
+        headers.forEach(function(h, colIndex) {
+          if (payload[h] !== undefined && h !== 'ID') {
+            sheet.getRange(rowIndex, colIndex + 1).setValue(payload[h]);
+          }
+        });
+        registrarLog(req.usuarioLogado || 'Sistema', 'EDITAR_MODELO', payload.ID, 'Edição de ' + payload.TipoDocumento + ': ' + payload.Titulo);
+        return createJsonResponse({ success: true, message: 'Modelo atualizado com sucesso.' });
+      } else {
+        // Criação de novo modelo
+        const novoID = 'MOD-' + Utilities.getUuid().split('-')[0].toUpperCase();
+        payload.ID = novoID;
+        payload.Ativo = true;
+        payload.UsoFrequente = 0;
+        payload.Versao = '1.0';
+
+        const newRow = headers.map(function(h) { return payload[h] !== undefined ? payload[h] : ''; });
+        sheet.appendRow(newRow);
+        registrarLog(req.usuarioLogado || 'Sistema', 'CRIAR_MODELO', novoID, 'Criação de ' + payload.TipoDocumento + ': ' + payload.Titulo);
+        return createJsonResponse({ success: true, message: 'Novo modelo cadastrado com sucesso.', novoID: novoID });
+      }
+    }
+
+    // 5. AÇÃO: GERAÇÃO DE NÚMERO OFICIAL (6 Colunas Oficiais)
+    if (req.action === 'GERAR_NUMERO') {
+      let sheetNum = ss.getSheetByName('Numeração') || ss.getSheetByName('Numeracao');
+      if (!sheetNum) {
+        sheetNum = ss.insertSheet('Numeração');
+        sheetNum.appendRow(['DataHora', 'TipoDocumento', 'Numero', 'Assunto', 'Usuario', 'Destinatario']);
+      }
+
+      // Normalização de tipo (OFÍCIO e OFICIO compartilham a mesma série)
+      const rawTipo = req.tipoDocumento ? String(req.tipoDocumento).trim() : 'MEMORANDO';
+      const tipoDoc = rawTipo.toUpperCase();
+      const tipoNormalizado = normTipo(rawTipo);
+
+      // Identificação da Secretaria Emissora, Sigla e Preferência do Padrão
+      const reqSecretaria = req.secretaria ? String(req.secretaria).trim() : 'Secretaria Municipal de Administração (SMA)';
+      const reqSigla = req.sigla ? String(req.sigla).trim().toUpperCase() : 'SMA';
+      const incluirSigla = req.incluirSigla === true || req.incluirSigla === 'true';
+
+      const isTargetSEAD = reqSecretaria.toLowerCase().indexOf('administra') !== -1 ||
+                           reqSecretaria.toLowerCase().indexOf('sma') !== -1 ||
+                           reqSecretaria.toLowerCase().indexOf('sead') !== -1;
+
+      const anoCorrente = Utilities.formatDate(new Date(), TZ, 'yyyy');
+      const numRows = sheetNum.getLastRow();
+      const numCols = Math.max(sheetNum.getLastColumn(), 7);
+      const headers = sheetNum.getRange(1, 1, 1, numCols).getValues()[0].map(function(h) { return String(h).trim(); });
+
+      const idxDataHora = findColumnIndex(headers, ['datahora', 'data_hora', 'data', 'hora']);
+      const idxTipo = findColumnIndex(headers, ['tipodocumento', 'tipo_documento', 'tipo', 'documento']);
+      const idxNumero = findColumnIndex(headers, ['numero', 'num', 'numeracao']);
+      const idxAssunto = findColumnIndex(headers, ['assunto', 'ementa', 'titulo']);
+      const idxUsuario = findColumnIndex(headers, ['usuario', 'servidor', 'autor', 'responsavel']);
+      const idxDestinatario = findColumnIndex(headers, ['destinatario', 'destino', 'orgao', 'para']);
+      let idxSecretaria = findColumnIndex(headers, ['secretaria', 'secretariaorigem', 'setor', 'lotacao', 'orgao']);
+
+      if (idxSecretaria === -1) {
+        idxSecretaria = 6; // 7ª Coluna (G)
+        sheetNum.getRange(1, 7).setValue('Secretaria');
+      }
+
+      const colTipo = idxTipo !== -1 ? idxTipo + 1 : 2;
+      const colNum = idxNumero !== -1 ? idxNumero + 1 : 3;
+      const colSec = idxSecretaria + 1;
+
+      let maiorSequencial = 0;
+      if (numRows > 1) {
+        const tiposRange = sheetNum.getRange(2, colTipo, numRows - 1, 1).getValues();
+        const numerosRange = sheetNum.getRange(2, colNum, numRows - 1, 1).getValues();
+        let secsRange = null;
+        if (sheetNum.getLastColumn() >= colSec) {
+          secsRange = sheetNum.getRange(2, colSec, numRows - 1, 1).getValues();
+        }
+
+        for (let i = 0; i < tiposRange.length; i++) {
+          const tRow = tiposRange[i][0];
+          const nRow = numerosRange[i][0];
+          const sRow = secsRange ? String(secsRange[i][0] || '').trim().toLowerCase() : '';
+          if (!tRow || !nRow) continue;
+
+          // Regra de Confidencialidade e Sequencial Próprio por Pasta:
+          // Se for SEAD, engloba linhas sem secretaria (os 841 legados criados pela SEAD) ou com Administração
+          const rowIsSEAD = !sRow || sRow.indexOf('administra') !== -1 || sRow.indexOf('sma') !== -1 || sRow.indexOf('sead') !== -1;
+          const matchSec = isTargetSEAD ? rowIsSEAD : (sRow.indexOf(reqSecretaria.toLowerCase()) !== -1 || sRow.indexOf(reqSigla.toLowerCase()) !== -1);
+          if (!matchSec) continue;
+
+          // Compara tipos normalizados (sem acentos)
+          if (normTipo(tRow) === tipoNormalizado) {
+            let seq = 0;
+            if (nRow instanceof Date) {
+              seq = nRow.getDate() === 1 ? nRow.getMonth() + 1 : nRow.getDate();
+            } else {
+              const strNum = String(nRow).trim();
+              const match = strNum.match(/^(d+)[/-](d{4})/);
+              if (match && match[1] && match[2] === anoCorrente) {
+                seq = parseInt(match[1], 10);
+              }
+            }
+            if (seq > maiorSequencial) {
+              maiorSequencial = seq;
+            }
+          }
+        }
+      }
+
+      const proximoSequencial = maiorSequencial + 1;
+      const numeroFormatado = pad3(proximoSequencial);
+      const novoNumero = incluirSigla
+        ? numeroFormatado + '/' + anoCorrente + ' - ' + reqSigla
+        : numeroFormatado + '/' + anoCorrente;
+
+      const dataHoraIso = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'HH:mm:ss");
+      const assuntoFinal = req.assunto ? String(req.assunto).trim() : 'Sem assunto informado';
+      const destinatarioFinal = req.destinatario ? String(req.destinatario).trim() : 'Administração Geral';
+      const usuarioFinal = req.usuarioLogado ? String(req.usuarioLogado).trim() : 'Servidor Municipal';
+
+      // Monta vetor de colunas (7 colunas oficiais com Secretaria)
+      const totalColunas = Math.max(headers.length, 7);
+      const rowToAppend = new Array(totalColunas);
+      for (let c = 0; c < totalColunas; c++) rowToAppend[c] = '';
+
+      const pDataHora = idxDataHora !== -1 ? idxDataHora : 0;
+      const pTipo = idxTipo !== -1 ? idxTipo : 1;
+      const pNumero = idxNumero !== -1 ? idxNumero : 2;
+      const pAssunto = idxAssunto !== -1 ? idxAssunto : 3;
+      const pUsuario = idxUsuario !== -1 ? idxUsuario : 4;
+      const pDestinatario = idxDestinatario !== -1 ? idxDestinatario : 5;
+      const pSecretaria = idxSecretaria !== -1 ? idxSecretaria : 6;
+
+      rowToAppend[pDataHora] = dataHoraIso;
+      rowToAppend[pTipo] = tipoDoc;
+      rowToAppend[pNumero] = novoNumero;
+      rowToAppend[pAssunto] = assuntoFinal;
+      rowToAppend[pUsuario] = usuarioFinal;
+      rowToAppend[pDestinatario] = destinatarioFinal;
+      rowToAppend[pSecretaria] = reqSecretaria;
+
+      sheetNum.appendRow(rowToAppend);
+
+      // BLINDAGEM CONTRA CONVERSÃO EM DATA:
+      // Formata a célula recém-inserida explicitamente como texto puro ('@')
+      const ultimaLinha = sheetNum.getLastRow();
+      sheetNum.getRange(ultimaLinha, pNumero + 1).setNumberFormat('@').setValue(novoNumero);
+
+      // Registro duplo de auditoria
+      const detalhesLog = 'Emitiu ' + tipoDoc + ' nº ' + novoNumero + ' | Dest: ' + destinatarioFinal + ' | Assunto: ' + assuntoFinal;
+      registrarLog(usuarioFinal, 'GERAR_NUMERO', novoNumero, detalhesLog);
+
+      return createJsonResponse({
+        success: true,
+        numeroGerado: novoNumero,
+        tipoDocumento: tipoDoc,
+        assunto: assuntoFinal,
+        destinatario: destinatarioFinal,
+        dataHora: dataHoraIso
+      });
+    }
+
+    // 6. AÇÃO: ALTERAÇÃO DE SENHA
+    if (req.action === 'ALTERAR_SENHA') {
+      const sheet = ss.getSheetByName('Usuarios');
+      if (!sheet) throw new Error("Aba 'Usuarios' não configurada na planilha.");
+
+      const matricula = String(req.matricula || '').trim();
+      const senhaAtual = String(req.senhaAtual || '').trim();
+      const novaSenha = String(req.novaSenha || '').trim();
+
+      if (!matricula || !novaSenha) {
+        throw new Error('Matrícula e nova senha são obrigatórias.');
+      }
+      if (novaSenha.length < 3) {
+        throw new Error('A nova senha deve possuir pelo menos 3 caracteres.');
+      }
+
+      const data = sheet.getDataRange().getValues();
+      const headers = data[0].map(function(h) { return String(h).trim(); });
+      const idxMatricula = findColumnIndex(headers, ['matricula', 'mat', 'login']);
+      const idxSenha = findColumnIndex(headers, ['senha', 'password', 'pass']);
+      const idxNome = findColumnIndex(headers, ['nome', 'servidor', 'funcionario']);
+
+      if (idxMatricula === -1 || idxSenha === -1) {
+        throw new Error("Colunas 'Matrícula' ou 'Senha' não encontradas na aba Usuarios.");
+      }
+
+      let encontrado = false;
+      for (let i = 1; i < data.length; i++) {
+        let matSheet = String(data[i][idxMatricula] !== undefined ? data[i][idxMatricula] : '').trim();
+        if (matSheet.endsWith('.0')) matSheet = matSheet.slice(0, -2);
+
+        let matComp = matricula;
+        if (matComp.endsWith('.0')) matComp = matComp.slice(0, -2);
+
+        if (matSheet.toLowerCase() === matComp.toLowerCase()) {
+          encontrado = true;
+          const rawSen = data[i][idxSenha];
+
+          if (senhaAtual && !confereSenha(rawSen, senhaAtual)) {
+            throw new Error('A senha atual informada está incorreta.');
+          }
+
+          // Grava a nova senha já com hash SHA-256 + salt
+          const novaSenhaHash = hashSenha(novaSenha);
+          sheet.getRange(i + 1, idxSenha + 1).setNumberFormat('@').setValue(novaSenhaHash);
+
+          const nomeUsuario = (idxNome !== -1 && data[i][idxNome]) ? data[i][idxNome] : matricula;
+          registrarLog(nomeUsuario, 'ALTERAR_SENHA', matricula, 'Senha de acesso alterada com sucesso.');
+
+          return createJsonResponse({
+            success: true,
+            message: 'Senha alterada com sucesso!'
+          });
+        }
+      }
+
+      if (!encontrado) {
+        throw new Error('Servidor com matrícula ' + matricula + ' não encontrado na base de dados.');
+      }
+    }
+
+    throw new Error("Ação '" + (req.action || 'desconhecida') + "' não reconhecida pelo backend.");
+
+  } catch (error) {
+    return createJsonResponse({ success: false, error: error.message });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// -------------------------------------------------------------
+// Função Auxiliar: Gravação Padronizada em Logs_Auditoria
+// -------------------------------------------------------------
+function registrarLog(usuario, acao, idDoc, detalhes) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheetLogs = ss.getSheetByName('Logs_Auditoria');
+    if (!sheetLogs) {
+      sheetLogs = ss.insertSheet('Logs_Auditoria');
+      sheetLogs.appendRow(['DataHora', 'Usuario', 'Acao', 'DocID_Numero', 'Detalhes']);
+    }
+    const dataHora = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'HH:mm:ss");
+    sheetLogs.appendRow([dataHora, usuario || 'Sistema', acao, idDoc, detalhes]);
+  } catch (e) {
+    console.error('Falha ao registrar log de auditoria', e);
+  }
+}
+
+// -------------------------------------------------------------
+// Encapsula Respostas JSON com Cabeçalhos Nativos do Apps Script
+// -------------------------------------------------------------
+function createJsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// =================================================================
+// FUNÇÕES ADMINISTRATIVAS DE MANUTENÇÃO (EXECUÇÃO MANUAL NO APPS SCRIPT)
+// =================================================================
+
+/**
+ * Corrige registros legados na aba 'Numeração':
+ * - Restaura números que foram convertidos em Data pelo Sheets (ex: 01/01/2026 -> 001/2026)
+ * - Aplica formatação '@' (texto puro) na coluna de número
+ */
+function corrigirDadosLegados() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetNum = ss.getSheetByName('Numeração') || ss.getSheetByName('Numeracao');
+  if (!sheetNum || sheetNum.getLastRow() <= 1) {
+    Logger.log('Aba Numeração vazia ou não encontrada.');
+    return;
+  }
+
+  const data = sheetNum.getDataRange().getValues();
+  const headers = data[0].map(norm);
+  const idxNum = findColumnIndex(data[0], ['numero', 'num', 'numeracao']);
+  const colNum = idxNum !== -1 ? idxNum + 1 : 3;
+
+  let corrigidos = 0;
+  for (let i = 1; i < data.length; i++) {
+    const val = data[i][colNum - 1];
+    if (val instanceof Date) {
+      const diaOuMes = val.getDate() === 1 ? val.getMonth() + 1 : val.getDate();
+      const numTxt = pad3(diaOuMes) + '/' + val.getFullYear();
+      sheetNum.getRange(i + 1, colNum).setNumberFormat('@').setValue(numTxt);
+      corrigidos++;
+    }
+  }
+
+  Logger.log('Manutenção concluída: ' + corrigidos + ' números corrigidos de Data para Texto puro.');
+}
+
+/**
+ * Converte todas as senhas em texto puro na aba 'Usuarios' para hash SHA-256 + salt
+ */
+function migrarSenhasParaHash() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Usuarios');
+  if (!sheet || sheet.getLastRow() <= 1) return;
+
+  const data = sheet.getDataRange().getValues();
+  const idxSenha = findColumnIndex(data[0], ['senha', 'password', 'pass']);
+  if (idxSenha === -1) return;
+
+  let migradas = 0;
+  for (let i = 1; i < data.length; i++) {
+    let senha = String(data[i][idxSenha] || '').trim();
+    if (senha.endsWith('.0')) senha = senha.slice(0, -2);
+    if (senha && senha.indexOf('sha256$') !== 0) {
+      sheet.getRange(i + 1, idxSenha + 1).setNumberFormat('@').setValue(hashSenha(senha));
+      migradas++;
+    }
+  }
+  Logger.log('Senhas migradas com sucesso para SHA-256: ' + migradas);
+}
