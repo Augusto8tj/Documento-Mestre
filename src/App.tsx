@@ -131,32 +131,56 @@ export default function App() {
   });
   
   const [numeracoes, setNumeracoes] = useState<RegistroNumeracao[]>(() => {
-    const saved = localStorage.getItem('bm_numeracoes');
-    return saved ? JSON.parse(saved) : INITIAL_NUMERACOES;
+    try {
+      const saved = localStorage.getItem('bm_numeracoes');
+      return saved ? JSON.parse(saved) : INITIAL_NUMERACOES;
+    } catch {
+      return INITIAL_NUMERACOES;
+    }
   });
 
   const [logs, setLogs] = useState<RegistroLog[]>(() => {
-    const saved = localStorage.getItem('bm_logs');
-    return saved ? JSON.parse(saved) : INITIAL_LOGS;
+    try {
+      const saved = localStorage.getItem('bm_logs');
+      return saved ? JSON.parse(saved) : INITIAL_LOGS;
+    } catch {
+      return INITIAL_LOGS;
+    }
   });
 
   const [sugestoes, setSugestoes] = useState<{ destinatarios: string[]; assuntos: string[] }>(() => {
-    const saved = localStorage.getItem('bm_sugestoes');
-    return saved ? JSON.parse(saved) : INITIAL_SUGESTOES;
+    try {
+      const saved = localStorage.getItem('bm_sugestoes');
+      return saved ? JSON.parse(saved) : INITIAL_SUGESTOES;
+    } catch {
+      return INITIAL_SUGESTOES;
+    }
   });
 
   const [usuarios, setUsuarios] = useState<UsuarioSistema[]>(() => {
-    const saved = localStorage.getItem('bm_usuarios');
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
+    try {
+      const saved = localStorage.getItem('bm_usuarios');
+      return saved ? JSON.parse(saved) : INITIAL_USERS;
+    } catch {
+      return INITIAL_USERS;
+    }
   });
   const [currentUser, setCurrentUser] = useState<UsuarioSistema | null>(() => {
-    const saved = localStorage.getItem('sgep_user_session');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('sgep_user_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
 
   const [favoritos, setFavoritos] = useState<string[]>(() => {
-    const saved = localStorage.getItem('favs');
-    return saved ? JSON.parse(saved) : ['MOD-001', 'MOD-002'];
+    try {
+      const saved = localStorage.getItem('favs');
+      return saved ? JSON.parse(saved) : ['MOD-001', 'MOD-002'];
+    } catch {
+      return ['MOD-001', 'MOD-002'];
+    }
   });
 
   // UI Filtering
@@ -208,8 +232,12 @@ export default function App() {
   // Painel de Gestão do Administrador (Servidores, Senhas, Secretarias e Departamentos)
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [secretarias, setSecretarias] = useState<SecretariaItem[]>(() => {
-    const saved = localStorage.getItem('bm_secretarias');
-    return saved ? JSON.parse(saved) : INITIAL_SECRETARIAS;
+    try {
+      const saved = localStorage.getItem('bm_secretarias');
+      return saved ? JSON.parse(saved) : INITIAL_SECRETARIAS;
+    } catch {
+      return INITIAL_SECRETARIAS;
+    }
   });
 
   // Preferência do usuário para incluir a sigla da secretaria no número (ex: 001/2026 - SMA)
@@ -575,7 +603,54 @@ export default function App() {
     }, 3800);
   };
 
-  // Login handler com integração real ao GAS e detalhamento de erros
+  // Utilitário de requisição HTTP com timeout para evitar travamentos em cold-starts do GAS ou falhas de rede
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 8500): Promise<Response> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  // Fechamento de Modais com a tecla ESC para navegação fluida e evitar sensação de travamento
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isAiHelperOpen) {
+          setIsAiHelperOpen(false);
+        } else if (isRedatorLetterheadOpen) {
+          setIsRedatorLetterheadOpen(false);
+        } else if (isPasswordModalOpen) {
+          setIsPasswordModalOpen(false);
+        } else if (isCrudModalOpen) {
+          setIsCrudModalOpen(false);
+        } else if (isVariableModalOpen) {
+          setIsVariableModalOpen(false);
+        } else if (isAdminModalOpen) {
+          setIsAdminModalOpen(false);
+        } else if (isSheetsDrawerOpen) {
+          setIsSheetsDrawerOpen(false);
+        } else if (isRedatorModalOpen) {
+          setIsRedatorModalOpen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    isAiHelperOpen,
+    isRedatorLetterheadOpen,
+    isPasswordModalOpen,
+    isCrudModalOpen,
+    isVariableModalOpen,
+    isAdminModalOpen,
+    isSheetsDrawerOpen,
+    isRedatorModalOpen
+  ]);
+
+  // Login handler com integração real ao GAS, timeout e detalhamento de erros
   const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsLoggingIn(true);
@@ -601,22 +676,22 @@ export default function App() {
 
       if (useRealApi) {
         try {
-          const response = await fetch(realApiUrl, {
+          const response = await fetchWithTimeout(realApiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: 'LOGIN', matricula: mat, senha: sen })
-          });
+          }, 8000);
           const textResp = await response.text();
           result = JSON.parse(textResp);
         } catch (postErr) {
-          console.warn('Tentativa POST de login falhou. Tentando fallback GET:', postErr);
+          console.warn('Tentativa POST de login falhou ou atingiu timeout. Tentando fallback GET:', postErr);
           postFailed = true;
         }
 
         if (postFailed || (!result && postFailed)) {
           try {
             const getUrl = `${realApiUrl}?action=LOGIN&matricula=${encodeURIComponent(mat)}&senha=${encodeURIComponent(sen)}&t=${Date.now()}`;
-            const getResp = await fetch(getUrl);
+            const getResp = await fetchWithTimeout(getUrl, {}, 7000);
             const getText = await getResp.text();
             result = JSON.parse(getText);
           } catch (getErr) {
@@ -709,20 +784,20 @@ export default function App() {
         let json: any = null;
         // 1ª Tentativa: POST com action CARREGAR e token (Padrão Backend v4.0)
         try {
-          const res = await fetch(realApiUrl, {
+          const res = await fetchWithTimeout(realApiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: 'CARREGAR', token })
-          });
+          }, 8500);
           const text = await res.text();
           json = JSON.parse(text);
         } catch (postErr) {
-          console.warn('Tentativa POST de carga falhou, tentando fallback GET:', postErr);
+          console.warn('Tentativa POST de carga falhou ou expirou, tentando fallback GET:', postErr);
         }
 
         // 2ª Tentativa: GET com token ou compatibilidade retroativa
         if (!json || (!json.data && !json.error)) {
-          const res = await fetch(`${realApiUrl}?action=CARREGAR&token=${encodeURIComponent(token)}&t=${Date.now()}`);
+          const res = await fetchWithTimeout(`${realApiUrl}?action=CARREGAR&token=${encodeURIComponent(token)}&t=${Date.now()}`, {}, 7500);
           json = await res.json();
         }
 
@@ -793,7 +868,7 @@ export default function App() {
 
     if (useRealApi) {
       try {
-        const response = await fetch(realApiUrl, {
+        const response = await fetchWithTimeout(realApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
@@ -803,7 +878,7 @@ export default function App() {
             senhaAtual: currentPasswordInput,
             novaSenha: newPasswordInput
           })
-        });
+        }, 8000);
         const textResp = await response.text();
         const json = JSON.parse(textResp);
         if (json.success) {
@@ -882,8 +957,9 @@ export default function App() {
     const siglaAlvo = getSecretariaSigla(secAlvo, secretarias);
 
     if (useRealApi) {
+      let apiSuccess = false;
       try {
-        const response = await fetch(realApiUrl, {
+        const response = await fetchWithTimeout(realApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
@@ -899,7 +975,7 @@ export default function App() {
             usuarioLogado: servidorIdentificado,
             token: currentUser?.token || ''
           })
-        });
+        }, 8000);
         const textResp = await response.text();
         const json = JSON.parse(textResp);
         if (json.success && json.numeroGerado) {
@@ -918,64 +994,65 @@ export default function App() {
             incluirSigla: incluirSiglaNoNumero
           };
           setNumeracoes(prev => [novoReg, ...prev]);
+          apiSuccess = true;
+          setIsRedatorGeneratingNumber(false);
+          return;
         } else {
-          showToast(json.error || 'Erro ao gerar número', 'Erro', true);
+          console.warn('Google Sheets retornou aviso. Acionando contingência local:', json.error);
+          showToast('Google Sheets indisponível no momento. Gerando número no modo de contingência local...', 'Contingência');
         }
       } catch (err: any) {
-        showToast(`Erro na API: ${err.message}`, 'Erro', true);
-      } finally {
-        setIsRedatorGeneratingNumber(false);
+        console.warn('Falha de conexão com Google Sheets. Acionando contingência local:', err);
+        showToast('Google Sheets indisponível no momento. Gerando número no modo de contingência local...', 'Contingência');
       }
-      return;
     }
 
-    // Simulação local com cálculo por secretaria independente
-    setTimeout(() => {
-      const proximoSeq = getNextSequentialForSecretaria(numeracoes, tipoDoc, secAlvo, anoAtual);
-      const seqStr = String(proximoSeq).padStart(3, '0');
-      const nextNum = incluirSiglaNoNumero ? `${seqStr}/${anoAtual} - ${siglaAlvo}` : `${seqStr}/${anoAtual}`;
-      const nowIso = new Date().toISOString();
+    // Geração no modo de contingência / simulação local garantida
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const proximoSeq = getNextSequentialForSecretaria(numeracoes, tipoDoc, secAlvo, anoAtual);
+    const seqStr = String(proximoSeq).padStart(3, '0');
+    const nextNum = incluirSiglaNoNumero ? `${seqStr}/${anoAtual} - ${siglaAlvo}` : `${seqStr}/${anoAtual}`;
+    const nowIso = new Date().toISOString();
 
-      const novoReg: RegistroNumeracao = {
-        dataHora: nowIso,
-        tipoDocumento: tipoDoc,
-        numero: nextNum,
-        assunto: assuntoFinal,
-        usuario: servidorIdentificado,
-        servidor: servidorIdentificado,
-        destinatario: destinatarioFinal,
-        secretaria: secAlvo,
-        departamento: deptoAlvo,
-        incluirSigla: incluirSiglaNoNumero
+    const novoReg: RegistroNumeracao = {
+      dataHora: nowIso,
+      tipoDocumento: tipoDoc,
+      numero: nextNum,
+      assunto: assuntoFinal,
+      usuario: servidorIdentificado,
+      servidor: servidorIdentificado,
+      destinatario: destinatarioFinal,
+      secretaria: secAlvo,
+      departamento: deptoAlvo,
+      incluirSigla: incluirSiglaNoNumero
+    };
+
+    const novoLog: RegistroLog = {
+      dataHora: nowIso,
+      usuario: servidorIdentificado,
+      acao: 'GERAR_NUMERO',
+      docId: nextNum,
+      detalhes: `Emitiu ${tipoDoc} ${nextNum} (${secAlvo} - ${deptoAlvo}) | Dest: ${destinatarioFinal} | Assunto: ${assuntoFinal}`
+    };
+
+    setNumeracoes(prev => [novoReg, ...prev]);
+    setLogs(prev => [novoLog, ...prev]);
+    setRedatorNumero(nextNum);
+
+    // Adiciona aos datalists de sugestões
+    setSugestoes(prev => {
+      const destSet = new Set(prev.destinatarios);
+      const assSet = new Set(prev.assuntos);
+      if (destinatarioFinal && destinatarioFinal !== 'Não informado') destSet.add(destinatarioFinal);
+      if (assuntoFinal && assuntoFinal !== 'Sem Assunto Definido') assSet.add(assuntoFinal);
+      return {
+        destinatarios: Array.from(destSet).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+        assuntos: Array.from(assSet).sort((a, b) => a.localeCompare(b, 'pt-BR'))
       };
+    });
 
-      const novoLog: RegistroLog = {
-        dataHora: nowIso,
-        usuario: servidorIdentificado,
-        acao: 'GERAR_NUMERO',
-        docId: nextNum,
-        detalhes: `Emitiu ${tipoDoc} ${nextNum} (${secAlvo} - ${deptoAlvo}) | Dest: ${destinatarioFinal} | Assunto: ${assuntoFinal}`
-      };
-
-      setNumeracoes(prev => [novoReg, ...prev]);
-      setLogs(prev => [novoLog, ...prev]);
-      setRedatorNumero(nextNum);
-
-      // Adiciona aos datalists de sugestões
-      setSugestoes(prev => {
-        const destSet = new Set(prev.destinatarios);
-        const assSet = new Set(prev.assuntos);
-        if (destinatarioFinal && destinatarioFinal !== 'Não informado') destSet.add(destinatarioFinal);
-        if (assuntoFinal && assuntoFinal !== 'Sem Assunto Definido') assSet.add(assuntoFinal);
-        return {
-          destinatarios: Array.from(destSet).sort((a, b) => a.localeCompare(b, 'pt-BR')),
-          assuntos: Array.from(assSet).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-        };
-      });
-
-      showToast(`Número oficial ${nextNum} gerado com sucesso para ${secAlvo}!`);
-      setIsRedatorGeneratingNumber(false);
-    }, 450);
+    showToast(`Número oficial ${nextNum} gerado com sucesso para ${secAlvo}!`);
+    setIsRedatorGeneratingNumber(false);
   };
 
   const handleFinalizarDocumentoRedator = async () => {
@@ -997,7 +1074,7 @@ export default function App() {
     }
 
     try {
-      const response = await fetch('/api/ai/gerar-redacao', {
+      const response = await fetchWithTimeout('/api/ai/gerar-redacao', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1011,7 +1088,7 @@ export default function App() {
           textoAtual: redatorTexto,
           acao: acaoTipo
         })
-      });
+      }, 18000);
 
       const data = await response.json();
       if (data.success && data.texto) {
@@ -1807,170 +1884,174 @@ ${headerAndBodyHtml}
     const originalTitle = document.title;
     document.title = cleanDocName.replace(/\.pdf$/i, '');
 
-    // 1. Espera o carregamento de fontes do documento com timeout de segurança
+    let captureContainer: HTMLDivElement | null = null;
+
     try {
-      await Promise.race([
-        document.fonts ? document.fonts.ready : Promise.resolve(),
-        new Promise(resolve => setTimeout(resolve, 1500))
-      ]);
-    } catch {}
-
-    // Breve pausa para estabilização de fontes e layout
-    await new Promise(resolve => setTimeout(resolve, 40));
-
-    // 2. Garante o motor html2pdf disponível no escopo global
-    let html2pdf = (window as any).html2pdf;
-    if (!html2pdf) {
+      // 1. Espera o carregamento de fontes do documento com timeout de segurança
       try {
-        await new Promise((resolve) => {
-          const s = document.createElement('script');
-          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-          s.onload = resolve;
-          s.onerror = resolve;
-          document.head.appendChild(s);
-        });
-        html2pdf = (window as any).html2pdf;
-      } catch (e) {}
-    }
+        await Promise.race([
+          document.fonts ? document.fonts.ready : Promise.resolve(),
+          new Promise(resolve => setTimeout(resolve, 1500))
+        ]);
+      } catch {}
 
-    // 3. Cria container de captura fixo em (0, 0) com z-index negativo (visível no viewport para html2canvas calcular coordenadas sem erro)
-    const captureContainer = document.createElement('div');
-    captureContainer.id = 'pdf-capture-container';
-    captureContainer.style.position = 'fixed';
-    captureContainer.style.top = '0';
-    captureContainer.style.left = '0';
-    captureContainer.style.width = '794px';
-    captureContainer.style.minWidth = '794px';
-    captureContainer.style.maxWidth = '794px';
-    captureContainer.style.zIndex = '-9999';
-    captureContainer.style.background = '#ffffff';
-    captureContainer.style.margin = '0';
-    captureContainer.style.padding = '0';
-    captureContainer.style.boxSizing = 'border-box';
-    captureContainer.style.pointerEvents = 'none';
-    captureContainer.style.visibility = 'visible';
-    captureContainer.style.opacity = '1';
+      // Breve pausa para estabilização de fontes e layout
+      await new Promise(resolve => setTimeout(resolve, 40));
 
-    // 4. Clona o elemento timbrado se estiver aberto, ou constrói diretamente a partir dos dados do estado
-    const elementoOrig = document.getElementById('print-area-content');
-    let clone: HTMLElement;
-    if (elementoOrig && isRedatorLetterheadOpen) {
-      clone = elementoOrig.cloneNode(true) as HTMLElement;
-      clone.id = 'print-area-clone';
-      clone.style.width = '794px';
-      clone.style.minWidth = '794px';
-      clone.style.maxWidth = '794px';
-      clone.style.boxSizing = 'border-box';
-      clone.style.padding = '0';
-      clone.style.margin = '0';
-      clone.style.background = '#ffffff';
-      clone.style.color = '#000000';
-    } else {
-      clone = construirElementoTimbradoParaCaptura();
-    }
-
-    // Preserva rigorosamente as proporções oficiais do Brasão Municipal de Rio Claro RJ
-    const brasaoImg = clone.querySelector('img[alt*="Brasão"]') as HTMLImageElement | null;
-    if (brasaoImg) {
-      brasaoImg.style.width = '83px';
-      brasaoImg.style.height = '96px';
-      brasaoImg.style.minWidth = '83px';
-      brasaoImg.style.minHeight = '96px';
-      brasaoImg.style.maxWidth = '83px';
-      brasaoImg.style.maxHeight = '96px';
-      brasaoImg.style.aspectRatio = '86 / 100';
-      brasaoImg.style.objectFit = 'contain';
-      brasaoImg.style.display = 'block';
-      brasaoImg.style.flexShrink = '0';
-      brasaoImg.setAttribute('width', '83');
-      brasaoImg.setAttribute('height', '96');
-      if (!brasaoImg.src || !brasaoImg.src.startsWith('data:')) {
-        brasaoImg.src = BRASAO_RIO_CLARO;
+      // 2. Garante o motor html2pdf disponível no escopo global
+      let html2pdf = (window as any).html2pdf;
+      if (!html2pdf) {
+        try {
+          await new Promise((resolve) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+            s.onload = resolve;
+            s.onerror = resolve;
+            document.head.appendChild(s);
+          });
+          html2pdf = (window as any).html2pdf;
+        } catch (e) {}
       }
-    }
 
-    // Regras anti-quebra explícitas no clone para cabeçalho e assinatura
-    const cabecalhoClone = clone.querySelector('#cabecalho-timbrado') || clone.querySelector('.cabecalho-timbrado') || clone.firstElementChild as HTMLElement | null;
-    if (cabecalhoClone && cabecalhoClone instanceof HTMLElement) {
-      cabecalhoClone.style.breakInside = 'avoid';
-      (cabecalhoClone.style as any).pageBreakInside = 'avoid';
-    }
-    const assinaturaClone = clone.querySelector('#assinatura-timbrado') || clone.querySelector('.assinatura-timbrado') as HTMLElement | null;
-    if (assinaturaClone && assinaturaClone instanceof HTMLElement) {
-      assinaturaClone.style.breakInside = 'avoid';
-      (assinaturaClone.style as any).pageBreakInside = 'avoid';
-    }
+      // 3. Cria container de captura fixo em (0, 0) com z-index negativo
+      captureContainer = document.createElement('div');
+      captureContainer.id = 'pdf-capture-container';
+      captureContainer.style.position = 'fixed';
+      captureContainer.style.top = '0';
+      captureContainer.style.left = '0';
+      captureContainer.style.width = '794px';
+      captureContainer.style.minWidth = '794px';
+      captureContainer.style.maxWidth = '794px';
+      captureContainer.style.zIndex = '-9999';
+      captureContainer.style.background = '#ffffff';
+      captureContainer.style.margin = '0';
+      captureContainer.style.padding = '0';
+      captureContainer.style.boxSizing = 'border-box';
+      captureContainer.style.pointerEvents = 'none';
+      captureContainer.style.visibility = 'visible';
+      captureContainer.style.opacity = '1';
 
-    captureContainer.appendChild(clone);
-    document.body.appendChild(captureContainer);
+      // 4. Clona o elemento timbrado se estiver aberto, ou constrói diretamente a partir dos dados do estado
+      const elementoOrig = document.getElementById('print-area-content');
+      let clone: HTMLElement;
+      if (elementoOrig && isRedatorLetterheadOpen) {
+        clone = elementoOrig.cloneNode(true) as HTMLElement;
+        clone.id = 'print-area-clone';
+        clone.style.width = '794px';
+        clone.style.minWidth = '794px';
+        clone.style.maxWidth = '794px';
+        clone.style.boxSizing = 'border-box';
+        clone.style.padding = '0';
+        clone.style.margin = '0';
+        clone.style.background = '#ffffff';
+        clone.style.color = '#000000';
+      } else {
+        clone = construirElementoTimbradoParaCaptura();
+      }
 
-    // 5. Normaliza cores oklch -> RGB no DOM clonado antes da chamada do html2pdf
-    normalizeOklchToRgb(clone);
-
-    showToast(`Gerando PDF: "${cleanDocName}"...`);
-
-    // 6. Geração direta e limpa do PDF com html2pdf
-    if (html2pdf) {
-      const opt = {
-        margin: [15, 15, 18, 15], // (mm: topo 15mm, esquerda 15mm, base 18mm, direita 15mm)
-        filename: cleanDocName,
-        image: { type: 'png', quality: 1 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-          width: 794,
-          windowWidth: 794,
-          x: 0,
-          y: 0,
-          scrollX: 0,
-          scrollY: 0,
-          onclone: (clonedDoc: Document) => {
-            const el = clonedDoc.getElementById('print-area-clone') || clonedDoc.body;
-            if (el && el instanceof HTMLElement) {
-              normalizeOklchToRgb(el);
-            }
-          }
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: {
-          mode: ['avoid-all', 'css', 'legacy'],
-          avoid: ['img', 'p', 'li', 'tr', 'blockquote', '#cabecalho-timbrado', '#assinatura-timbrado', '.avoid-break']
+      // Preserva rigorosamente as proporções oficiais do Brasão Municipal de Rio Claro RJ
+      const brasaoImg = clone.querySelector('img[alt*="Brasão"]') as HTMLImageElement | null;
+      if (brasaoImg) {
+        brasaoImg.style.width = '83px';
+        brasaoImg.style.height = '96px';
+        brasaoImg.style.minWidth = '83px';
+        brasaoImg.style.minHeight = '96px';
+        brasaoImg.style.maxWidth = '83px';
+        brasaoImg.style.maxHeight = '96px';
+        brasaoImg.style.aspectRatio = '86 / 100';
+        brasaoImg.style.objectFit = 'contain';
+        brasaoImg.style.display = 'block';
+        brasaoImg.style.flexShrink = '0';
+        brasaoImg.setAttribute('width', '83');
+        brasaoImg.setAttribute('height', '96');
+        if (!brasaoImg.src || !brasaoImg.src.startsWith('data:')) {
+          brasaoImg.src = BRASAO_RIO_CLARO;
         }
-      };
+      }
 
-      try {
-        await html2pdf()
-          .set(opt)
-          .from(clone)
-          .save();
+      // Regras anti-quebra explícitas no clone para cabeçalho e assinatura
+      const cabecalhoClone = clone.querySelector('#cabecalho-timbrado') || clone.querySelector('.cabecalho-timbrado') || clone.firstElementChild as HTMLElement | null;
+      if (cabecalhoClone && cabecalhoClone instanceof HTMLElement) {
+        cabecalhoClone.style.breakInside = 'avoid';
+        (cabecalhoClone.style as any).pageBreakInside = 'avoid';
+      }
+      const assinaturaClone = clone.querySelector('#assinatura-timbrado') || clone.querySelector('.assinatura-timbrado') as HTMLElement | null;
+      if (assinaturaClone && assinaturaClone instanceof HTMLElement) {
+        assinaturaClone.style.breakInside = 'avoid';
+        (assinaturaClone.style as any).pageBreakInside = 'avoid';
+      }
 
-        showToast(`Documento "${cleanDocName}" salvo em PDF com sucesso!`);
-      } catch (err: any) {
-        console.warn('Falha na geração direta via html2pdf, acionando diálogo nativo para PDF:', err);
+      captureContainer.appendChild(clone);
+      document.body.appendChild(captureContainer);
+
+      // 5. Normaliza cores oklch -> RGB no DOM clonado antes da chamada do html2pdf
+      normalizeOklchToRgb(clone);
+
+      showToast(`Gerando PDF: "${cleanDocName}"...`);
+
+      // 6. Geração direta e limpa do PDF com html2pdf
+      if (html2pdf) {
+        const opt = {
+          margin: [15, 15, 18, 15], // (mm: topo 15mm, esquerda 15mm, base 18mm, direita 15mm)
+          filename: cleanDocName,
+          image: { type: 'png', quality: 1 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+            width: 794,
+            windowWidth: 794,
+            x: 0,
+            y: 0,
+            scrollX: 0,
+            scrollY: 0,
+            onclone: (clonedDoc: Document) => {
+              const el = clonedDoc.getElementById('print-area-clone') || clonedDoc.body;
+              if (el && el instanceof HTMLElement) {
+                normalizeOklchToRgb(el);
+              }
+            }
+          },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: {
+            mode: ['avoid-all', 'css', 'legacy'],
+            avoid: ['img', 'p', 'li', 'tr', 'blockquote', '#cabecalho-timbrado', '#assinatura-timbrado', '.avoid-break']
+          }
+        };
+
+        try {
+          await html2pdf()
+            .set(opt)
+            .from(clone)
+            .save();
+
+          showToast(`Documento "${cleanDocName}" salvo em PDF com sucesso!`);
+        } catch (err: any) {
+          console.warn('Falha na geração direta via html2pdf, acionando diálogo nativo para PDF:', err);
+          showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
+          setIsRedatorLetterheadOpen(true);
+          setTimeout(() => window.print(), 350);
+        }
+      } else {
+        // Fallback para impressão nativa do navegador
         showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
         setIsRedatorLetterheadOpen(true);
-        setTimeout(() => window.print(), 350);
-      } finally {
-        if (captureContainer && captureContainer.parentNode) {
-          captureContainer.parentNode.removeChild(captureContainer);
-        }
-        document.title = originalTitle;
-        setIsSavingPdf(false);
+        setTimeout(() => {
+          window.print();
+        }, 350);
       }
-    } else {
-      // Fallback para impressão nativa do navegador
+    } catch (topErr: any) {
+      console.error('Erro na rotina de exportação para PDF:', topErr);
+      showToast('Erro ao gerar PDF. Abrindo prévia para impressão nativa.', 'Aviso', true);
+      setIsRedatorLetterheadOpen(true);
+      setTimeout(() => window.print(), 350);
+    } finally {
       if (captureContainer && captureContainer.parentNode) {
         captureContainer.parentNode.removeChild(captureContainer);
       }
-      showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
-      setIsRedatorLetterheadOpen(true);
-      setTimeout(() => {
-        window.print();
-        document.title = originalTitle;
-        setIsSavingPdf(false);
-      }, 350);
+      document.title = originalTitle;
+      setIsSavingPdf(false);
     }
   };
 
@@ -2030,7 +2111,7 @@ ${headerAndBodyHtml}
 
     if (useRealApi) {
       try {
-        const response = await fetch(realApiUrl, {
+        const response = await fetchWithTimeout(realApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
@@ -2046,7 +2127,7 @@ ${headerAndBodyHtml}
             usuarioLogado: servidorIdentificado,
             token: currentUser?.token || ''
           })
-        });
+        }, 8000);
         const text = await response.text();
         const json = JSON.parse(text);
         if (json.success && json.numeroGerado) {
@@ -2067,79 +2148,79 @@ ${headerAndBodyHtml}
             incluirSigla: incluirSiglaNoNumero
           };
           setNumeracoes(prev => [novoReg, ...prev]);
+          setIsGeneratingNumber(false);
+          return;
         } else {
-          showToast(json.error || 'Erro na API', 'Erro', true);
+          console.warn('Google Sheets retornou aviso. Acionando contingência local:', json.error);
+          showToast('Google Sheets indisponível no momento. Gerando número no modo de contingência local...', 'Contingência');
         }
       } catch (err: any) {
-        showToast(`Erro ao chamar API: ${err.message}`, 'Erro', true);
-      } finally {
-        setIsGeneratingNumber(false);
+        console.warn('Falha ao comunicar com Google Sheets. Acionando contingência local:', err);
+        showToast('Google Sheets indisponível no momento. Gerando número no modo de contingência local...', 'Contingência');
       }
-      return;
     }
 
-    // Local Simulation with per-secretaria calculation
-    setTimeout(() => {
-      const proximoSeq = getNextSequentialForSecretaria(numeracoes, tipoDoc, secAlvo, anoAtual);
-      const seqStr = String(proximoSeq).padStart(3, '0');
-      const nextNum = incluirSiglaNoNumero ? `${seqStr}/${anoAtual} - ${siglaAlvo}` : `${seqStr}/${anoAtual}`;
-      const nowIso = new Date().toISOString();
+    // Geração no modo de contingência / simulação local garantida
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const proximoSeq = getNextSequentialForSecretaria(numeracoes, tipoDoc, secAlvo, anoAtual);
+    const seqStr = String(proximoSeq).padStart(3, '0');
+    const nextNum = incluirSiglaNoNumero ? `${seqStr}/${anoAtual} - ${siglaAlvo}` : `${seqStr}/${anoAtual}`;
+    const nowIso = new Date().toISOString();
 
-      // 1. Gravação Principal na aba "Numeração"
-      const novoRegistroNumeracao: RegistroNumeracao = {
-        dataHora: nowIso,
-        tipoDocumento: tipoDoc,
-        numero: nextNum,
-        assunto: assuntoDigitado,
-        usuario: servidorIdentificado,
-        servidor: servidorIdentificado,
-        destinatario: destinatarioDigitado,
-        secretaria: secAlvo,
-        departamento: deptoAlvo,
-        incluirSigla: incluirSiglaNoNumero
-      };
+    // 1. Gravação Principal na aba "Numeração"
+    const novoRegistroNumeracao: RegistroNumeracao = {
+      dataHora: nowIso,
+      tipoDocumento: tipoDoc,
+      numero: nextNum,
+      assunto: assuntoDigitado,
+      usuario: servidorIdentificado,
+      servidor: servidorIdentificado,
+      destinatario: destinatarioDigitado,
+      secretaria: secAlvo,
+      departamento: deptoAlvo,
+      incluirSigla: incluirSiglaNoNumero
+    };
 
-      // 2. Gravação de Segurança e Rastreabilidade na aba "Logs_Auditoria"
-      const novoRegistroLog: RegistroLog = {
-        dataHora: nowIso,
-        usuario: usuarioLogado,
-        acao: 'GERAR_NUMERO',
-        docId: nextNum,
-        detalhes: `Emitiu ${tipoDoc} ${nextNum} (${secAlvo}) | Dest: ${destinatarioFinal(destinatarioDigitado)} | Assunto: ${assuntoDigitado}`
-      };
+    // 2. Gravação de Segurança e Rastreabilidade na aba "Logs_Auditoria"
+    const novoRegistroLog: RegistroLog = {
+      dataHora: nowIso,
+      usuario: usuarioLogado,
+      acao: 'GERAR_NUMERO',
+      docId: nextNum,
+      detalhes: `Emitiu ${tipoDoc} ${nextNum} (${secAlvo}) | Dest: ${destinatarioFinal(destinatarioDigitado)} | Assunto: ${assuntoDigitado}`
+    };
 
-      setNumeracoes(prev => [novoRegistroNumeracao, ...prev]);
-      setLogs(prev => [novoRegistroLog, ...prev]);
+    setNumeracoes(prev => [novoRegistroNumeracao, ...prev]);
+    setLogs(prev => [novoRegistroLog, ...prev]);
 
-      // 3. Incorporação Automática nos Datalists locais
-      const updatedDest = [...sugestoes.destinatarios];
-      let changed = false;
-      if (destinatarioDigitado && destinatarioDigitado !== 'Não informado' && !updatedDest.includes(destinatarioDigitado)) {
-        updatedDest.push(destinatarioDigitado);
-        updatedDest.sort((a, b) => a.localeCompare(b, 'pt-BR'));
-        changed = true;
-      }
+    // 3. Incorporação Automática nos Datalists locais
+    const updatedDest = [...sugestoes.destinatarios];
+    let changed = false;
+    if (destinatarioDigitado && destinatarioDigitado !== 'Não informado' && !updatedDest.includes(destinatarioDigitado)) {
+      updatedDest.push(destinatarioDigitado);
+      updatedDest.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      changed = true;
+    }
 
-      const updatedAss = [...sugestoes.assuntos];
-      if (assuntoDigitado && assuntoDigitado !== 'Sem Assunto' && !updatedAss.includes(assuntoDigitado)) {
-        updatedAss.push(assuntoDigitado);
-        updatedAss.sort((a, b) => a.localeCompare(b, 'pt-BR'));
-        changed = true;
-      }
+    const updatedAss = [...sugestoes.assuntos];
+    if (assuntoDigitado && assuntoDigitado !== 'Sem Assunto' && !updatedAss.includes(assuntoDigitado)) {
+      updatedAss.push(assuntoDigitado);
+      updatedAss.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      changed = true;
+    }
 
-      if (changed) {
-        setSugestoes({ destinatarios: updatedDest, assuntos: updatedAss });
-      }
+    if (changed) {
+      setSugestoes({ destinatarios: updatedDest, assuntos: updatedAss });
+    }
 
-      // Update the input field in the modal
-      setFormVariables(prev => ({
-        ...prev,
-        [variableTag]: nextNum
-      }));
+    // Update the input field in the modal
+    setFormVariables(prev => ({
+      ...prev,
+      [variableTag]: nextNum
+    }));
 
-      setIsGeneratingNumber(false);
-      showToast(`Número oficial ${nextNum} gerado e gravado com sucesso!`);
-    }, 450);
+    setIsGeneratingNumber(false);
+    showToast(`Número oficial ${nextNum} gerado e gravado com sucesso!`);
   };
 
   const destinatarioFinal = (dest: string) => dest.trim() || 'Não informado';
@@ -2199,7 +2280,7 @@ ${headerAndBodyHtml}
     }
 
     if (useRealApi) {
-      fetch(realApiUrl, {
+      fetchWithTimeout(realApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
@@ -2208,7 +2289,7 @@ ${headerAndBodyHtml}
           token: currentUser?.token || '',
           usuarioLogado: currentUser?.nome || 'Admin'
         })
-      })
+      }, 8500)
         .then(res => res.json())
         .then(res => {
           if (res.success) {
@@ -2267,7 +2348,7 @@ ${headerAndBodyHtml}
     // Sincronização com a nuvem (Google Apps Script Web App)
     if (useRealApi) {
       try {
-        const resp = await fetch(realApiUrl, {
+        const resp = await fetchWithTimeout(realApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
@@ -2283,7 +2364,7 @@ ${headerAndBodyHtml}
             usuarioAdmin: currentUser?.nome || 'Admin',
             token: currentUser?.token || ''
           })
-        });
+        }, 8500);
         const res = await resp.json();
         if (res && res.success) {
           showToast(res.message || 'Servidor sincronizado com o Google Sheets!');
@@ -2316,7 +2397,7 @@ ${headerAndBodyHtml}
 
     if (useRealApi) {
       try {
-        await fetch(realApiUrl, {
+        await fetchWithTimeout(realApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
@@ -2326,7 +2407,7 @@ ${headerAndBodyHtml}
             usuarioAdmin: currentUser?.nome || 'Admin',
             token: currentUser?.token || ''
           })
-        });
+        }, 8000);
       } catch (err) {
         console.warn('Erro ao sincronizar status do servidor com o Google Sheets:', err);
       }
@@ -3451,7 +3532,7 @@ ${headerAndBodyHtml}
       {/* MODAL 1: VARIÁVEIS COM DATALISTS & GERADOR OFICIAL INTELIGENTE           */}
       {/* ========================================================================= */}
       {isVariableModalOpen && activeModelo && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) setIsVariableModalOpen(false); }}>
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
             
             {/* Modal Header */}
@@ -3676,7 +3757,7 @@ ${headerAndBodyHtml}
       {/* MODAL 2: ADMIN CRUD (Criar ou Editar Modelo)                             */}
       {/* ========================================================================= */}
       {isCrudModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) setIsCrudModalOpen(false); }}>
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
             <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/30">
               <div className="flex items-center gap-2">
@@ -3814,7 +3895,7 @@ ${headerAndBodyHtml}
       {/* MODAL 3: ALTERAÇÃO DE SENHA DO USUÁRIO                                   */}
       {/* ========================================================================= */}
       {isPasswordModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) setIsPasswordModalOpen(false); }}>
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
               <div className="flex items-center space-x-2.5">
@@ -3922,7 +4003,7 @@ ${headerAndBodyHtml}
       {/* MODAL 4: REDATOR OFICIAL DE MEMORANDO / OFÍCIO (COM NUMERAÇÃO AUTOMÁTICA) */}
       {/* ========================================================================= */}
       {isRedatorModalOpen && (
-        <div id="modal-redator-oficial" className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 no-print">
+        <div id="modal-redator-oficial" className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 no-print" onClick={(e) => { if (e.target === e.currentTarget) setIsRedatorModalOpen(false); }}>
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-6xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 flex-shrink-0">
@@ -5378,7 +5459,7 @@ ${headerAndBodyHtml}
       {/* MODAL 5: DOCUMENTO OFICIAL TIMBRADO IMPRESSÃO (RIO CLARO – RJ)             */}
       {/* ========================================================================= */}
       {isRedatorLetterheadOpen && (
-        <div id="modal-timbrado-container" className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto modal-timbrado-backdrop">
+        <div id="modal-timbrado-container" className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto modal-timbrado-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setIsRedatorLetterheadOpen(false); }}>
           <div id="modal-timbrado-card" className="bg-white text-slate-900 rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden my-auto border border-slate-300 modal-timbrado-card">
             {/* Top Toolbar */}
             <div className="p-4 bg-slate-900 text-white flex items-center justify-between no-print">
