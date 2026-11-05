@@ -1855,7 +1855,7 @@ ${headerAndBodyHtml}
     return container;
   };
 
-  // Exportação oficial para PDF (utiliza html2pdf.js com clone A4 de 794px, normalização oklch, quebra inteligente e PNG nítido)
+  // Exportação oficial para PDF (utiliza html2pdf.js com resolução nítida, normalização oklch, quebra inteligente e download direto)
   const handleBaixarPdfRedator = async () => {
     if (isSavingPdf) return;
     setIsSavingPdf(true);
@@ -1869,16 +1869,26 @@ ${headerAndBodyHtml}
       : redatorTipo === 'EMAIL' ? 'Email'
       : redatorTipo;
 
-    const numLimpo = (redatorNumero || 'minuta').replace(/\//g, '-').replace(/[^a-zA-Z0-9_-]/g, '');
+    // Extrai o número sequencial e ano sem duplicar siglas (ex: "757/2026" ou "001/2026 - SMA" -> "757-2026" ou "001-2026")
+    let numPart = (redatorNumero || 'minuta').trim();
+    if (numPart.includes('-')) {
+      numPart = numPart.split('-')[0].trim();
+    }
+    const numLimpo = numPart.replace(/\//g, '-').replace(/[^a-zA-Z0-9_-]/g, '');
+
+    // Obtém a sigla institucional (ex: "SMA")
     const sigla = getSecretariaSigla(redatorSecretaria, secretarias) || 'SMA';
-    const assuntoLimpo = (redatorAssunto || 'documento')
+
+    // Obtém o assunto do documento limpo de caracteres inválidos de nome de arquivo
+    const assuntoLimpo = (redatorAssunto || 'Documento Oficial')
       .replace(/[/\\?%*:|"<>]/g, '')
       .trim()
-      .replace(/\s+/g, ' ')
-      .substring(0, 60);
+      .replace(/\s+/g, ' ');
 
-    // Formato exato solicitado: 'Memo xxxx-2026 - SMA - assunto do memorando.pdf'
-    const cleanDocName = `${tipoNome} ${numLimpo} - ${sigla} - ${assuntoLimpo}.pdf`;
+    // Formato exato solicitado: 'Memo 757-2026 - SMA - Quantitativo de Servidores e Informações de Folha.pdf'
+    const cleanDocName = redatorTipo === 'EMAIL'
+      ? `Email - ${sigla} - ${assuntoLimpo}.pdf`
+      : `${tipoNome} ${numLimpo} - ${sigla} - ${assuntoLimpo}.pdf`;
 
     // Atualiza temporariamente o título do documento para que o fallback de impressão nativa use o mesmo nome exato
     const originalTitle = document.title;
@@ -1891,126 +1901,85 @@ ${headerAndBodyHtml}
       try {
         await Promise.race([
           document.fonts ? document.fonts.ready : Promise.resolve(),
-          new Promise(resolve => setTimeout(resolve, 1500))
+          new Promise(resolve => setTimeout(resolve, 1000))
         ]);
       } catch {}
 
       // Breve pausa para estabilização de fontes e layout
       await new Promise(resolve => setTimeout(resolve, 40));
 
-      // 2. Garante o motor html2pdf disponível no escopo global
+      // 2. Garante o motor html2pdf disponível no escopo global (carrega localmente de /html2pdf.bundle.min.js)
       let html2pdf = (window as any).html2pdf;
       if (!html2pdf) {
         try {
-          await new Promise((resolve) => {
+          await new Promise((resolve, reject) => {
             const s = document.createElement('script');
-            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-            s.onload = resolve;
-            s.onerror = resolve;
+            s.src = '/html2pdf.bundle.min.js';
+            s.onload = () => resolve((window as any).html2pdf);
+            s.onerror = reject;
             document.head.appendChild(s);
           });
           html2pdf = (window as any).html2pdf;
-        } catch (e) {}
-      }
-
-      // 3. Cria container de captura fixo em (0, 0) com z-index negativo
-      captureContainer = document.createElement('div');
-      captureContainer.id = 'pdf-capture-container';
-      captureContainer.style.position = 'fixed';
-      captureContainer.style.top = '0';
-      captureContainer.style.left = '0';
-      captureContainer.style.width = '794px';
-      captureContainer.style.minWidth = '794px';
-      captureContainer.style.maxWidth = '794px';
-      captureContainer.style.zIndex = '-9999';
-      captureContainer.style.background = '#ffffff';
-      captureContainer.style.margin = '0';
-      captureContainer.style.padding = '0';
-      captureContainer.style.boxSizing = 'border-box';
-      captureContainer.style.pointerEvents = 'none';
-      captureContainer.style.visibility = 'visible';
-      captureContainer.style.opacity = '1';
-
-      // 4. Clona o elemento timbrado se estiver aberto, ou constrói diretamente a partir dos dados do estado
-      const elementoOrig = document.getElementById('print-area-content');
-      let clone: HTMLElement;
-      if (elementoOrig && isRedatorLetterheadOpen) {
-        clone = elementoOrig.cloneNode(true) as HTMLElement;
-        clone.id = 'print-area-clone';
-        clone.style.width = '794px';
-        clone.style.minWidth = '794px';
-        clone.style.maxWidth = '794px';
-        clone.style.boxSizing = 'border-box';
-        clone.style.padding = '0';
-        clone.style.margin = '0';
-        clone.style.background = '#ffffff';
-        clone.style.color = '#000000';
-      } else {
-        clone = construirElementoTimbradoParaCaptura();
-      }
-
-      // Preserva rigorosamente as proporções oficiais do Brasão Municipal de Rio Claro RJ
-      const brasaoImg = clone.querySelector('img[alt*="Brasão"]') as HTMLImageElement | null;
-      if (brasaoImg) {
-        brasaoImg.style.width = '83px';
-        brasaoImg.style.height = '96px';
-        brasaoImg.style.minWidth = '83px';
-        brasaoImg.style.minHeight = '96px';
-        brasaoImg.style.maxWidth = '83px';
-        brasaoImg.style.maxHeight = '96px';
-        brasaoImg.style.aspectRatio = '86 / 100';
-        brasaoImg.style.objectFit = 'contain';
-        brasaoImg.style.display = 'block';
-        brasaoImg.style.flexShrink = '0';
-        brasaoImg.setAttribute('width', '83');
-        brasaoImg.setAttribute('height', '96');
-        if (!brasaoImg.src || !brasaoImg.src.startsWith('data:')) {
-          brasaoImg.src = BRASAO_RIO_CLARO;
+        } catch (e) {
+          console.warn('Carregamento local de html2pdf falhou, tentando fallback cdnjs:', e);
+          try {
+            await new Promise((resolve, reject) => {
+              const s = document.createElement('script');
+              s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+              s.onload = () => resolve((window as any).html2pdf);
+              s.onerror = reject;
+              document.head.appendChild(s);
+            });
+            html2pdf = (window as any).html2pdf;
+          } catch {}
         }
       }
 
-      // Regras anti-quebra explícitas no clone para cabeçalho e assinatura
-      const cabecalhoClone = clone.querySelector('#cabecalho-timbrado') || clone.querySelector('.cabecalho-timbrado') || clone.firstElementChild as HTMLElement | null;
-      if (cabecalhoClone && cabecalhoClone instanceof HTMLElement) {
-        cabecalhoClone.style.breakInside = 'avoid';
-        (cabecalhoClone.style as any).pageBreakInside = 'avoid';
+      // 3. Obtém o elemento a ser capturado: se a prévia já estiver aberta, usa diretamente o elemento na tela
+      const elementoNaTela = document.getElementById('print-area-content');
+      let targetElement: HTMLElement;
+
+      if (elementoNaTela && isRedatorLetterheadOpen) {
+        targetElement = elementoNaTela;
+        normalizeOklchToRgb(targetElement);
+      } else {
+        // Se chamado de fora da prévia, constrói em container temporário
+        captureContainer = document.createElement('div');
+        captureContainer.id = 'pdf-capture-container';
+        captureContainer.style.position = 'fixed';
+        captureContainer.style.top = '0';
+        captureContainer.style.left = '0';
+        captureContainer.style.width = '794px';
+        captureContainer.style.minWidth = '794px';
+        captureContainer.style.maxWidth = '794px';
+        captureContainer.style.zIndex = '-9999';
+        captureContainer.style.background = '#ffffff';
+        captureContainer.style.margin = '0';
+        captureContainer.style.padding = '0';
+        captureContainer.style.boxSizing = 'border-box';
+        captureContainer.style.pointerEvents = 'none';
+
+        const clone = construirElementoTimbradoParaCaptura();
+        captureContainer.appendChild(clone);
+        document.body.appendChild(captureContainer);
+        normalizeOklchToRgb(clone);
+        targetElement = clone;
       }
-      const assinaturaClone = clone.querySelector('#assinatura-timbrado') || clone.querySelector('.assinatura-timbrado') as HTMLElement | null;
-      if (assinaturaClone && assinaturaClone instanceof HTMLElement) {
-        assinaturaClone.style.breakInside = 'avoid';
-        (assinaturaClone.style as any).pageBreakInside = 'avoid';
-      }
 
-      captureContainer.appendChild(clone);
-      document.body.appendChild(captureContainer);
+      showToast(`Baixando PDF: "${cleanDocName}"...`);
 
-      // 5. Normaliza cores oklch -> RGB no DOM clonado antes da chamada do html2pdf
-      normalizeOklchToRgb(clone);
-
-      showToast(`Gerando PDF: "${cleanDocName}"...`);
-
-      // 6. Geração direta e limpa do PDF com html2pdf
+      // 4. Executa a geração direta e download via html2pdf
       if (html2pdf) {
         const opt = {
-          margin: [15, 15, 18, 15], // (mm: topo 15mm, esquerda 15mm, base 18mm, direita 15mm)
+          margin: [10, 10, 10, 10], // mm
           filename: cleanDocName,
-          image: { type: 'png', quality: 1 },
+          image: { type: 'jpeg', quality: 0.98 },
           html2canvas: {
             scale: 2,
             useCORS: true,
             logging: false,
-            backgroundColor: '#ffffff',
-            width: 794,
-            windowWidth: 794,
-            x: 0,
-            y: 0,
-            scrollX: 0,
-            scrollY: 0,
             onclone: (clonedDoc: Document) => {
-              const el = clonedDoc.getElementById('print-area-clone') || clonedDoc.body;
-              if (el && el instanceof HTMLElement) {
-                normalizeOklchToRgb(el);
-              }
+              normalizeOklchToRgb(clonedDoc.body);
             }
           },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -2021,21 +1990,27 @@ ${headerAndBodyHtml}
         };
 
         try {
-          await html2pdf()
-            .set(opt)
-            .from(clone)
-            .save();
+          await new Promise<void>((resolve, reject) => {
+            html2pdf()
+              .set(opt)
+              .from(targetElement)
+              .save()
+              .then(() => resolve())
+              .catch((err: any) => reject(err));
+          });
 
-          showToast(`Documento "${cleanDocName}" salvo em PDF com sucesso!`);
+          showToast(`Documento "${cleanDocName}" baixado com sucesso!`);
         } catch (err: any) {
-          console.warn('Falha na geração direta via html2pdf, acionando diálogo nativo para PDF:', err);
-          showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
+          console.warn('Falha na geração direta via html2pdf, acionando prévia oficial:', err);
+          showToast("Abrindo prévia oficial: selecione 'Salvar como PDF'.");
+          setIsSheetsDrawerOpen(false); // Fecha o sheets drawer para nunca vazar na impressão
           setIsRedatorLetterheadOpen(true);
           setTimeout(() => window.print(), 350);
         }
       } else {
         // Fallback para impressão nativa do navegador
-        showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
+        showToast("Abrindo prévia oficial: selecione 'Salvar como PDF'.");
+        setIsSheetsDrawerOpen(false); // Fecha o sheets drawer para nunca vazar na impressão
         setIsRedatorLetterheadOpen(true);
         setTimeout(() => {
           window.print();
@@ -2043,7 +2018,8 @@ ${headerAndBodyHtml}
       }
     } catch (topErr: any) {
       console.error('Erro na rotina de exportação para PDF:', topErr);
-      showToast('Erro ao gerar PDF. Abrindo prévia para impressão nativa.', 'Aviso', true);
+      showToast('Erro ao baixar PDF. Abrindo prévia oficial.', 'Aviso', true);
+      setIsSheetsDrawerOpen(false);
       setIsRedatorLetterheadOpen(true);
       setTimeout(() => window.print(), 350);
     } finally {
@@ -2743,7 +2719,7 @@ ${headerAndBodyHtml}
       {/* TAB 1: SISTEMA EM EXECUÇÃO (INTERACTIVE MUNICIPAL CMS)                    */}
       {/* ========================================================================= */}
       {activeTab === 'app' && (
-        <div className="flex-1 flex flex-col overflow-hidden relative animate-in fade-in duration-200">
+        <div className="no-print flex-1 flex flex-col overflow-hidden relative animate-in fade-in duration-200">
             
             {/* Top Header - Idêntico ao Standalone HTML de Produção (image_7f1c0232.png) */}
             <header className="bg-slate-900 border-b border-slate-800 text-white shadow-md h-16 flex items-center justify-between px-4 sm:px-6 flex-shrink-0 z-30">
@@ -5637,7 +5613,8 @@ ${headerAndBodyHtml}
       {/* ========================================================================= */}
       {isSheetsDrawerOpen && (
         <div 
-          className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 transition-all duration-300"
+          id="sheets-inspector-drawer"
+          className="no-print fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 transition-all duration-300"
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsSheetsDrawerOpen(false);
           }}

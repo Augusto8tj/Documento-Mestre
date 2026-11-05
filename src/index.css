@@ -59,6 +59,8 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
   /* Oculta estritamente qualquer controle de tela, menu, navegação, botão e TOAST */
   .no-print,
   .no-print *,
+  #sheets-inspector-drawer,
+  #sheets-inspector-drawer *,
   #modal-redator-oficial,
   #modal-redator-oficial *,
   nav,
@@ -77,6 +79,7 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
   /* Oculta o layout da aplicação e outros modais para que apenas o documento timbrado seja impresso */
   #root > div > *:not(#modal-timbrado-container) {
     display: none !important;
+    visibility: hidden !important;
   }
 
   /* Remove completamente backdrop e estilização de janela modal suspensa SOMENTE do timbrado */
@@ -107,6 +110,12 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
+  }
+
+  /* Oculta a barra de ferramentas de botões no topo da prévia timbrada */
+  #modal-timbrado-card > div:first-child {
+    display: none !important;
+    visibility: hidden !important;
   }
 
   /* Elementos indivisíveis: cabeçalho e bloco de assinatura não quebram entre páginas */
