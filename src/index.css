@@ -59,6 +59,8 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
   /* Oculta estritamente qualquer controle de tela, menu, navegação, botão e TOAST */
   .no-print,
   .no-print *,
+  #modal-redator-oficial,
+  #modal-redator-oficial *,
   nav,
   header,
   aside,
@@ -72,11 +74,13 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
     visibility: hidden !important;
   }
 
-  /* Remove completamente backdrop e estilização de janela modal suspensa */
-  #modal-timbrado-container,
-  .modal-timbrado-backdrop,
-  .fixed.inset-0.z-\[60\],
-  .fixed.inset-0 {
+  /* Oculta o layout da aplicação e outros modais para que apenas o documento timbrado seja impresso */
+  #root > div > *:not(#modal-timbrado-container) {
+    display: none !important;
+  }
+
+  /* Remove completamente backdrop e estilização de janela modal suspensa SOMENTE do timbrado */
+  #modal-timbrado-container {
     position: static !important;
     display: block !important;
     background: #ffffff !important;
@@ -91,10 +95,7 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
   }
 
   /* Remove qualquer card, canto arredondado ou sombra da caixa de diálogo */
-  #modal-timbrado-card,
-  .modal-timbrado-card,
-  .fixed.inset-0.z-\[60\] > div,
-  .fixed.inset-0 > div {
+  #modal-timbrado-card {
     position: static !important;
     display: block !important;
     background: #ffffff !important;

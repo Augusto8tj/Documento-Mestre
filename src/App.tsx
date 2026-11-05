@@ -83,7 +83,13 @@ import {
   Eraser,
   Undo2,
   Redo2,
-  Type
+  Type,
+  Maximize2,
+  Minimize2,
+  ChevronLeft,
+  LayoutGrid,
+  SlidersHorizontal,
+  GripHorizontal
 } from 'lucide-react';
 import { PWAInstallButton, OfflineIndicator } from './components/PWAInstallButton';
 import { BRASAO_RIO_CLARO } from './brasaoBase64';
@@ -168,9 +174,36 @@ export default function App() {
   const [isCrudModalOpen, setIsCrudModalOpen] = useState(false);
   const [editingModelo, setEditingModelo] = useState<Partial<ModeloDocumental>>({});
 
-  // Sheets Inspector Drawer Modal
+  // Sheets Inspector Floating Modal State & Controls
   const [isSheetsDrawerOpen, setIsSheetsDrawerOpen] = useState(false);
   const [activeSheetTab, setActiveSheetTab] = useState<'numeracao' | 'logs' | 'modelos' | 'usuarios'>('numeracao');
+  const [isSheetsMaximized, setIsSheetsMaximized] = useState(false);
+  const [sheetViewMode, setSheetViewMode] = useState<'cards' | 'table'>('table');
+  const [sheetScrollProgress, setSheetScrollProgress] = useState(0);
+  const sheetsTableContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleSheetHorizontalScroll = (percentage: number) => {
+    if (sheetsTableContainerRef.current) {
+      const el = sheetsTableContainerRef.current;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (maxScroll > 0) {
+        el.scrollTo({ left: (percentage / 100) * maxScroll, behavior: 'smooth' });
+      }
+      setSheetScrollProgress(percentage);
+    }
+  };
+
+  const handleSheetScrollUpdate = () => {
+    if (sheetsTableContainerRef.current) {
+      const el = sheetsTableContainerRef.current;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (maxScroll > 0) {
+        setSheetScrollProgress(Math.round((el.scrollLeft / maxScroll) * 100));
+      } else {
+        setSheetScrollProgress(0);
+      }
+    }
+  };
 
   // Painel de Gestão do Administrador (Servidores, Senhas, Secretarias e Departamentos)
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
@@ -233,6 +266,7 @@ export default function App() {
   const [redatorMatricula, setRedatorMatricula] = useState(currentUser?.matricula || '1001');
   const [isRedatorGeneratingNumber, setIsRedatorGeneratingNumber] = useState(false);
   const [isRedatorLetterheadOpen, setIsRedatorLetterheadOpen] = useState(false);
+  const [isSavingPdf, setIsSavingPdf] = useState(false);
   
   // Estado do Assistente de Redação com IA (Gemini)
   const [isAiHelperOpen, setIsAiHelperOpen] = useState(false);
@@ -1618,31 +1652,173 @@ ${headerAndBodyHtml}
     }
   };
 
+  // Constrói o elemento timbrado oficial em padrão A4 (794px) pronto para captura PDF
+  const construirElementoTimbradoParaCaptura = (): HTMLElement => {
+    const container = document.createElement('div');
+    container.id = 'print-area-clone';
+    container.style.width = '794px';
+    container.style.minWidth = '794px';
+    container.style.maxWidth = '794px';
+    container.style.padding = '44px 50px';
+    container.style.boxSizing = 'border-box';
+    container.style.background = '#ffffff';
+    container.style.color = '#000000';
+    container.style.lineHeight = '1.5';
+
+    const numTexto = redatorTipo === 'EMAIL'
+      ? 'COMUNICAÇÃO ELETRÔNICA INSTITUCIONAL (E-MAIL)'
+      : getDocumentoPrefixo(redatorTipo, redatorNumero);
+
+    const corpoHTML = converterTextoOficialHTML(redatorTexto, 'print', redatorFonte, redatorTamanhoFonte, redatorAlinhamento);
+
+    let conteudoMeio = '';
+    if (redatorTipo === 'DECRETO' || redatorTipo === 'PORTARIA') {
+      conteudoMeio = `
+        <div style="margin-bottom: 24px; font-family: Arial, sans-serif;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px;">
+            <strong style="color: #002b82; font-size: 15px; font-weight: 900; text-transform: uppercase;">
+              ${numTexto}
+            </strong>
+            <span style="font-size: 12px; color: #334155; font-weight: 600;">${redatorData}</span>
+          </div>
+          ${redatorAssunto ? `
+            <div style="margin-left: auto; width: 60%; text-align: justify; font-style: italic; font-size: 11px; color: #1e293b; line-height: 1.4; margin-bottom: 20px; padding-left: 12px; border-left: 2px solid #cbd5e1;">
+              ${redatorAssunto}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    } else {
+      conteudoMeio = `
+        <div style="margin-bottom: 24px; font-family: Arial, sans-serif;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px;">
+            <div>
+              <strong style="color: #002b82; font-size: 15px; font-weight: 900;">
+                ${numTexto}
+              </strong>
+              ${redatorReferenciaDoc && redatorTipo !== 'EMAIL' ? `
+                <p style="font-size: 11px; color: #475569; font-style: italic; margin-top: 2px;">
+                  Referência: ${redatorReferenciaDoc}
+                </p>
+              ` : ''}
+            </div>
+            <span style="font-size: 12px; color: #334155; font-weight: 600;">${redatorData}</span>
+          </div>
+
+          <div style="margin-bottom: 18px;">
+            <p style="font-size: 14px; font-weight: bold; color: #0f172a; margin: 0; line-height: 1.25;">
+              ${redatorDestinatario ? (redatorDestinatario.startsWith('À') || redatorDestinatario.startsWith('Ao') ? redatorDestinatario : `À ${redatorDestinatario}`) : 'À Secretaria Municipal de Saúde'}
+            </p>
+            <p style="font-size: 11px; color: #475569; font-weight: 500; margin: 2px 0 0 0;">
+              Prefeitura Municipal de Rio Claro – RJ
+            </p>
+          </div>
+
+          <div style="margin-bottom: 18px; padding-bottom: 8px; border-bottom: 1px solid #cbd5e1;">
+            <span style="font-weight: bold; color: #0f172a; text-transform: uppercase; font-size: 12px;">Assunto: </span>
+            <span style="font-weight: 600; color: #0f172a; font-size: 12px;">${redatorAssunto || 'Quantitativo de Servidores e Informações de Folha'}</span>
+          </div>
+
+          <div style="margin-bottom: 14px; font-weight: 600; font-size: 12px; color: #1e293b;">
+            ${redatorTipo === 'OFICIO' ? 'Senhor(a) Secretário(a),' : 'Prezados,'}
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      <div id="cabecalho-timbrado" style="display: flex; align-items: center; gap: 18px; padding-bottom: 16px; border-bottom: 2px solid #002b82; margin-bottom: 24px; break-inside: avoid; page-break-inside: avoid;">
+        <img
+          src="${BRASAO_RIO_CLARO}"
+          alt="Brasão Oficial da Prefeitura Municipal de Rio Claro RJ"
+          width="83"
+          height="96"
+          style="width: 83px; height: 96px; min-width: 83px; min-height: 96px; max-width: 83px; max-height: 96px; aspect-ratio: 86 / 100; object-fit: contain; flex-shrink: 0; display: block;"
+        />
+        <div style="font-family: Arial, sans-serif; color: #002b82;">
+          <div style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">
+            ESTADO DO RIO DE JANEIRO
+          </div>
+          <div style="font-size: 15px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.2px; line-height: 1.2; margin-top: 2px;">
+            PREFEITURA MUNICIPAL DE RIO CLARO
+          </div>
+          <div style="font-size: 10px; color: #475569; font-weight: 500; line-height: 1.2; margin-top: 3px;">
+            Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68
+          </div>
+          <div style="font-size: 11px; font-weight: bold; color: #002b82; text-transform: uppercase; line-height: 1.2; margin-top: 3px;">
+            ${redatorSecretaria}
+          </div>
+          ${redatorSetorOrigem && redatorSetorOrigem !== redatorSecretaria ? `
+            <div style="font-size: 10px; color: #475569; font-weight: 500; line-height: 1.2; margin-top: 2px;">
+              ${redatorSetorOrigem}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+
+      ${conteudoMeio}
+
+      <div class="sgep-rich-doc" style="font-family: ${redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : '"Times New Roman", Times, serif'}; font-size: ${redatorTamanhoFonte === '10pt' ? '12px' : redatorTamanhoFonte === '11pt' ? '13px' : '14px'}; line-height: 1.6; text-align: ${redatorAlinhamento}; margin-bottom: 28px; padding-left: 8px;">
+        ${corpoHTML}
+      </div>
+
+      <div style="margin-bottom: 36px; font-family: Arial, sans-serif; font-size: 12px; color: #1e293b;">
+        <p style="font-weight: 500;">${redatorFecho}</p>
+      </div>
+
+      <div id="assinatura-timbrado" style="text-align: center; margin-top: 36px; padding-top: 20px; max-width: 420px; margin-left: auto; margin-right: auto; font-family: Arial, sans-serif; break-inside: avoid; page-break-inside: avoid;">
+        <div style="width: 240px; height: 1px; background-color: #94a3b8; margin: 0 auto 10px auto;"></div>
+        <p style="font-size: 13px; font-weight: bold; color: #0f172a; margin: 0;">${redatorSignatario}</p>
+        <p style="font-size: 11px; color: #334155; font-style: italic; margin: 2px 0 0 0;">${redatorCargo}</p>
+        <p style="font-size: 11px; color: #002b82; font-weight: 600; margin: 2px 0 0 0;">${redatorSecretaria}</p>
+        <p style="font-size: 9.5px; color: #64748b; margin: 2px 0 0 0;">Prefeitura Municipal de Rio Claro – RJ</p>
+      </div>
+    `;
+
+    return container;
+  };
+
   // Exportação oficial para PDF (utiliza html2pdf.js com clone A4 de 794px, normalização oklch, quebra inteligente e PNG nítido)
   const handleBaixarPdfRedator = async () => {
-    const cleanDocName = `${redatorTipo}_${(redatorNumero || 'minuta').replace(/[^a-zA-Z0-9_-]/g, '_')}_RioClaro.pdf`;
-    setIsRedatorLetterheadOpen(true);
+    if (isSavingPdf) return;
+    setIsSavingPdf(true);
 
-    // 1. Espera o carregamento de fontes do documento com timeout de segurança de 2s
+    const tipoNome = redatorTipo === 'MEMORANDO' ? 'Memo'
+      : redatorTipo === 'OFICIO' ? 'Oficio'
+      : redatorTipo === 'DESPACHO' ? 'Despacho'
+      : redatorTipo === 'PORTARIA' ? 'Portaria'
+      : redatorTipo === 'DECRETO' ? 'Decreto'
+      : redatorTipo === 'CIRCULAR' ? 'Circular'
+      : redatorTipo === 'EMAIL' ? 'Email'
+      : redatorTipo;
+
+    const numLimpo = (redatorNumero || 'minuta').replace(/\//g, '-').replace(/[^a-zA-Z0-9_-]/g, '');
+    const sigla = getSecretariaSigla(redatorSecretaria, secretarias) || 'SMA';
+    const assuntoLimpo = (redatorAssunto || 'documento')
+      .replace(/[/\\?%*:|"<>]/g, '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .substring(0, 60);
+
+    // Formato exato solicitado: 'Memo xxxx-2026 - SMA - assunto do memorando.pdf'
+    const cleanDocName = `${tipoNome} ${numLimpo} - ${sigla} - ${assuntoLimpo}.pdf`;
+
+    // Atualiza temporariamente o título do documento para que o fallback de impressão nativa use o mesmo nome exato
+    const originalTitle = document.title;
+    document.title = cleanDocName.replace(/\.pdf$/i, '');
+
+    // 1. Espera o carregamento de fontes do documento com timeout de segurança
     try {
       await Promise.race([
         document.fonts ? document.fonts.ready : Promise.resolve(),
-        new Promise(resolve => setTimeout(resolve, 2000))
+        new Promise(resolve => setTimeout(resolve, 1500))
       ]);
-    } catch {
-      // prossegue mesmo se a API de fontes falhar
-    }
-    // Breve pausa para estabilização de layout
-    await new Promise(resolve => setTimeout(resolve, 50));
+    } catch {}
 
-    // 2. Localiza o elemento original no modal timbrado
-    const elementoOrig = document.getElementById('print-area-content') || (document.querySelector('.print-area-container') as HTMLElement | null);
-    if (!elementoOrig) {
-      showToast('Erro: área de impressão não localizada.', 'Erro', true);
-      return;
-    }
+    // Breve pausa para estabilização de fontes e layout
+    await new Promise(resolve => setTimeout(resolve, 40));
 
-    // 3. Garante o motor html2pdf disponível no escopo global
+    // 2. Garante o motor html2pdf disponível no escopo global
     let html2pdf = (window as any).html2pdf;
     if (!html2pdf) {
       try {
@@ -1657,38 +1833,41 @@ ${headerAndBodyHtml}
       } catch (e) {}
     }
 
-    if (!html2pdf) {
-      showToast("Abrindo prévia de impressão: selecione 'Salvar como PDF' na impressora.");
-      setTimeout(() => window.print(), 300);
-      return;
-    }
-
-    // 4. Cria container de captura fixo fora da tela na largura exata A4 (794px a 96 DPI)
+    // 3. Cria container de captura fixo em (0, 0) com z-index negativo (visível no viewport para html2canvas calcular coordenadas sem erro)
     const captureContainer = document.createElement('div');
     captureContainer.id = 'pdf-capture-container';
     captureContainer.style.position = 'fixed';
-    captureContainer.style.left = '-10000px';
     captureContainer.style.top = '0';
+    captureContainer.style.left = '0';
     captureContainer.style.width = '794px';
     captureContainer.style.minWidth = '794px';
     captureContainer.style.maxWidth = '794px';
+    captureContainer.style.zIndex = '-9999';
     captureContainer.style.background = '#ffffff';
     captureContainer.style.margin = '0';
     captureContainer.style.padding = '0';
     captureContainer.style.boxSizing = 'border-box';
-    captureContainer.style.zIndex = '-9999';
+    captureContainer.style.pointerEvents = 'none';
+    captureContainer.style.visibility = 'visible';
+    captureContainer.style.opacity = '1';
 
-    // 5. Clona o conteúdo timbrado e zera o padding para que a margem de 15mm do html2pdf seja a única margem
-    const clone = elementoOrig.cloneNode(true) as HTMLElement;
-    clone.id = 'print-area-clone';
-    clone.style.width = '794px';
-    clone.style.minWidth = '794px';
-    clone.style.maxWidth = '794px';
-    clone.style.boxSizing = 'border-box';
-    clone.style.padding = '0';
-    clone.style.margin = '0';
-    clone.style.background = '#ffffff';
-    clone.style.color = '#000000';
+    // 4. Clona o elemento timbrado se estiver aberto, ou constrói diretamente a partir dos dados do estado
+    const elementoOrig = document.getElementById('print-area-content');
+    let clone: HTMLElement;
+    if (elementoOrig && isRedatorLetterheadOpen) {
+      clone = elementoOrig.cloneNode(true) as HTMLElement;
+      clone.id = 'print-area-clone';
+      clone.style.width = '794px';
+      clone.style.minWidth = '794px';
+      clone.style.maxWidth = '794px';
+      clone.style.boxSizing = 'border-box';
+      clone.style.padding = '0';
+      clone.style.margin = '0';
+      clone.style.background = '#ffffff';
+      clone.style.color = '#000000';
+    } else {
+      clone = construirElementoTimbradoParaCaptura();
+    }
 
     // Preserva rigorosamente as proporções oficiais do Brasão Municipal de Rio Claro RJ
     const brasaoImg = clone.querySelector('img[alt*="Brasão"]') as HTMLImageElement | null;
@@ -1725,53 +1904,76 @@ ${headerAndBodyHtml}
     captureContainer.appendChild(clone);
     document.body.appendChild(captureContainer);
 
-    // 6. Normaliza cores oklch -> RGB no DOM clonado antes da chamada do html2pdf
+    // 5. Normaliza cores oklch -> RGB no DOM clonado antes da chamada do html2pdf
     normalizeOklchToRgb(clone);
 
-    showToast('Gerando arquivo PDF com Brasão e Timbrado oficial...');
+    showToast(`Gerando PDF: "${cleanDocName}"...`);
 
-    // 7. Configuração completa solicitada: margens uniformes, PNG puro, anti-quebra de parágrafos/assinatura
-    const opt = {
-      margin: [15, 15, 18, 15], // (mm: topo 15mm, esquerda 15mm, base 18mm, direita 15mm)
-      filename: cleanDocName,
-      image: { type: 'png', quality: 1 },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        windowWidth: 794,
-        onclone: (clonedDoc: Document) => {
-          const el = clonedDoc.getElementById('print-area-clone') || clonedDoc.getElementById('print-area-content') || clonedDoc.body;
-          if (el && el instanceof HTMLElement) {
-            normalizeOklchToRgb(el);
+    // 6. Geração direta e limpa do PDF com html2pdf
+    if (html2pdf) {
+      const opt = {
+        margin: [15, 15, 18, 15], // (mm: topo 15mm, esquerda 15mm, base 18mm, direita 15mm)
+        filename: cleanDocName,
+        image: { type: 'png', quality: 1 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+          width: 794,
+          windowWidth: 794,
+          x: 0,
+          y: 0,
+          scrollX: 0,
+          scrollY: 0,
+          onclone: (clonedDoc: Document) => {
+            const el = clonedDoc.getElementById('print-area-clone') || clonedDoc.body;
+            if (el && el instanceof HTMLElement) {
+              normalizeOklchToRgb(el);
+            }
           }
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: {
+          mode: ['avoid-all', 'css', 'legacy'],
+          avoid: ['img', 'p', 'li', 'tr', 'blockquote', '#cabecalho-timbrado', '#assinatura-timbrado', '.avoid-break']
         }
-      },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: {
-        mode: ['avoid-all', 'css', 'legacy'],
-        avoid: ['img', 'p', 'li', 'tr', 'blockquote', '#cabecalho-timbrado', '#assinatura-timbrado', '.avoid-break']
-      }
-    };
+      };
 
-    try {
-      await html2pdf()
-        .set(opt)
-        .from(clone)
-        .save();
-      showToast(`PDF "${cleanDocName}" salvo com sucesso!`);
-    } catch (err: any) {
-      console.warn('Falha na geração via html2pdf, acionando diálogo nativo para PDF:', err);
-      showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
-      setTimeout(() => window.print(), 300);
-    } finally {
-      // 8. Garante a remoção limpa do container temporário do DOM em qualquer cenário
+      try {
+        await html2pdf()
+          .set(opt)
+          .from(clone)
+          .save();
+
+        showToast(`Documento "${cleanDocName}" salvo em PDF com sucesso!`);
+      } catch (err: any) {
+        console.warn('Falha na geração direta via html2pdf, acionando diálogo nativo para PDF:', err);
+        showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
+        setIsRedatorLetterheadOpen(true);
+        setTimeout(() => window.print(), 350);
+      } finally {
+        if (captureContainer && captureContainer.parentNode) {
+          captureContainer.parentNode.removeChild(captureContainer);
+        }
+        document.title = originalTitle;
+        setIsSavingPdf(false);
+      }
+    } else {
+      // Fallback para impressão nativa do navegador
       if (captureContainer && captureContainer.parentNode) {
         captureContainer.parentNode.removeChild(captureContainer);
       }
+      showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
+      setIsRedatorLetterheadOpen(true);
+      setTimeout(() => {
+        window.print();
+        document.title = originalTitle;
+        setIsSavingPdf(false);
+      }, 350);
     }
   };
+
 
 
   // Open Variable Modal
@@ -3720,7 +3922,7 @@ ${headerAndBodyHtml}
       {/* MODAL 4: REDATOR OFICIAL DE MEMORANDO / OFÍCIO (COM NUMERAÇÃO AUTOMÁTICA) */}
       {/* ========================================================================= */}
       {isRedatorModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+        <div id="modal-redator-oficial" className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 no-print">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-6xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[95vh] animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 flex-shrink-0">
@@ -5131,12 +5333,22 @@ ${headerAndBodyHtml}
 
                 <button
                   type="button"
+                  disabled={isSavingPdf}
                   onClick={handleBaixarPdfRedator}
-                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm active:scale-95"
+                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm active:scale-95 disabled:opacity-60 cursor-pointer"
                   title="Gerar e baixar documento em PDF A4 timbrado oficial"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Salvar em PDF</span>
+                  {isSavingPdf ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Gerando PDF...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Salvar em PDF</span>
+                    </>
+                  )}
                 </button>
 
                 <button
@@ -5184,12 +5396,22 @@ ${headerAndBodyHtml}
                   <span>Imprimir Documento</span>
                 </button>
                 <button
+                  disabled={isSavingPdf}
                   onClick={handleBaixarPdfRedator}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all shadow-sm"
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all shadow-sm disabled:opacity-60 cursor-pointer"
                   title="Baixar diretamente em arquivo PDF"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Salvar em PDF</span>
+                  {isSavingPdf ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Gerando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Salvar em PDF</span>
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={handleBaixarDocxRedator}
@@ -5330,81 +5552,171 @@ ${headerAndBodyHtml}
           </div>
         </div>
       )}
-      {/* DRAWER: INSPEÇÃO DA PLANILHA GOOGLE SHEETS EM TEMPO REAL                  */}
+      {/* MODAL / BOTTOM-SHEET FLUTUANTE: INSPEÇÃO DA PLANILHA GOOGLE SHEETS */}
       {/* ========================================================================= */}
       {isSheetsDrawerOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex justify-end">
-          <div className="bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 w-full max-w-4xl h-full shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-200">
-            
-            {/* Drawer Header */}
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
-              <div className="flex items-center space-x-2">
-                <Database className="w-5 h-5 text-blue-600" />
-                <div>
-                  <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">Planilha Google Sheets (Visualização ao Vivo)</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Acompanhe em tempo real a gravação dupla na aba "Numeração" e "Logs_Auditoria".
+        <div 
+          className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 transition-all duration-300"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsSheetsDrawerOpen(false);
+          }}
+        >
+          <div 
+            className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-out animate-in slide-in-from-bottom sm:zoom-in-95 ${
+              isSheetsMaximized
+                ? 'w-full h-full rounded-none sm:rounded-2xl'
+                : 'w-full sm:max-w-5xl md:max-w-6xl h-[92vh] sm:h-[86vh] max-h-[96vh] rounded-t-2xl sm:rounded-2xl'
+            }`}
+          >
+            {/* Barra de Toque e Deslize para Mobile */}
+            <div 
+              className="sm:hidden pt-2.5 pb-1 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing select-none bg-slate-50 dark:bg-slate-800/80 border-b border-slate-100 dark:border-slate-800 shrink-0"
+              onClick={() => setIsSheetsMaximized(prev => !prev)}
+              title="Toque para alternar tamanho"
+            >
+              <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full mb-1"></div>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium flex items-center gap-1">
+                <SlidersHorizontal className="w-2.5 h-2.5 text-blue-600" /> Toque ou arraste para {isSheetsMaximized ? 'reduzir' : 'expandir'}
+              </span>
+            </div>
+
+            {/* Header Flutuante Responsivo */}
+            <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 shrink-0 gap-2">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 truncate">
+                      Planilha Google Sheets
+                    </h3>
+                    <span className="hidden sm:inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      ● Ao Vivo
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                    Sincronização em tempo real das abas "Numeração", "Logs", "Modelos" e "Usuários".
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={() => setIsSheetsDrawerOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Alternador de Visualização (Cartões vs Tabela) */}
+                {activeSheetTab === 'numeracao' && (
+                  <div className="flex items-center bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-300/60 dark:border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => setSheetViewMode('cards')}
+                      className={`px-2 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                        sheetViewMode === 'cards'
+                          ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                      title="Visualização em Cartões (Ideal para celular)"
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline text-[11px]">Cartões</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSheetViewMode('table')}
+                      className={`px-2 py-1 rounded-md text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                        sheetViewMode === 'table'
+                          ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                      title="Visualização em Tabela Completa"
+                    >
+                      <Table className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline text-[11px]">Tabela</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Botão Maximizar / Restaurar */}
+                <button
+                  type="button"
+                  onClick={() => setIsSheetsMaximized(!isSheetsMaximized)}
+                  className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden sm:flex items-center cursor-pointer"
+                  title={isSheetsMaximized ? "Restaurar tamanho flutuante" : "Maximizar tela cheia"}
+                >
+                  {isSheetsMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </button>
+
+                {/* Botão Fechar */}
+                <button
+                  type="button"
+                  onClick={() => setIsSheetsDrawerOpen(false)}
+                  className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Fechar"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
-            {/* Sheets Tabs */}
-            <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 px-4 pt-2 gap-2 text-xs">
+            {/* Sheets Tabs - Barra Deslizante Horizontal */}
+            <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950 px-3 sm:px-4 pt-2 gap-1.5 text-xs overflow-x-auto no-scrollbar scroll-smooth flex-nowrap shrink-0">
               <button
                 onClick={() => setActiveSheetTab('numeracao')}
-                className={`px-3 py-1.5 rounded-t-lg font-bold border-t border-l border-r transition-all ${
+                className={`px-3 py-1.5 rounded-t-lg font-bold border-t border-l border-r whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
                   activeSheetTab === 'numeracao'
-                    ? 'bg-white dark:bg-slate-900 text-blue-600 border-slate-200 dark:border-slate-800'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 border-slate-200 dark:border-slate-800 shadow-xs'
                     : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border-transparent'
                 }`}
               >
-                Numeração ({numeracoesFiltradas.length} de {numeracoes.length} registros)
+                <span>Numeração</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-mono">
+                  {numeracoesFiltradas.length}
+                </span>
               </button>
 
               <button
                 onClick={() => setActiveSheetTab('logs')}
-                className={`px-3 py-1.5 rounded-t-lg font-bold border-t border-l border-r transition-all ${
+                className={`px-3 py-1.5 rounded-t-lg font-bold border-t border-l border-r whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
                   activeSheetTab === 'logs'
-                    ? 'bg-white dark:bg-slate-900 text-emerald-600 border-slate-200 dark:border-slate-800'
+                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 border-slate-200 dark:border-slate-800 shadow-xs'
                     : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border-transparent'
                 }`}
               >
-                Logs_Auditoria ({logs.length} eventos)
+                <span>Logs_Auditoria</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-mono">
+                  {logs.length}
+                </span>
               </button>
 
               <button
                 onClick={() => setActiveSheetTab('modelos')}
-                className={`px-3 py-1.5 rounded-t-lg font-bold border-t border-l border-r transition-all ${
+                className={`px-3 py-1.5 rounded-t-lg font-bold border-t border-l border-r whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
                   activeSheetTab === 'modelos'
-                    ? 'bg-white dark:bg-slate-900 text-purple-600 border-slate-200 dark:border-slate-800'
+                    ? 'bg-white dark:bg-slate-900 text-purple-600 dark:text-purple-400 border-slate-200 dark:border-slate-800 shadow-xs'
                     : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border-transparent'
                 }`}
               >
-                Modelos ({modelos.length})
+                <span>Modelos</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-mono">
+                  {modelos.length}
+                </span>
               </button>
 
               <button
                 onClick={() => setActiveSheetTab('usuarios')}
-                className={`px-3 py-1.5 rounded-t-lg font-bold border-t border-l border-r transition-all ${
+                className={`px-3 py-1.5 rounded-t-lg font-bold border-t border-l border-r whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
                   activeSheetTab === 'usuarios'
-                    ? 'bg-white dark:bg-slate-900 text-amber-600 border-slate-200 dark:border-slate-800'
+                    ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 border-slate-200 dark:border-slate-800 shadow-xs'
                     : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border-transparent'
                 }`}
               >
-                Usuarios ({usuarios.length})
+                <span>Usuários</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono">
+                  {usuarios.length}
+                </span>
               </button>
             </div>
 
             {/* Sheets Table Content */}
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 overflow-auto p-3 sm:p-4">
               {activeSheetTab === 'numeracao' && (
                 <div className="space-y-3">
                   {/* Banner de Confidencialidade e Privacidade por Pasta */}
@@ -5436,9 +5748,9 @@ ${headerAndBodyHtml}
 
                   {/* Barra de Filtros Departamentais e Busca do Livro */}
                   <div className="flex flex-wrap items-center justify-between gap-2.5 p-2.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/80 text-xs">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                       {/* Campo de Busca por Palavra-chave */}
-                      <div className="relative min-w-[200px]">
+                      <div className="relative flex-1 sm:min-w-[200px]">
                         <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
@@ -5450,7 +5762,7 @@ ${headerAndBodyHtml}
                         {filtroLivroTermo && (
                           <button
                             onClick={() => setFiltroLivroTermo('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
                           >
                             ×
                           </button>
@@ -5459,13 +5771,13 @@ ${headerAndBodyHtml}
 
                       {/* Filtro por Departamento Interno (Coluna H) */}
                       <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Departamento:</span>
+                        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Depto:</span>
                         <select
                           value={filtroLivroDepartamento}
                           onChange={e => setFiltroLivroDepartamento(e.target.value)}
-                          className="bg-transparent font-medium text-xs text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1 max-w-[180px] truncate"
+                          className="bg-transparent font-medium text-xs text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1 max-w-[140px] sm:max-w-[180px] truncate"
                         >
-                          <option value="TODOS">Todos os Departamentos</option>
+                          <option value="TODOS">Todos os Deptos</option>
                           {departamentosDaSecretariaAtiva.map((depto, idx) => (
                             <option key={idx} value={depto}>{depto}</option>
                           ))}
@@ -5495,41 +5807,110 @@ ${headerAndBodyHtml}
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
-                        <tr>
-                          <th className="p-2.5 font-mono text-[11px]">A: DataHora</th>
-                          <th className="p-2.5 font-mono text-[11px]">B: TipoDoc</th>
-                          <th className="p-2.5 font-mono text-[11px]">C: Número Oficial</th>
-                          <th className="p-2.5 font-mono text-[11px] bg-blue-100/40 dark:bg-blue-950/40">D: Assunto</th>
-                          <th className="p-2.5 font-mono text-[11px] bg-amber-50/50 dark:bg-amber-950/20">E: Servidor</th>
-                          <th className="p-2.5 font-mono text-[11px] bg-emerald-50/50 dark:bg-emerald-950/20">F: Destinatário</th>
-                          <th className="p-2.5 font-mono text-[11px]">G: Secretaria</th>
-                          <th className="p-2.5 font-mono text-[11px]">H: Departamento</th>
-                          <th className="p-2.5 font-mono text-[11px] text-center">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {numeracoesFiltradas.length === 0 ? (
-                          <tr>
-                            <td colSpan={9} className="py-12 text-center text-slate-400">
-                              <ListOrdered className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                              <p className="font-medium text-xs">Nenhum documento encontrado para os filtros selecionados.</p>
-                            </td>
-                          </tr>
+                  {/* Controles Deslizantes de Navegação na Planilha */}
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 p-2 sm:p-2.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/80 text-xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs">
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Deslizar Colunas:</span>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleSheetHorizontalScroll(0)}
+                          className="px-2 py-1 rounded-md text-[10px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                          title="Voltar ao início da tabela"
+                        >
+                          Início
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (sheetsTableContainerRef.current) {
+                              sheetsTableContainerRef.current.scrollBy({ left: -200, behavior: 'smooth' });
+                            }
+                          }}
+                          className="p-1 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                          title="Deslizar para a esquerda"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={sheetScrollProgress}
+                          onChange={(e) => handleSheetHorizontalScroll(Number(e.target.value))}
+                          className="w-20 sm:w-28 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                          title="Arraste para deslizar horizontalmente"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (sheetsTableContainerRef.current) {
+                              sheetsTableContainerRef.current.scrollBy({ left: 200, behavior: 'smooth' });
+                            }
+                          }}
+                          className="p-1 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                          title="Deslizar para a direita"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSheetHorizontalScroll(100)}
+                          className="px-2 py-1 rounded-md text-[10px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                          title="Ir direto para os botões de ação e colunas finais"
+                        >
+                          Ações
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setSheetViewMode(sheetViewMode === 'cards' ? 'table' : 'cards')}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                      >
+                        {sheetViewMode === 'cards' ? (
+                          <>
+                            <Table className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Mudar para Tabela</span>
+                          </>
                         ) : (
-                          numeracoesFiltradas.map((n, i) => {
-                            const secDoc = n.secretaria || 'Secretaria Municipal de Administração (SMA)';
-                            const deptoDoc = n.departamento || (secDoc.toLowerCase().includes('administra') ? 'Departamento de Recursos Humanos' : 'Gabinete');
-                            const servDoc = n.servidor || n.usuario || 'Servidor Municipal';
-                            const siglaDoc = getSecretariaSigla(secDoc, secretarias);
-                            return (
-                              <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                                <td className="p-2.5 font-mono text-[11px] text-slate-400 whitespace-nowrap">
-                                  {new Date(n.dataHora).toLocaleDateString('pt-BR')} {new Date(n.dataHora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                </td>
-                                <td className="p-2.5 whitespace-nowrap">
+                          <>
+                            <LayoutGrid className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Mudar para Cartões</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* VISUALIZAÇÃO EM CARTÕES (Ideal para telas pequenas e smartphones) */}
+                  {sheetViewMode === 'cards' ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-4">
+                      {numeracoesFiltradas.length === 0 ? (
+                        <div className="col-span-full py-12 text-center text-slate-400">
+                          <ListOrdered className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                          <p className="font-medium text-xs">Nenhum documento encontrado para os filtros selecionados.</p>
+                        </div>
+                      ) : (
+                        numeracoesFiltradas.map((n, i) => {
+                          const secDoc = n.secretaria || 'Secretaria Municipal de Administração (SMA)';
+                          const deptoDoc = n.departamento || (secDoc.toLowerCase().includes('administra') ? 'Departamento de Recursos Humanos' : 'Gabinete');
+                          const servDoc = n.servidor || n.usuario || 'Servidor Municipal';
+                          const siglaDoc = getSecretariaSigla(secDoc, secretarias);
+
+                          return (
+                            <div key={i} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 hover:border-blue-300 dark:hover:border-blue-700 transition-all shadow-xs flex flex-col justify-between gap-3">
+                              <div>
+                                {/* Header do Card */}
+                                <div className="flex items-center justify-between gap-2 mb-2">
                                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                                     n.tipoDocumento === 'MEMORANDO' ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800' :
                                     n.tipoDocumento === 'OFICIO' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' :
@@ -5538,76 +5919,208 @@ ${headerAndBodyHtml}
                                   }`}>
                                     {n.tipoDocumento}
                                   </span>
-                                </td>
-                                <td className="p-2.5 font-mono font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">
-                                  {n.numero}
-                                </td>
-                                <td className="p-2.5 bg-blue-50/20 dark:bg-blue-950/10 max-w-xs truncate" title={n.assunto}>
-                                  <span className="font-medium text-slate-800 dark:text-slate-200">{n.assunto}</span>
-                                </td>
-                                <td className="p-2.5 bg-amber-50/20 dark:bg-amber-950/10 whitespace-nowrap">
-                                  <span className="font-medium text-slate-700 dark:text-slate-300 text-[11.5px]">{servDoc}</span>
-                                </td>
-                                <td className="p-2.5 font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50/20 dark:bg-emerald-950/10 max-w-[170px] truncate" title={n.destinatario}>
-                                  {n.destinatario}
-                                </td>
-                                <td className="p-2.5 whitespace-nowrap">
-                                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                    {siglaDoc}
+
+                                  <span className="font-mono text-[11px] text-slate-400">
+                                    {new Date(n.dataHora).toLocaleDateString('pt-BR')} {new Date(n.dataHora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                   </span>
-                                </td>
-                                <td className="p-2.5 whitespace-nowrap">
-                                  <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100/70 dark:bg-slate-800/60 px-2 py-0.5 rounded border border-slate-200/60 dark:border-slate-700/60">
-                                    {deptoDoc}
-                                  </span>
-                                </td>
-                                <td className="p-2.5 text-center whitespace-nowrap">
-                                  <div className="flex items-center justify-center space-x-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setRedatorTipo((n.tipoDocumento as any) || 'MEMORANDO');
-                                        setRedatorNumero(n.numero);
-                                        setRedatorDestinatario(n.destinatario || 'Prefeitura Municipal');
-                                        setRedatorAssunto(n.assunto || 'Sem Assunto');
-                                        setIsRedatorLetterheadOpen(true);
-                                        showToast(`Documento ${n.numero} aberto para visualização timbrada e impressão!`);
-                                      }}
-                                      className="px-2 py-1 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-[10px] font-semibold border border-blue-200 dark:border-blue-800 flex items-center gap-1 cursor-pointer"
-                                      title="Visualizar em papel timbrado oficial da Prefeitura"
-                                    >
-                                      <Printer className="w-3 h-3" />
-                                      <span>Timbrado</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const tipoResp = n.tipoDocumento === 'OFICIO' ? 'OFICIO' : 'MEMORANDO';
-                                        setRedatorTipo(tipoResp);
-                                        setRedatorReferenciaDoc(`${n.tipoDocumento} nº ${n.numero}`);
-                                        setRedatorDestinatario(n.destinatario !== 'Não informado' ? n.destinatario : '');
-                                        setRedatorAssunto(`Em resposta ao ${n.tipoDocumento} nº ${n.numero} – ${n.assunto}`);
-                                        setRedatorTexto(`Cumprimentando-o cordialmente, sirvo-me do presente para apresentar as manifestações e informações pertinentes em resposta ao ${n.tipoDocumento} nº ${n.numero}, concernente a ${n.assunto}.\n\nInformo que as medidas foram devidamente instruídas, visando à regular continuidade dos serviços públicos desta municipalidade.`);
-                                        setRedatorNumero('');
-                                        setIsSheetsDrawerOpen(false);
-                                        setIsRedatorModalOpen(true);
-                                        showToast(`Referência e modelo de resposta ao ${n.numero} carregados no Redator!`);
-                                      }}
-                                      className="px-2 py-1 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-700 dark:text-emerald-300 rounded text-[10px] font-semibold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1 cursor-pointer"
-                                      title="Gerar resposta oficial a este documento"
-                                    >
-                                      <Reply className="w-3 h-3" />
-                                      <span>Responder</span>
-                                    </button>
+                                </div>
+
+                                {/* Número Oficial e Assunto */}
+                                <div className="mb-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <h4 className="font-mono font-bold text-sm text-blue-600 dark:text-blue-400">
+                                      {n.numero}
+                                    </h4>
+                                    <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                      {siglaDoc}
+                                    </span>
                                   </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 mt-1 line-clamp-2" title={n.assunto}>
+                                    {n.assunto}
+                                  </p>
+                                </div>
+
+                                {/* Informações de Servidor, Destinatário e Departamento */}
+                                <div className="space-y-1.5 text-[11px] pt-2 border-t border-slate-100 dark:border-slate-800">
+                                  <div className="flex items-center justify-between gap-2 text-slate-600 dark:text-slate-300">
+                                    <span className="text-slate-400">Para:</span>
+                                    <span className="font-medium text-emerald-700 dark:text-emerald-400 truncate max-w-[200px]">{n.destinatario}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-2 text-slate-600 dark:text-slate-300">
+                                    <span className="text-slate-400">Servidor:</span>
+                                    <span className="font-medium text-slate-700 dark:text-slate-300 truncate max-w-[200px]">{servDoc}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between gap-2 text-slate-500">
+                                    <span className="text-slate-400">Depto:</span>
+                                    <span className="truncate max-w-[200px] text-slate-500 dark:text-slate-400">{deptoDoc}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Ações do Card */}
+                              <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRedatorTipo((n.tipoDocumento as any) || 'MEMORANDO');
+                                    setRedatorNumero(n.numero);
+                                    setRedatorDestinatario(n.destinatario || 'Prefeitura Municipal');
+                                    setRedatorAssunto(n.assunto || 'Sem Assunto');
+                                    setIsRedatorLetterheadOpen(true);
+                                    showToast(`Documento ${n.numero} aberto para visualização timbrada e impressão!`);
+                                  }}
+                                  className="flex-1 py-1.5 px-2 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-semibold border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                                  title="Visualizar em papel timbrado oficial da Prefeitura"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                  <span>Timbrado</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const tipoResp = n.tipoDocumento === 'OFICIO' ? 'OFICIO' : 'MEMORANDO';
+                                    setRedatorTipo(tipoResp);
+                                    setRedatorReferenciaDoc(`${n.tipoDocumento} nº ${n.numero}`);
+                                    setRedatorDestinatario(n.destinatario !== 'Não informado' ? n.destinatario : '');
+                                    setRedatorAssunto(`Em resposta ao ${n.tipoDocumento} nº ${n.numero} – ${n.assunto}`);
+                                    setRedatorTexto(`Cumprimentando-o cordialmente, sirvo-me do presente para apresentar as manifestações e informações pertinentes em resposta ao ${n.tipoDocumento} nº ${n.numero}, concernente a ${n.assunto}.\n\nInformo que as medidas foram devidamente instruídas, visando à regular continuidade dos serviços públicos desta municipalidade.`);
+                                    setRedatorNumero('');
+                                    setIsSheetsDrawerOpen(false);
+                                    setIsRedatorModalOpen(true);
+                                    showToast(`Referência e modelo de resposta ao ${n.numero} carregados no Redator!`);
+                                  }}
+                                  className="flex-1 py-1.5 px-2 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-700 dark:text-emerald-300 rounded-lg text-xs font-semibold border border-emerald-200 dark:border-emerald-800 flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                                  title="Gerar resposta oficial a este documento"
+                                >
+                                  <Reply className="w-3.5 h-3.5" />
+                                  <span>Responder</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  ) : (
+                    /* VISUALIZAÇÃO EM TABELA COM CONTROLE DE DESLIZE */
+                    <div 
+                      ref={sheetsTableContainerRef} 
+                      onScroll={handleSheetScrollUpdate}
+                      className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs scroll-smooth"
+                    >
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
+                          <tr>
+                            <th className="p-2.5 font-mono text-[11px] whitespace-nowrap">A: DataHora</th>
+                            <th className="p-2.5 font-mono text-[11px] whitespace-nowrap">B: TipoDoc</th>
+                            <th className="p-2.5 font-mono text-[11px] whitespace-nowrap">C: Número Oficial</th>
+                            <th className="p-2.5 font-mono text-[11px] bg-blue-100/40 dark:bg-blue-950/40 min-w-[180px]">D: Assunto</th>
+                            <th className="p-2.5 font-mono text-[11px] bg-amber-50/50 dark:bg-amber-950/20 whitespace-nowrap">E: Servidor</th>
+                            <th className="p-2.5 font-mono text-[11px] bg-emerald-50/50 dark:bg-emerald-950/20 whitespace-nowrap">F: Destinatário</th>
+                            <th className="p-2.5 font-mono text-[11px] whitespace-nowrap">G: Secretaria</th>
+                            <th className="p-2.5 font-mono text-[11px] whitespace-nowrap">H: Departamento</th>
+                            <th className="p-2.5 font-mono text-[11px] text-center whitespace-nowrap sticky right-0 bg-slate-100 dark:bg-slate-800 shadow-l">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {numeracoesFiltradas.length === 0 ? (
+                            <tr>
+                              <td colSpan={9} className="py-12 text-center text-slate-400">
+                                <ListOrdered className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                <p className="font-medium text-xs">Nenhum documento encontrado para os filtros selecionados.</p>
+                              </td>
+                            </tr>
+                          ) : (
+                            numeracoesFiltradas.map((n, i) => {
+                              const secDoc = n.secretaria || 'Secretaria Municipal de Administração (SMA)';
+                              const deptoDoc = n.departamento || (secDoc.toLowerCase().includes('administra') ? 'Departamento de Recursos Humanos' : 'Gabinete');
+                              const servDoc = n.servidor || n.usuario || 'Servidor Municipal';
+                              const siglaDoc = getSecretariaSigla(secDoc, secretarias);
+                              return (
+                                <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                                  <td className="p-2.5 font-mono text-[11px] text-slate-400 whitespace-nowrap">
+                                    {new Date(n.dataHora).toLocaleDateString('pt-BR')} {new Date(n.dataHora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                  </td>
+                                  <td className="p-2.5 whitespace-nowrap">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                      n.tipoDocumento === 'MEMORANDO' ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800' :
+                                      n.tipoDocumento === 'OFICIO' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' :
+                                      n.tipoDocumento === 'DESPACHO' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800' :
+                                      'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                                    }`}>
+                                      {n.tipoDocumento}
+                                    </span>
+                                  </td>
+                                  <td className="p-2.5 font-mono font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                                    {n.numero}
+                                  </td>
+                                  <td className="p-2.5 bg-blue-50/20 dark:bg-blue-950/10 max-w-xs truncate" title={n.assunto}>
+                                    <span className="font-medium text-slate-800 dark:text-slate-200">{n.assunto}</span>
+                                  </td>
+                                  <td className="p-2.5 bg-amber-50/20 dark:bg-amber-950/10 whitespace-nowrap">
+                                    <span className="font-medium text-slate-700 dark:text-slate-300 text-[11.5px]">{servDoc}</span>
+                                  </td>
+                                  <td className="p-2.5 font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50/20 dark:bg-emerald-950/10 max-w-[170px] truncate" title={n.destinatario}>
+                                    {n.destinatario}
+                                  </td>
+                                  <td className="p-2.5 whitespace-nowrap">
+                                    <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                      {siglaDoc}
+                                    </span>
+                                  </td>
+                                  <td className="p-2.5 whitespace-nowrap">
+                                    <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100/70 dark:bg-slate-800/60 px-2 py-0.5 rounded border border-slate-200/60 dark:border-slate-700/60">
+                                      {deptoDoc}
+                                    </span>
+                                  </td>
+                                  <td className="p-2.5 text-center whitespace-nowrap sticky right-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 shadow-l">
+                                    <div className="flex items-center justify-center space-x-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setRedatorTipo((n.tipoDocumento as any) || 'MEMORANDO');
+                                          setRedatorNumero(n.numero);
+                                          setRedatorDestinatario(n.destinatario || 'Prefeitura Municipal');
+                                          setRedatorAssunto(n.assunto || 'Sem Assunto');
+                                          setIsRedatorLetterheadOpen(true);
+                                          showToast(`Documento ${n.numero} aberto para visualização timbrada e impressão!`);
+                                        }}
+                                        className="px-2 py-1 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-[10px] font-semibold border border-blue-200 dark:border-blue-800 flex items-center gap-1 cursor-pointer transition-colors"
+                                        title="Visualizar em papel timbrado oficial da Prefeitura"
+                                      >
+                                        <Printer className="w-3 h-3" />
+                                        <span>Timbrado</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const tipoResp = n.tipoDocumento === 'OFICIO' ? 'OFICIO' : 'MEMORANDO';
+                                          setRedatorTipo(tipoResp);
+                                          setRedatorReferenciaDoc(`${n.tipoDocumento} nº ${n.numero}`);
+                                          setRedatorDestinatario(n.destinatario !== 'Não informado' ? n.destinatario : '');
+                                          setRedatorAssunto(`Em resposta ao ${n.tipoDocumento} nº ${n.numero} – ${n.assunto}`);
+                                          setRedatorTexto(`Cumprimentando-o cordialmente, sirvo-me do presente para apresentar as manifestações e informações pertinentes em resposta ao ${n.tipoDocumento} nº ${n.numero}, concernente a ${n.assunto}.\n\nInformo que as medidas foram devidamente instruídas, visando à regular continuidade dos serviços públicos desta municipalidade.`);
+                                          setRedatorNumero('');
+                                          setIsSheetsDrawerOpen(false);
+                                          setIsRedatorModalOpen(true);
+                                          showToast(`Referência e modelo de resposta ao ${n.numero} carregados no Redator!`);
+                                        }}
+                                        className="px-2 py-1 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900 text-emerald-700 dark:text-emerald-300 rounded text-[10px] font-semibold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1 cursor-pointer transition-colors"
+                                        title="Gerar resposta oficial a este documento"
+                                      >
+                                        <Reply className="w-3 h-3" />
+                                        <span>Responder</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -5617,26 +6130,55 @@ ${headerAndBodyHtml}
                     <strong>Gravação Dupla de Auditoria:</strong> Toda vez que um número é emitido, a ação é registrada irreversivelmente nesta aba para compliance administrativo.
                   </div>
 
-                  <table className="w-full text-left text-xs border border-slate-200 dark:border-slate-800">
+                  <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        <tr>
+                          <th className="p-2 border-r border-slate-200 dark:border-slate-700 font-mono text-[11px] whitespace-nowrap">DataHora</th>
+                          <th className="p-2 border-r border-slate-200 dark:border-slate-700 font-mono text-[11px] whitespace-nowrap">Usuario</th>
+                          <th className="p-2 border-r border-slate-200 dark:border-slate-700 font-mono text-[11px] whitespace-nowrap">Acao</th>
+                          <th className="p-2 border-r border-slate-200 dark:border-slate-700 font-mono text-[11px] whitespace-nowrap">DocID/Num</th>
+                          <th className="p-2 font-mono text-[11px] min-w-[200px]">Detalhes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {logs.map((l, i) => (
+                          <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                            <td className="p-2 font-mono text-[11px] text-slate-400 border-r border-slate-100 dark:border-slate-800 whitespace-nowrap">
+                              {new Date(l.dataHora).toLocaleString('pt-BR')}
+                            </td>
+                            <td className="p-2 font-medium border-r border-slate-100 dark:border-slate-800 whitespace-nowrap">{l.usuario}</td>
+                            <td className="p-2 font-mono text-[11px] font-bold text-emerald-600 border-r border-slate-100 dark:border-slate-800 whitespace-nowrap">{l.acao}</td>
+                            <td className="p-2 font-mono border-r border-slate-100 dark:border-slate-800 whitespace-nowrap">{l.docId}</td>
+                            <td className="p-2 text-slate-600 dark:text-slate-300 text-[11px]">{l.detalhes}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {activeSheetTab === 'modelos' && (
+                <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
+                  <table className="w-full text-left text-xs">
                     <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                       <tr>
-                        <th className="p-2 border-r border-slate-200 dark:border-slate-700 font-mono text-[11px]">DataHora</th>
-                        <th className="p-2 border-r border-slate-200 dark:border-slate-700 font-mono text-[11px]">Usuario</th>
-                        <th className="p-2 border-r border-slate-200 dark:border-slate-700 font-mono text-[11px]">Acao</th>
-                        <th className="p-2 border-r border-slate-200 dark:border-slate-700 font-mono text-[11px]">DocID/Num</th>
-                        <th className="p-2 font-mono text-[11px]">Detalhes</th>
+                        <th className="p-2 font-mono text-[11px]">ID</th>
+                        <th className="p-2 whitespace-nowrap">Tipo</th>
+                        <th className="p-2 whitespace-nowrap">Categoria</th>
+                        <th className="p-2 min-w-[180px]">Titulo</th>
+                        <th className="p-2 whitespace-nowrap">Ativo</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {logs.map((l, i) => (
-                        <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                          <td className="p-2 font-mono text-[11px] text-slate-400 border-r border-slate-100 dark:border-slate-800">
-                            {new Date(l.dataHora).toLocaleString('pt-BR')}
-                          </td>
-                          <td className="p-2 font-medium border-r border-slate-100 dark:border-slate-800">{l.usuario}</td>
-                          <td className="p-2 font-mono text-[11px] font-bold text-emerald-600 border-r border-slate-100 dark:border-slate-800">{l.acao}</td>
-                          <td className="p-2 font-mono border-r border-slate-100 dark:border-slate-800">{l.docId}</td>
-                          <td className="p-2 text-slate-600 dark:text-slate-300 text-[11px]">{l.detalhes}</td>
+                      {modelos.map(m => (
+                        <tr key={m.ID} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                          <td className="p-2 font-mono font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">{m.ID}</td>
+                          <td className="p-2 whitespace-nowrap">{m.TipoDocumento}</td>
+                          <td className="p-2 whitespace-nowrap">{m.Categoria}</td>
+                          <td className="p-2 font-medium">{m.Titulo}</td>
+                          <td className="p-2 text-emerald-600 font-bold whitespace-nowrap">TRUE</td>
                         </tr>
                       ))}
                     </tbody>
@@ -5644,58 +6186,35 @@ ${headerAndBodyHtml}
                 </div>
               )}
 
-              {activeSheetTab === 'modelos' && (
-                <table className="w-full text-left text-xs border border-slate-200 dark:border-slate-800">
-                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                    <tr>
-                      <th className="p-2">ID</th>
-                      <th className="p-2">Tipo</th>
-                      <th className="p-2">Categoria</th>
-                      <th className="p-2">Titulo</th>
-                      <th className="p-2">Ativo</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {modelos.map(m => (
-                      <tr key={m.ID} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                        <td className="p-2 font-mono font-bold text-slate-700 dark:text-slate-300">{m.ID}</td>
-                        <td className="p-2">{m.TipoDocumento}</td>
-                        <td className="p-2">{m.Categoria}</td>
-                        <td className="p-2 font-medium">{m.Titulo}</td>
-                        <td className="p-2 text-emerald-600 font-bold">TRUE</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
               {activeSheetTab === 'usuarios' && (
-                <table className="w-full text-left text-xs border border-slate-200 dark:border-slate-800">
-                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                    <tr>
-                      <th className="p-2">Matricula</th>
-                      <th className="p-2">Nome</th>
-                      <th className="p-2">NivelAcesso</th>
-                      <th className="p-2">Ativo</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {usuarios.map(u => (
-                      <tr key={u.matricula} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                        <td className="p-2 font-mono font-bold">{u.matricula}</td>
-                        <td className="p-2 font-medium">{u.nome}</td>
-                        <td className="p-2">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            u.nivel === 'ADMIN' ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                          }`}>
-                            {u.nivel}
-                          </span>
-                        </td>
-                        <td className="p-2 text-emerald-600 font-bold">TRUE</td>
+                <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                      <tr>
+                        <th className="p-2 font-mono text-[11px] whitespace-nowrap">Matricula</th>
+                        <th className="p-2 whitespace-nowrap">Nome</th>
+                        <th className="p-2 whitespace-nowrap">NivelAcesso</th>
+                        <th className="p-2 whitespace-nowrap">Ativo</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {usuarios.map(u => (
+                        <tr key={u.matricula} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                          <td className="p-2 font-mono font-bold whitespace-nowrap">{u.matricula}</td>
+                          <td className="p-2 font-medium whitespace-nowrap">{u.nome}</td>
+                          <td className="p-2 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              u.nivel === 'ADMIN' ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                            }`}>
+                              {u.nivel}
+                            </span>
+                          </td>
+                          <td className="p-2 text-emerald-600 font-bold whitespace-nowrap">TRUE</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>
