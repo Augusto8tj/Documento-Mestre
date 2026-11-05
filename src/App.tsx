@@ -1925,7 +1925,7 @@ ${headerAndBodyHtml}
     setIsRedatorLetterheadOpen(false);
   };
 
-  // Exportação oficial para PDF (utiliza html2pdf.js com resolução nítida, isolamento A4 de 794px, normalização oklch, quebra inteligente e download direto)
+  // Exportação oficial para PDF (utiliza html2pdf.js com resolução nítida, isolamento A4 de 794px, normalização oklch e download direto do arquivo .pdf)
   const handleBaixarPdfRedator = async () => {
     if (isSavingPdf) return;
     setIsSavingPdf(true);
@@ -1938,18 +1938,17 @@ ${headerAndBodyHtml}
     let captureContainer: HTMLDivElement | null = null;
 
     try {
-      // 1. Espera o carregamento de fontes do documento com timeout de segurança
+      // 1. Espera estabilização de fontes com timeout curto de segurança
       try {
         await Promise.race([
           document.fonts ? document.fonts.ready : Promise.resolve(),
-          new Promise(resolve => setTimeout(resolve, 800))
+          new Promise(resolve => setTimeout(resolve, 600))
         ]);
       } catch {}
 
-      // Breve pausa para estabilização de fontes e layout
       await new Promise(resolve => setTimeout(resolve, 40));
 
-      // 2. Garante o motor html2pdf disponível no escopo global (carrega localmente de /html2pdf.bundle.min.js)
+      // 2. Garante o motor html2pdf disponível no escopo global
       let html2pdf = (window as any).html2pdf;
       if (!html2pdf) {
         try {
@@ -1962,7 +1961,7 @@ ${headerAndBodyHtml}
           });
           html2pdf = (window as any).html2pdf;
         } catch (e) {
-          console.warn('Carregamento local de html2pdf falhou, tentando fallback cdnjs:', e);
+          console.warn('Carregamento local de html2pdf falhou, tentando CDN:', e);
           try {
             await new Promise((resolve, reject) => {
               const s = document.createElement('script');
@@ -1976,143 +1975,96 @@ ${headerAndBodyHtml}
         }
       }
 
-      // 3. Monta o clone de captura em container isolado fora da tela (largura exata A4: 794px, padding: 0)
+      if (!html2pdf) {
+        throw new Error('Motor de exportação PDF (html2pdf) não está disponível no navegador.');
+      }
+
+      // 3. Monta o elemento timbrado isolado com 100% estilos inline compatíveis e coordenadas fixas visíveis ao canvas mas ocultas ao usuário
       captureContainer = document.createElement('div');
       captureContainer.id = 'pdf-capture-container';
       captureContainer.style.position = 'fixed';
-      captureContainer.style.left = '-10000px';
-      captureContainer.style.top = '0';
+      captureContainer.style.left = '0px';
+      captureContainer.style.top = '0px';
       captureContainer.style.width = '794px';
       captureContainer.style.minWidth = '794px';
       captureContainer.style.maxWidth = '794px';
       captureContainer.style.padding = '0';
       captureContainer.style.margin = '0';
       captureContainer.style.background = '#ffffff';
-      captureContainer.style.zIndex = '-9999';
+      captureContainer.style.zIndex = '-99999';
       captureContainer.style.pointerEvents = 'none';
+      captureContainer.style.opacity = '1';
 
-      const sourceElement = document.getElementById('print-area-content');
-      let targetElement: HTMLElement;
-      if (sourceElement) {
-        targetElement = sourceElement.cloneNode(true) as HTMLElement;
-        targetElement.id = 'print-area-clone';
-        // Remove padding interno para que a margem oficial de 15mm do html2pdf seja a única margem
-        targetElement.classList.remove('p-10', 'sm:p-14');
-        targetElement.style.padding = '0';
-        targetElement.style.margin = '0';
-        targetElement.style.width = '794px';
-        targetElement.style.minWidth = '794px';
-        targetElement.style.maxWidth = '794px';
-        targetElement.style.background = '#ffffff';
-      } else {
-        targetElement = construirElementoTimbradoParaCaptura();
-        targetElement.style.padding = '0';
-      }
-
+      const targetElement = construirElementoTimbradoParaCaptura();
+      targetElement.id = 'print-area-clone';
       captureContainer.appendChild(targetElement);
       document.body.appendChild(captureContainer);
       normalizeOklchToRgb(targetElement);
 
-      showToast(`Baixando PDF: "${cleanDocName}"...`);
+      showToast(`Baixando PDF oficial: "${cleanDocName}"...`);
 
-      // 4. Executa a geração direta e download via html2pdf com timeout de proteção
-      if (html2pdf) {
-        const opt = {
-          margin: [15, 15, 18, 15], // mm: topo, esquerda, base, direita
-          filename: cleanDocName,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff',
-            windowWidth: 794,
-            onclone: (clonedDoc: Document) => {
-              // Sanitiza regras oklch nas tags <style> do documento clonado para prevenir falha do parser CSS interno
-              const tempCanvas = clonedDoc.createElement('canvas');
-              tempCanvas.width = 1;
-              tempCanvas.height = 1;
-              const tempCtx = tempCanvas.getContext('2d');
-              const styleTags = clonedDoc.querySelectorAll('style');
-              styleTags.forEach(st => {
-                if (st.textContent && st.textContent.includes('oklch')) {
-                  st.textContent = st.textContent.replace(/oklch\([^)]+\)/g, (match) => {
-                    if (tempCtx) {
-                      try {
-                        tempCtx.fillStyle = '#000000';
-                        tempCtx.fillStyle = match;
-                        return tempCtx.fillStyle || '#000000';
-                      } catch {
-                        return '#000000';
-                      }
-                    }
-                    return '#000000';
-                  });
-                }
-              });
-
-              const clonedTarget = clonedDoc.getElementById('print-area-clone') || clonedDoc.body;
-              normalizeOklchToRgb(clonedTarget as HTMLElement);
-            }
-          },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: {
-            mode: ['avoid-all', 'css', 'legacy'],
-            avoid: ['img', 'p', 'li', 'tr', 'blockquote', '#cabecalho-timbrado', '#assinatura-timbrado', '.avoid-break']
+      // 4. Configuração oficial do html2pdf com sanitização oklch do Tailwind no documento clonado
+      const opt = {
+        margin: [0, 0, 0, 0], // O próprio container possui espaçamento A4 calibrado (44px 50px)
+        filename: cleanDocName,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: 794,
+          onclone: (clonedDoc: Document) => {
+            // Remove folhas de estilo que contenham regras oklch para evitar falha no analisador de cores interno do html2canvas
+            const styleTags = clonedDoc.querySelectorAll('style');
+            styleTags.forEach(st => {
+              if (st.textContent && st.textContent.includes('oklch')) {
+                st.parentNode?.removeChild(st);
+              }
+            });
+            const linkTags = clonedDoc.querySelectorAll('link[rel="stylesheet"]');
+            linkTags.forEach(lt => {
+              const href = lt.getAttribute('href') || '';
+              if (href.includes('index.css') || href.includes('src/')) {
+                lt.parentNode?.removeChild(lt);
+              }
+            });
           }
-        };
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
 
-        try {
-          await new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => {
-              cleanupPdfOverlays();
-              reject(new Error('Timeout de segurança excedido no html2pdf'));
-            }, 12000);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          cleanupPdfOverlays();
+          reject(new Error('Tempo limite excedido na geração do arquivo PDF.'));
+        }, 15000);
 
-            html2pdf()
-              .set(opt)
-              .from(targetElement)
-              .save()
-              .then(() => {
-                clearTimeout(timeout);
-                cleanupPdfOverlays();
-                resolve();
-              })
-              .catch((err: any) => {
-                clearTimeout(timeout);
-                cleanupPdfOverlays();
-                reject(err);
-              });
+        html2pdf()
+          .set(opt)
+          .from(targetElement)
+          .save()
+          .then(() => {
+            clearTimeout(timeout);
+            cleanupPdfOverlays();
+            resolve();
+          })
+          .catch((err: any) => {
+            clearTimeout(timeout);
+            cleanupPdfOverlays();
+            reject(err);
           });
+      });
 
-          cleanupPdfOverlays();
-          setTimeout(() => cleanupPdfOverlays(), 350);
-          showToast(`Documento "${cleanDocName}" baixado com sucesso!`);
-        } catch (err: any) {
-          console.warn('Falha na geração direta via html2pdf, acionando prévia oficial:', err);
-          cleanupPdfOverlays();
-          showToast("Abrindo prévia oficial: selecione 'Salvar como PDF'.");
-          setIsSheetsDrawerOpen(false); // Fecha o sheets drawer para nunca vazar na impressão
-          setIsRedatorLetterheadOpen(true);
-          setTimeout(() => window.print(), 350);
-        }
-      } else {
-        // Fallback para impressão nativa do navegador
-        cleanupPdfOverlays();
-        showToast("Abrindo prévia oficial: selecione 'Salvar como PDF'.");
-        setIsSheetsDrawerOpen(false);
-        setIsRedatorLetterheadOpen(true);
-        setTimeout(() => {
-          window.print();
-        }, 350);
-      }
-    } catch (topErr: any) {
-      console.error('Erro na rotina de exportação para PDF:', topErr);
       cleanupPdfOverlays();
-      showToast('Erro ao baixar PDF. Abrindo prévia oficial.', 'Aviso', true);
-      setIsSheetsDrawerOpen(false);
-      setIsRedatorLetterheadOpen(true);
-      setTimeout(() => window.print(), 350);
+      setTimeout(() => cleanupPdfOverlays(), 350);
+      showToast(`Documento PDF "${cleanDocName}" baixado com sucesso!`);
+    } catch (err: any) {
+      console.error('Erro na geração direta do PDF via html2pdf:', err);
+      cleanupPdfOverlays();
+      showToast(`Falha ao gerar arquivo PDF direto: ${err?.message || 'Erro no motor PDF'}.`, 'Erro', true);
     } finally {
       cleanupPdfOverlays();
       if (captureContainer && captureContainer.parentNode) {
