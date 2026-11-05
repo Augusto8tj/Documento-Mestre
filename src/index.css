@@ -40,6 +40,13 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
   object-fit: contain !important;
 }
 
+/* Previne estritamente que qualquer overlay invisível do html2pdf trave a tela ou capture cliques */
+.html2pdf__overlay,
+.html2pdf__container,
+#pdf-capture-container {
+  pointer-events: none !important;
+}
+
 @page {
   size: A4 portrait;
   margin: 1.5cm 1.5cm 1.5cm 1.5cm;

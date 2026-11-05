@@ -1902,20 +1902,34 @@ ${headerAndBodyHtml}
     }, 1500);
   };
 
+  // Limpeza profunda de qualquer overlay residual invisível deixado pelo html2pdf ou container de captura
+  const cleanupPdfOverlays = () => {
+    try {
+      const residualElements = document.querySelectorAll(
+        '.html2pdf__overlay, .html2pdf__container, #pdf-capture-container, iframe[name*="html2canvas"]'
+      );
+      residualElements.forEach(el => {
+        if (el && el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      });
+    } catch (err) {
+      console.warn('Erro ao limpar overlays residuais de PDF:', err);
+    }
+  };
+
   // Fechamento seguro da visualização timbrada e liberação de travas
   const handleFecharTimbrado = () => {
+    cleanupPdfOverlays();
     setIsSavingPdf(false);
     setIsRedatorLetterheadOpen(false);
-    const orphanCapture = document.getElementById('pdf-capture-container');
-    if (orphanCapture && orphanCapture.parentNode) {
-      orphanCapture.parentNode.removeChild(orphanCapture);
-    }
   };
 
   // Exportação oficial para PDF (utiliza html2pdf.js com resolução nítida, isolamento A4 de 794px, normalização oklch, quebra inteligente e download direto)
   const handleBaixarPdfRedator = async () => {
     if (isSavingPdf) return;
     setIsSavingPdf(true);
+    cleanupPdfOverlays();
 
     const cleanDocName = getOfficialDocFileName('pdf');
     const originalTitle = document.title;
@@ -2001,7 +2015,7 @@ ${headerAndBodyHtml}
 
       showToast(`Baixando PDF: "${cleanDocName}"...`);
 
-      // 4. Executa a geração direta e download via html2pdf
+      // 4. Executa a geração direta e download via html2pdf com timeout de proteção
       if (html2pdf) {
         const opt = {
           margin: [15, 15, 18, 15], // mm: topo, esquerda, base, direita
@@ -2050,17 +2064,33 @@ ${headerAndBodyHtml}
 
         try {
           await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              cleanupPdfOverlays();
+              reject(new Error('Timeout de segurança excedido no html2pdf'));
+            }, 12000);
+
             html2pdf()
               .set(opt)
               .from(targetElement)
               .save()
-              .then(() => resolve())
-              .catch((err: any) => reject(err));
+              .then(() => {
+                clearTimeout(timeout);
+                cleanupPdfOverlays();
+                resolve();
+              })
+              .catch((err: any) => {
+                clearTimeout(timeout);
+                cleanupPdfOverlays();
+                reject(err);
+              });
           });
 
+          cleanupPdfOverlays();
+          setTimeout(() => cleanupPdfOverlays(), 350);
           showToast(`Documento "${cleanDocName}" baixado com sucesso!`);
         } catch (err: any) {
           console.warn('Falha na geração direta via html2pdf, acionando prévia oficial:', err);
+          cleanupPdfOverlays();
           showToast("Abrindo prévia oficial: selecione 'Salvar como PDF'.");
           setIsSheetsDrawerOpen(false); // Fecha o sheets drawer para nunca vazar na impressão
           setIsRedatorLetterheadOpen(true);
@@ -2068,6 +2098,7 @@ ${headerAndBodyHtml}
         }
       } else {
         // Fallback para impressão nativa do navegador
+        cleanupPdfOverlays();
         showToast("Abrindo prévia oficial: selecione 'Salvar como PDF'.");
         setIsSheetsDrawerOpen(false);
         setIsRedatorLetterheadOpen(true);
@@ -2077,16 +2108,19 @@ ${headerAndBodyHtml}
       }
     } catch (topErr: any) {
       console.error('Erro na rotina de exportação para PDF:', topErr);
+      cleanupPdfOverlays();
       showToast('Erro ao baixar PDF. Abrindo prévia oficial.', 'Aviso', true);
       setIsSheetsDrawerOpen(false);
       setIsRedatorLetterheadOpen(true);
       setTimeout(() => window.print(), 350);
     } finally {
+      cleanupPdfOverlays();
       if (captureContainer && captureContainer.parentNode) {
         captureContainer.parentNode.removeChild(captureContainer);
       }
       document.title = originalTitle;
       setIsSavingPdf(false);
+      setTimeout(() => cleanupPdfOverlays(), 250);
     }
   };
 
@@ -2558,8 +2592,9 @@ ${headerAndBodyHtml}
             <h2 className="text-base font-black text-slate-800 dark:text-slate-100 tracking-tight mt-0.5">
               PREFEITURA MUNICIPAL DE RIO CLARO
             </h2>
-            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1">
-              Departamento de Recursos Humanos • Gestão Documental
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1 flex items-center justify-center gap-1.5">
+              <span>Departamento de Recursos Humanos • Gestão Documental</span>
+              <span className="px-1.5 py-0.2 text-[9px] font-extrabold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded">v1.2</span>
             </p>
           </div>
 
@@ -2616,8 +2651,8 @@ ${headerAndBodyHtml}
           </form>
 
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-center">
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-md border border-amber-200 dark:border-amber-800/60">
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-500" /> Fase Beta • Autenticação Real com Servidores
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-md border border-emerald-200 dark:border-emerald-800/60">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Sistema v1.2 Oficial • Autenticação PMRC
             </span>
           </div>
 
@@ -2630,7 +2665,7 @@ ${headerAndBodyHtml}
               {isDarkMode ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5" />}
               <span>{isDarkMode ? 'Modo Claro' : 'Modo Escuro'}</span>
             </button>
-            <span className="text-[10px] text-slate-400">PMRC • SGEP-DOCS</span>
+            <span className="text-[10px] text-slate-400 font-medium">PMRC • SGEP-DOCS <span className="text-emerald-500 font-bold ml-1">v1.2</span></span>
           </div>
         </div>
       </div>
@@ -2668,7 +2703,7 @@ ${headerAndBodyHtml}
             <div>
               <div className="flex items-center gap-1.5 leading-none">
                 <span className="font-bold tracking-tight text-slate-100 text-xs">Banco Mestre Administrativo</span>
-                <span className="bg-emerald-500 text-slate-950 text-[10px] font-black px-1.5 py-0.2 rounded">v3.6 (GAS v9)</span>
+                <span className="bg-emerald-500 text-slate-950 text-[10px] font-black px-1.5 py-0.2 rounded">v1.2 (GAS v9)</span>
               </div>
               <span className="text-[10px] text-slate-400 font-medium leading-none block mt-0.5">Prefeitura Municipal de Rio Claro – RJ</span>
             </div>
@@ -2805,11 +2840,12 @@ ${headerAndBodyHtml}
                       Prefeitura Municipal de Rio Claro – RJ
                     </h1>
                     <span className="hidden md:inline-block px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded">
-                      v3.6 Oficial (GAS v9)
+                      v1.2 Oficial (GAS v9)
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 flex items-center gap-1.5">
                     <span>Banco Mestre Administrativo</span>
+                    <span className="px-1.5 py-0.2 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded">v1.2</span>
                     <span className="text-slate-600">•</span>
                     <span className="text-emerald-400 font-mono text-[11px] flex items-center gap-1">
                       <Cloud className="w-3 h-3 inline" />
@@ -3395,7 +3431,7 @@ ${headerAndBodyHtml}
               <div>
                 <div className="flex items-center space-x-2">
                   <Server className="w-5 h-5 text-blue-600" />
-                  <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">Código.gs (Google Apps Script API v3.6 - Versão 9)</h3>
+                  <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">Código.gs (Google Apps Script API v1.2 - Versão 9)</h3>
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
                     LockService • Gestão de Usuários • Gravação Dupla (Auditoria)
                   </span>
@@ -5517,8 +5553,8 @@ ${headerAndBodyHtml}
                   type="button"
                   disabled={isSavingPdf}
                   onClick={handleBaixarPdfRedator}
-                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all shadow-sm disabled:opacity-60 cursor-pointer"
-                  title="Baixar diretamente em arquivo PDF oficial"
+                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm active:scale-95 disabled:opacity-60 cursor-pointer"
+                  title="Gerar e baixar documento em PDF A4 timbrado oficial"
                 >
                   {isSavingPdf ? (
                     <>
