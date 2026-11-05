@@ -61,6 +61,8 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
   .no-print *,
   #sheets-inspector-drawer,
   #sheets-inspector-drawer *,
+  #pdf-capture-container,
+  #pdf-capture-container *,
   #modal-redator-oficial,
   #modal-redator-oficial *,
   nav,
@@ -77,7 +79,8 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
   }
 
   /* Oculta o layout da aplicação e outros modais para que apenas o documento timbrado seja impresso */
-  #root > div > *:not(#modal-timbrado-container) {
+  #root > div > *:not(#modal-timbrado-container),
+  body > *:not(#root):not(#modal-timbrado-container) {
     display: none !important;
     visibility: hidden !important;
   }

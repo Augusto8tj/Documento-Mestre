@@ -1450,6 +1450,34 @@ export default function App() {
     return htmlFinal;
   };
 
+  // Helper oficial unificado de nomenclatura de arquivo de documentos da Prefeitura de Rio Claro
+  // Exemplo: 'Memo 757-2026 - SMA - Quantitativo de Servidores e Informações de Folha.pdf'
+  const getOfficialDocFileName = (extension: 'pdf' | 'doc') => {
+    const tipoNome = redatorTipo === 'MEMORANDO' ? 'Memo'
+      : redatorTipo === 'OFICIO' ? 'Oficio'
+      : redatorTipo === 'DESPACHO' ? 'Despacho'
+      : redatorTipo === 'PORTARIA' ? 'Portaria'
+      : redatorTipo === 'DECRETO' ? 'Decreto'
+      : redatorTipo === 'CIRCULAR' ? 'Circular'
+      : redatorTipo === 'EMAIL' ? 'Email'
+      : redatorTipo;
+
+    let numPart = (redatorNumero || 'minuta').trim();
+    if (numPart.includes('-')) {
+      numPart = numPart.split('-')[0].trim();
+    }
+    const numLimpo = numPart.replace(/\//g, '-').replace(/[^a-zA-Z0-9_-]/g, '');
+    const sigla = getSecretariaSigla(redatorSecretaria, secretarias) || 'SMA';
+    const assuntoLimpo = (redatorAssunto || 'Documento Oficial')
+      .replace(/[/\\?%*:|"<>]/g, '')
+      .trim()
+      .replace(/\s+/g, ' ');
+
+    return redatorTipo === 'EMAIL'
+      ? `Email - ${sigla} - ${assuntoLimpo}.${extension}`
+      : `${tipoNome} ${numLimpo} - ${sigla} - ${assuntoLimpo}.${extension}`;
+  };
+
   // Exportação para Word (.doc) no formato MHTML padrão Office com Brasão Oficial embutido
   const handleBaixarDocxRedator = () => {
     const numTexto = redatorTipo === 'EMAIL' ? 'COMUNICAÇÃO ELETRÔNICA INSTITUCIONAL (E-MAIL)' : getDocumentoPrefixo(redatorTipo, redatorNumero);
@@ -1676,7 +1704,7 @@ ${headerAndBodyHtml}
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const cleanDocName = `${redatorTipo}_${(redatorNumero || 'minuta').replace(/[^a-zA-Z0-9_-]/g, '_')}_RioClaro.doc`;
+    const cleanDocName = getOfficialDocFileName('doc');
     a.download = cleanDocName;
     document.body.appendChild(a);
     a.click();
@@ -1684,7 +1712,7 @@ ${headerAndBodyHtml}
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 250);
-    showToast(`Documento ${cleanDocName} exportado para Word com Brasão oficial!`);
+    showToast(`Documento Word "${cleanDocName}" baixado com sucesso!`);
   };
 
   // Normalizador de cores oklch -> RGB usando Canvas 2D para compatibilidade com html2canvas
@@ -1855,42 +1883,41 @@ ${headerAndBodyHtml}
     return container;
   };
 
-  // Exportação oficial para PDF (utiliza html2pdf.js com resolução nítida, normalização oklch, quebra inteligente e download direto)
+  // Visualização e Impressão Nativa Oficial
+  const handleImprimirDocumentoTimbrado = () => {
+    setIsSheetsDrawerOpen(false);
+    const docName = getOfficialDocFileName('pdf');
+    const originalTitle = document.title;
+    document.title = docName.replace(/\.pdf$/i, '');
+
+    const elemento = document.getElementById('print-area-content');
+    if (elemento) {
+      normalizeOklchToRgb(elemento);
+    }
+
+    window.print();
+
+    setTimeout(() => {
+      document.title = originalTitle;
+    }, 1500);
+  };
+
+  // Fechamento seguro da visualização timbrada e liberação de travas
+  const handleFecharTimbrado = () => {
+    setIsSavingPdf(false);
+    setIsRedatorLetterheadOpen(false);
+    const orphanCapture = document.getElementById('pdf-capture-container');
+    if (orphanCapture && orphanCapture.parentNode) {
+      orphanCapture.parentNode.removeChild(orphanCapture);
+    }
+  };
+
+  // Exportação oficial para PDF (utiliza html2pdf.js com resolução nítida, isolamento A4 de 794px, normalização oklch, quebra inteligente e download direto)
   const handleBaixarPdfRedator = async () => {
     if (isSavingPdf) return;
     setIsSavingPdf(true);
 
-    const tipoNome = redatorTipo === 'MEMORANDO' ? 'Memo'
-      : redatorTipo === 'OFICIO' ? 'Oficio'
-      : redatorTipo === 'DESPACHO' ? 'Despacho'
-      : redatorTipo === 'PORTARIA' ? 'Portaria'
-      : redatorTipo === 'DECRETO' ? 'Decreto'
-      : redatorTipo === 'CIRCULAR' ? 'Circular'
-      : redatorTipo === 'EMAIL' ? 'Email'
-      : redatorTipo;
-
-    // Extrai o número sequencial e ano sem duplicar siglas (ex: "757/2026" ou "001/2026 - SMA" -> "757-2026" ou "001-2026")
-    let numPart = (redatorNumero || 'minuta').trim();
-    if (numPart.includes('-')) {
-      numPart = numPart.split('-')[0].trim();
-    }
-    const numLimpo = numPart.replace(/\//g, '-').replace(/[^a-zA-Z0-9_-]/g, '');
-
-    // Obtém a sigla institucional (ex: "SMA")
-    const sigla = getSecretariaSigla(redatorSecretaria, secretarias) || 'SMA';
-
-    // Obtém o assunto do documento limpo de caracteres inválidos de nome de arquivo
-    const assuntoLimpo = (redatorAssunto || 'Documento Oficial')
-      .replace(/[/\\?%*:|"<>]/g, '')
-      .trim()
-      .replace(/\s+/g, ' ');
-
-    // Formato exato solicitado: 'Memo 757-2026 - SMA - Quantitativo de Servidores e Informações de Folha.pdf'
-    const cleanDocName = redatorTipo === 'EMAIL'
-      ? `Email - ${sigla} - ${assuntoLimpo}.pdf`
-      : `${tipoNome} ${numLimpo} - ${sigla} - ${assuntoLimpo}.pdf`;
-
-    // Atualiza temporariamente o título do documento para que o fallback de impressão nativa use o mesmo nome exato
+    const cleanDocName = getOfficialDocFileName('pdf');
     const originalTitle = document.title;
     document.title = cleanDocName.replace(/\.pdf$/i, '');
 
@@ -1901,7 +1928,7 @@ ${headerAndBodyHtml}
       try {
         await Promise.race([
           document.fonts ? document.fonts.ready : Promise.resolve(),
-          new Promise(resolve => setTimeout(resolve, 1000))
+          new Promise(resolve => setTimeout(resolve, 800))
         ]);
       } catch {}
 
@@ -1935,51 +1962,83 @@ ${headerAndBodyHtml}
         }
       }
 
-      // 3. Obtém o elemento a ser capturado: se a prévia já estiver aberta, usa diretamente o elemento na tela
-      const elementoNaTela = document.getElementById('print-area-content');
+      // 3. Monta o clone de captura em container isolado fora da tela (largura exata A4: 794px, padding: 0)
+      captureContainer = document.createElement('div');
+      captureContainer.id = 'pdf-capture-container';
+      captureContainer.style.position = 'fixed';
+      captureContainer.style.left = '-10000px';
+      captureContainer.style.top = '0';
+      captureContainer.style.width = '794px';
+      captureContainer.style.minWidth = '794px';
+      captureContainer.style.maxWidth = '794px';
+      captureContainer.style.padding = '0';
+      captureContainer.style.margin = '0';
+      captureContainer.style.background = '#ffffff';
+      captureContainer.style.zIndex = '-9999';
+      captureContainer.style.pointerEvents = 'none';
+
+      const sourceElement = document.getElementById('print-area-content');
       let targetElement: HTMLElement;
-
-      if (elementoNaTela && isRedatorLetterheadOpen) {
-        targetElement = elementoNaTela;
-        normalizeOklchToRgb(targetElement);
+      if (sourceElement) {
+        targetElement = sourceElement.cloneNode(true) as HTMLElement;
+        targetElement.id = 'print-area-clone';
+        // Remove padding interno para que a margem oficial de 15mm do html2pdf seja a única margem
+        targetElement.classList.remove('p-10', 'sm:p-14');
+        targetElement.style.padding = '0';
+        targetElement.style.margin = '0';
+        targetElement.style.width = '794px';
+        targetElement.style.minWidth = '794px';
+        targetElement.style.maxWidth = '794px';
+        targetElement.style.background = '#ffffff';
       } else {
-        // Se chamado de fora da prévia, constrói em container temporário
-        captureContainer = document.createElement('div');
-        captureContainer.id = 'pdf-capture-container';
-        captureContainer.style.position = 'fixed';
-        captureContainer.style.top = '0';
-        captureContainer.style.left = '0';
-        captureContainer.style.width = '794px';
-        captureContainer.style.minWidth = '794px';
-        captureContainer.style.maxWidth = '794px';
-        captureContainer.style.zIndex = '-9999';
-        captureContainer.style.background = '#ffffff';
-        captureContainer.style.margin = '0';
-        captureContainer.style.padding = '0';
-        captureContainer.style.boxSizing = 'border-box';
-        captureContainer.style.pointerEvents = 'none';
-
-        const clone = construirElementoTimbradoParaCaptura();
-        captureContainer.appendChild(clone);
-        document.body.appendChild(captureContainer);
-        normalizeOklchToRgb(clone);
-        targetElement = clone;
+        targetElement = construirElementoTimbradoParaCaptura();
+        targetElement.style.padding = '0';
       }
+
+      captureContainer.appendChild(targetElement);
+      document.body.appendChild(captureContainer);
+      normalizeOklchToRgb(targetElement);
 
       showToast(`Baixando PDF: "${cleanDocName}"...`);
 
       // 4. Executa a geração direta e download via html2pdf
       if (html2pdf) {
         const opt = {
-          margin: [10, 10, 10, 10], // mm
+          margin: [15, 15, 18, 15], // mm: topo, esquerda, base, direita
           filename: cleanDocName,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: {
             scale: 2,
             useCORS: true,
             logging: false,
+            backgroundColor: '#ffffff',
+            windowWidth: 794,
             onclone: (clonedDoc: Document) => {
-              normalizeOklchToRgb(clonedDoc.body);
+              // Sanitiza regras oklch nas tags <style> do documento clonado para prevenir falha do parser CSS interno
+              const tempCanvas = clonedDoc.createElement('canvas');
+              tempCanvas.width = 1;
+              tempCanvas.height = 1;
+              const tempCtx = tempCanvas.getContext('2d');
+              const styleTags = clonedDoc.querySelectorAll('style');
+              styleTags.forEach(st => {
+                if (st.textContent && st.textContent.includes('oklch')) {
+                  st.textContent = st.textContent.replace(/oklch\([^)]+\)/g, (match) => {
+                    if (tempCtx) {
+                      try {
+                        tempCtx.fillStyle = '#000000';
+                        tempCtx.fillStyle = match;
+                        return tempCtx.fillStyle || '#000000';
+                      } catch {
+                        return '#000000';
+                      }
+                    }
+                    return '#000000';
+                  });
+                }
+              });
+
+              const clonedTarget = clonedDoc.getElementById('print-area-clone') || clonedDoc.body;
+              normalizeOklchToRgb(clonedTarget as HTMLElement);
             }
           },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -2010,7 +2069,7 @@ ${headerAndBodyHtml}
       } else {
         // Fallback para impressão nativa do navegador
         showToast("Abrindo prévia oficial: selecione 'Salvar como PDF'.");
-        setIsSheetsDrawerOpen(false); // Fecha o sheets drawer para nunca vazar na impressão
+        setIsSheetsDrawerOpen(false);
         setIsRedatorLetterheadOpen(true);
         setTimeout(() => {
           window.print();
@@ -5435,7 +5494,7 @@ ${headerAndBodyHtml}
       {/* MODAL 5: DOCUMENTO OFICIAL TIMBRADO IMPRESSÃO (RIO CLARO – RJ)             */}
       {/* ========================================================================= */}
       {isRedatorLetterheadOpen && (
-        <div id="modal-timbrado-container" className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto modal-timbrado-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setIsRedatorLetterheadOpen(false); }}>
+        <div id="modal-timbrado-container" className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto modal-timbrado-backdrop" onClick={(e) => { if (e.target === e.currentTarget) handleFecharTimbrado(); }}>
           <div id="modal-timbrado-card" className="bg-white text-slate-900 rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden my-auto border border-slate-300 modal-timbrado-card">
             {/* Top Toolbar */}
             <div className="p-4 bg-slate-900 text-white flex items-center justify-between no-print">
@@ -5446,22 +5505,25 @@ ${headerAndBodyHtml}
               </div>
               <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all shadow-sm"
+                  type="button"
+                  onClick={handleImprimirDocumentoTimbrado}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all shadow-sm cursor-pointer"
+                  title="Imprimir documento em papel timbrado oficial ou Salvar como PDF pelo navegador"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Imprimir Documento</span>
                 </button>
                 <button
+                  type="button"
                   disabled={isSavingPdf}
                   onClick={handleBaixarPdfRedator}
                   className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all shadow-sm disabled:opacity-60 cursor-pointer"
-                  title="Baixar diretamente em arquivo PDF"
+                  title="Baixar diretamente em arquivo PDF oficial"
                 >
                   {isSavingPdf ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Gerando...</span>
+                      <span>Gerando PDF...</span>
                     </>
                   ) : (
                     <>
@@ -5471,16 +5533,19 @@ ${headerAndBodyHtml}
                   )}
                 </button>
                 <button
+                  type="button"
                   onClick={handleBaixarDocxRedator}
-                  className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all shadow-sm"
+                  className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all shadow-sm cursor-pointer"
                   title="Baixar em Microsoft Word (.doc) com Brasão oficial"
                 >
                   <FileText className="w-3.5 h-3.5" />
                   <span>Salvar no Word (.doc)</span>
                 </button>
                 <button
-                  onClick={() => setIsRedatorLetterheadOpen(false)}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium"
+                  type="button"
+                  onClick={handleFecharTimbrado}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium cursor-pointer transition-colors"
+                  title="Fechar visualização de impressão oficial"
                 >
                   Fechar
                 </button>
