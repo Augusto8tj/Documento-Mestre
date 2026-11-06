@@ -129,6 +129,13 @@
             background-color: #0f172a !important;
             border-color: #1e293b !important;
         }
+
+        /* Previne estritamente que qualquer overlay invisível do html2pdf trave a tela ou capture cliques */
+        .html2pdf__overlay,
+        .html2pdf__container,
+        #pdf-capture-container {
+            pointer-events: none !important;
+        }
     
         /* ================================================================= */
         /* MELHORIAS SGEP-DOCS: FOLHA A4 TIMBRADA, IMPRESSÃO E FORMATAÇÃO   */
@@ -388,7 +395,7 @@
             </div>
 
             <div class="mt-3 text-center">
-                <p class="text-[10px] text-slate-400">Recursos Humanos & Gestão de Pessoal • PMRC</p>
+                <p class="text-[10px] text-slate-400">Recursos Humanos & Gestão de Pessoal • PMRC • <span class="text-emerald-500 font-bold">v1.3</span></p>
             </div>
         </div>
     </div>
@@ -419,7 +426,7 @@
                 <div>
                     <div class="flex items-center gap-1.5 sm:gap-2">
                         <h1 class="font-bold text-xs sm:text-base tracking-tight text-slate-100 truncate max-w-[190px] sm:max-w-none">Rio Claro – RJ</h1>
-                        <span class="hidden md:inline-block px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded">v3.8 Oficial</span>
+                        <span class="hidden md:inline-block px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded">v1.3 Oficial</span>
                     </div>
                     <p class="text-[11px] sm:text-xs text-slate-400 flex items-center gap-1.5">
                         <span class="hidden sm:inline">Banco Mestre Administrativo</span>
@@ -6294,7 +6301,7 @@ ${headerAndBodyHtml}
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            const cleanDocName = `${redatorTipo}_${(redatorNumeroGerado || 'minuta').replace(/[^a-zA-Z0-9_-]/g, '_')}_RioClaro.doc`;
+            const cleanDocName = getOfficialDocFileNameStandalone('doc');
             a.download = cleanDocName;
             document.body.appendChild(a);
             a.click();
@@ -6302,21 +6309,74 @@ ${headerAndBodyHtml}
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             }, 250);
-            showToast(`Documento ${cleanDocName} exportado para Word com Brasão oficial!`);
+            showToast(`Documento Word "${cleanDocName}" exportado com sucesso!`);
         }
 
         // =================================================================
-        // EXPORTAÇÃO OFICIAL EM PDF (FOLHA A4 TIMBRADA COM ALTA RESOLUÇÃO)
+        // NOMENCLATURA E EXPORTAÇÃO OFICIAL EM PDF (PADRÃO RIO CLARO - RJ)
         // =================================================================
+        // Formato oficial padronizado: 'Memo 757-2026 - SMA - Quantitativo de Servidores e Informações de Folha.pdf'
+        function getOfficialDocFileNameStandalone(extension) {
+            const ext = extension || 'pdf';
+            const tipoMap = {
+                'MEMORANDO': 'Memo',
+                'OFICIO': 'Oficio',
+                'DESPACHO': 'Despacho',
+                'PORTARIA': 'Portaria',
+                'DECRETO': 'Decreto',
+                'CIRCULAR': 'Circular',
+                'EMAIL': 'Email'
+            };
+            const tipoNome = tipoMap[redatorTipo] || redatorTipo || 'Documento';
+
+            let numPart = (redatorNumeroGerado || 'minuta').trim();
+            if (numPart.includes('-')) {
+                numPart = numPart.split('-')[0].trim();
+            }
+            const numLimpo = numPart.replace(/\//g, '-').replace(/[^a-zA-Z0-9_-]/g, '');
+
+            const secVal = (document.getElementById('redator-secretaria') ? document.getElementById('redator-secretaria').value : '') || secretariaAtiva || 'Secretaria Municipal de Administração (SMA)';
+            const sigla = getSecretariaSigla(secVal) || 'SMA';
+
+            const assVal = (document.getElementById('redator-assunto') ? document.getElementById('redator-assunto').value : '') || 'Documento Oficial';
+            const assuntoLimpo = assVal
+                .replace(/[/\\?%*:|"<>]/g, '')
+                .trim()
+                .replace(/\s+/g, ' ');
+
+            return redatorTipo === 'EMAIL'
+                ? `Email - ${sigla} - ${assuntoLimpo}.${ext}`
+                : `${tipoNome} ${numLimpo} - ${sigla} - ${assuntoLimpo}.${ext}`;
+        }
+
+        // Limpeza profunda de overlays residuais invisíveis deixados pelo html2pdf ou container de captura
+        function cleanupPdfOverlays() {
+            try {
+                const residualElements = document.querySelectorAll(
+                    '.html2pdf__overlay, .html2pdf__container, #pdf-capture-container, iframe[name*="html2canvas"]'
+                );
+                residualElements.forEach(el => {
+                    if (el && el.parentNode) {
+                        el.parentNode.removeChild(el);
+                    }
+                });
+            } catch (err) {
+                console.warn('Erro ao limpar overlays residuais de PDF:', err);
+            }
+        }
+
         async function baixarPdfRedator() {
-            const numTexto = getDocumentoPrefixoGas(redatorTipo, redatorNumeroGerado);
-            const cleanDocName = `${redatorTipo}_${(redatorNumeroGerado || 'minuta').replace(/[^a-zA-Z0-9_-]/g, '_')}_RioClaro.pdf`;
+            cleanupPdfOverlays();
+            const cleanDocName = getOfficialDocFileNameStandalone('pdf');
+            const originalTitle = document.title;
+            document.title = cleanDocName.replace(/\.pdf$/i, '');
             
             // Popula os campos da folha timbrada oficial
             imprimirDocumentoRedator();
-            const elemento = document.getElementById('print-area-content');
-            if (!elemento) {
+            const sourceElement = document.getElementById('print-area-content');
+            if (!sourceElement) {
                 showToast("Erro: área de impressão não localizada.", true);
+                document.title = originalTitle;
                 return;
             }
 
@@ -6325,11 +6385,11 @@ ${headerAndBodyHtml}
                 try {
                     await new Promise((resolve) => {
                         const s = document.createElement('script');
-                        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                        s.src = './html2pdf.bundle.min.js';
                         s.onload = resolve;
                         s.onerror = () => {
                             const s2 = document.createElement('script');
-                            s2.src = './html2pdf.bundle.min.js';
+                            s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
                             s2.onload = resolve;
                             s2.onerror = resolve;
                             document.head.appendChild(s2);
@@ -6339,41 +6399,110 @@ ${headerAndBodyHtml}
                 } catch(e) {}
             }
 
-            if (typeof html2pdf !== 'undefined') {
-                showToast("Gerando arquivo PDF com Brasão e Timbrado oficial...");
+            let captureContainer = null;
+            try {
+                if (typeof html2pdf === 'undefined') {
+                    throw new Error("Motor de PDF (html2pdf) não pôde ser carregado no navegador.");
+                }
+
+                showToast(`Gerando PDF oficial: "${cleanDocName}"...`);
+
+                captureContainer = document.createElement('div');
+                captureContainer.id = 'pdf-capture-container';
+                captureContainer.style.position = 'fixed';
+                captureContainer.style.left = '0px';
+                captureContainer.style.top = '0px';
+                captureContainer.style.width = '794px';
+                captureContainer.style.minWidth = '794px';
+                captureContainer.style.maxWidth = '794px';
+                captureContainer.style.padding = '0';
+                captureContainer.style.margin = '0';
+                captureContainer.style.background = '#ffffff';
+                captureContainer.style.zIndex = '-99999';
+                captureContainer.style.pointerEvents = 'none';
+
+                const targetElement = sourceElement.cloneNode(true);
+                targetElement.id = 'print-area-clone';
+                targetElement.classList.remove('p-10', 'sm:p-14');
+                targetElement.style.padding = '40px 48px';
+                targetElement.style.margin = '0';
+                targetElement.style.width = '794px';
+                targetElement.style.boxSizing = 'border-box';
+                targetElement.style.background = '#ffffff';
+
+                captureContainer.appendChild(targetElement);
+                document.body.appendChild(captureContainer);
+
                 const opt = {
-                    margin: [10, 10, 10, 10],
+                    margin: [0, 0, 0, 0],
                     filename: cleanDocName,
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, scrollX: 0 },
+                    html2canvas: {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff',
+                        scrollX: 0,
+                        scrollY: 0,
+                        windowWidth: 794
+                    },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 };
-                html2pdf().set(opt).from(elemento).save().then(() => {
-                    showToast(`PDF ${cleanDocName} salvo com sucesso!`);
-                }).catch(err => {
-                    console.warn("Falha no html2pdf, acionando diálogo nativo para PDF:", err);
-                    showToast("Abrindo prévia: na janela de impressão, selecione 'Salvar como PDF'.");
-                    setTimeout(() => window.print(), 300);
+
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        cleanupPdfOverlays();
+                        reject(new Error("Tempo limite excedido na geração do arquivo PDF."));
+                    }, 15000);
+
+                    html2pdf().set(opt).from(targetElement).save().then(() => {
+                        clearTimeout(timeout);
+                        cleanupPdfOverlays();
+                        resolve();
+                    }).catch(err => {
+                        clearTimeout(timeout);
+                        cleanupPdfOverlays();
+                        reject(err);
+                    });
                 });
-            } else {
-                showToast("Abrindo gerador de PDF: selecione 'Salvar como PDF' na impressora.");
-                setTimeout(() => window.print(), 300);
+
+                showToast(`PDF oficial "${cleanDocName}" salvo com sucesso!`);
+            } catch (err) {
+                console.error("Falha ao salvar PDF direto:", err);
+                cleanupPdfOverlays();
+                showToast(`Falha ao gerar arquivo PDF: ${err.message || err}`, true);
+            } finally {
+                if (captureContainer && captureContainer.parentNode) {
+                    captureContainer.parentNode.removeChild(captureContainer);
+                }
+                document.title = originalTitle;
+                cleanupPdfOverlays();
+                setTimeout(() => cleanupPdfOverlays(), 300);
             }
         }
 
         async function baixarPdfDoTimbrado() {
-            const elemento = document.getElementById('print-area-content');
-            const cleanDocName = `Documento_Oficial_RioClaro_${Date.now()}.pdf`;
+            cleanupPdfOverlays();
+            const sourceElement = document.getElementById('print-area-content');
+            if (!sourceElement) {
+                showToast("Erro: folha timbrada não encontrada.", true);
+                return;
+            }
+
+            const cleanDocName = getOfficialDocFileNameStandalone('pdf');
+            const originalTitle = document.title;
+            document.title = cleanDocName.replace(/\.pdf$/i, '');
+
             if (typeof html2pdf === 'undefined') {
                 showToast("Carregando motor de PDF...");
                 try {
                     await new Promise((resolve) => {
                         const s = document.createElement('script');
-                        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                        s.src = './html2pdf.bundle.min.js';
                         s.onload = resolve;
                         s.onerror = () => {
                             const s2 = document.createElement('script');
-                            s2.src = './html2pdf.bundle.min.js';
+                            s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
                             s2.onload = resolve;
                             s2.onerror = resolve;
                             document.head.appendChild(s2);
@@ -6382,22 +6511,86 @@ ${headerAndBodyHtml}
                     });
                 } catch(e) {}
             }
-            if (typeof html2pdf !== 'undefined' && elemento) {
-                showToast("Gerando arquivo PDF...");
+
+            let captureContainer = null;
+            try {
+                if (typeof html2pdf === 'undefined') {
+                    throw new Error("Motor de PDF (html2pdf) não pôde ser carregado no navegador.");
+                }
+
+                showToast(`Gerando arquivo PDF "${cleanDocName}"...`);
+
+                captureContainer = document.createElement('div');
+                captureContainer.id = 'pdf-capture-container';
+                captureContainer.style.position = 'fixed';
+                captureContainer.style.left = '0px';
+                captureContainer.style.top = '0px';
+                captureContainer.style.width = '794px';
+                captureContainer.style.minWidth = '794px';
+                captureContainer.style.maxWidth = '794px';
+                captureContainer.style.padding = '0';
+                captureContainer.style.margin = '0';
+                captureContainer.style.background = '#ffffff';
+                captureContainer.style.zIndex = '-99999';
+                captureContainer.style.pointerEvents = 'none';
+
+                const targetElement = sourceElement.cloneNode(true);
+                targetElement.id = 'print-area-clone';
+                targetElement.classList.remove('p-10', 'sm:p-14');
+                targetElement.style.padding = '40px 48px';
+                targetElement.style.margin = '0';
+                targetElement.style.width = '794px';
+                targetElement.style.boxSizing = 'border-box';
+                targetElement.style.background = '#ffffff';
+
+                captureContainer.appendChild(targetElement);
+                document.body.appendChild(captureContainer);
+
                 const opt = {
-                    margin: [10, 10, 10, 10],
+                    margin: [0, 0, 0, 0],
                     filename: cleanDocName,
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2, useCORS: true, logging: false, scrollY: 0, scrollX: 0 },
+                    html2canvas: {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff',
+                        scrollX: 0,
+                        scrollY: 0,
+                        windowWidth: 794
+                    },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 };
-                html2pdf().set(opt).from(elemento).save().then(() => {
-                    showToast("PDF baixado com sucesso!");
-                }).catch(() => {
-                    window.print();
+
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        cleanupPdfOverlays();
+                        reject(new Error("Tempo limite excedido na geração do arquivo PDF."));
+                    }, 15000);
+
+                    html2pdf().set(opt).from(targetElement).save().then(() => {
+                        clearTimeout(timeout);
+                        cleanupPdfOverlays();
+                        resolve();
+                    }).catch(err => {
+                        clearTimeout(timeout);
+                        cleanupPdfOverlays();
+                        reject(err);
+                    });
                 });
-            } else {
-                window.print();
+
+                showToast(`PDF "${cleanDocName}" salvo com sucesso!`);
+            } catch (err) {
+                console.error("Falha ao salvar PDF:", err);
+                cleanupPdfOverlays();
+                showToast(`Falha ao gerar arquivo PDF: ${err.message || err}`, true);
+            } finally {
+                if (captureContainer && captureContainer.parentNode) {
+                    captureContainer.parentNode.removeChild(captureContainer);
+                }
+                document.title = originalTitle;
+                cleanupPdfOverlays();
+                setTimeout(() => cleanupPdfOverlays(), 300);
             }
         }
 
@@ -6898,6 +7091,7 @@ ${headerAndBodyHtml}
         }
 
         function fecharModalTimbradoImpressao() {
+            cleanupPdfOverlays();
             document.body.classList.remove('modal-open');
             document.getElementById('modal-timbrado-impressao').classList.add('hidden');
         }
