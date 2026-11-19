@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* =========================================================================
    COMPATIBILIDADE UNIVERSAL DE CORES (sRGB / HEX)
@@ -431,7 +432,231 @@
   --color-green-950: #052e16;
 }
 
+/* =========================================================================
+   SISTEMA DINÂMICO DE TEMAS, CORES E FORMULÁRIOS RESPONSIVOS (SGEP)
+   Suporte completo a Claro, Escuro, Automático, 5 Paletas e 3 Estilos de Form.
+   Não altera o documento timbrado oficial A4 (#print-area-content).
+   ========================================================================= */
+:root {
+  color-scheme: light;
+  --sgep-accent: #2563eb;
+  --sgep-accent-hover: #1d4ed8;
+  --sgep-accent-ring: rgba(37, 99, 235, 0.28);
+  --sgep-accent-soft: #eff6ff;
+  --sgep-header-bg: #0c1b3a;
+  --sgep-header-border: #1e335c;
+  --sgep-page-bg: #f1f5f9;
+  --sgep-form-bg: #ffffff;
+  --sgep-form-border: #cbd5e1;
+  --sgep-form-text: #0f172a;
+  --sgep-form-placeholder: #64748b;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --sgep-accent: #3b82f6;
+  --sgep-accent-hover: #60a5fa;
+  --sgep-accent-ring: rgba(96, 165, 250, 0.35);
+  --sgep-accent-soft: rgba(37, 99, 235, 0.16);
+  --sgep-header-bg: #071024;
+  --sgep-header-border: #172546;
+  --sgep-page-bg: #020617;
+  --sgep-form-bg: #0f172a;
+  --sgep-form-border: #334155;
+  --sgep-form-text: #f1f5f9;
+  --sgep-form-placeholder: #94a3b8;
+}
+
+/* Paleta: Esmeralda Gestão */
+:root[data-theme-palette="esmeralda"] {
+  --sgep-accent: #059669;
+  --sgep-accent-hover: #047857;
+  --sgep-accent-ring: rgba(5, 150, 105, 0.28);
+  --sgep-accent-soft: #ecfdf5;
+  --sgep-header-bg: #062c22;
+  --sgep-header-border: #0e4a3a;
+  --sgep-page-bg: #f0f7f4;
+}
+:root.dark[data-theme-palette="esmeralda"] {
+  --sgep-accent: #10b981;
+  --sgep-accent-hover: #34d399;
+  --sgep-accent-ring: rgba(52, 211, 153, 0.35);
+  --sgep-accent-soft: rgba(16, 185, 129, 0.16);
+  --sgep-header-bg: #041d16;
+  --sgep-header-border: #0b3b2d;
+  --sgep-page-bg: #03110d;
+}
+
+/* Paleta: Índigo Executivo */
+:root[data-theme-palette="indigo"] {
+  --sgep-accent: #4f46e5;
+  --sgep-accent-hover: #4338ca;
+  --sgep-accent-ring: rgba(79, 70, 229, 0.28);
+  --sgep-accent-soft: #eef2ff;
+  --sgep-header-bg: #181842;
+  --sgep-header-border: #2c2c6b;
+  --sgep-page-bg: #f3f4fa;
+}
+:root.dark[data-theme-palette="indigo"] {
+  --sgep-accent: #6366f1;
+  --sgep-accent-hover: #818cf8;
+  --sgep-accent-ring: rgba(129, 140, 248, 0.35);
+  --sgep-accent-soft: rgba(99, 102, 241, 0.16);
+  --sgep-header-bg: #0f0f2b;
+  --sgep-header-border: #222255;
+  --sgep-page-bg: #080818;
+}
+
+/* Paleta: Grafite Neutro */
+:root[data-theme-palette="grafite"] {
+  --sgep-accent: #475569;
+  --sgep-accent-hover: #334155;
+  --sgep-accent-ring: rgba(71, 85, 105, 0.3);
+  --sgep-accent-soft: #f4f4f5;
+  --sgep-header-bg: #18181b;
+  --sgep-header-border: #323238;
+  --sgep-page-bg: #f4f4f5;
+}
+:root.dark[data-theme-palette="grafite"] {
+  --sgep-accent: #94a3b8;
+  --sgep-accent-hover: #cbd5e1;
+  --sgep-accent-ring: rgba(148, 163, 184, 0.35);
+  --sgep-accent-soft: rgba(148, 163, 184, 0.15);
+  --sgep-header-bg: #0c0c0e;
+  --sgep-header-border: #27272a;
+  --sgep-page-bg: #09090b;
+}
+
+/* Paleta: Âmbar Clássico */
+:root[data-theme-palette="ambar"] {
+  --sgep-accent: #d97706;
+  --sgep-accent-hover: #b45309;
+  --sgep-accent-ring: rgba(217, 119, 6, 0.3);
+  --sgep-accent-soft: #fffbeb;
+  --sgep-header-bg: #2b1908;
+  --sgep-header-border: #4d2f12;
+  --sgep-page-bg: #faf7f2;
+}
+:root.dark[data-theme-palette="ambar"] {
+  --sgep-accent: #f59e0b;
+  --sgep-accent-hover: #fbbf24;
+  --sgep-accent-ring: rgba(251, 191, 36, 0.35);
+  --sgep-accent-soft: rgba(245, 158, 11, 0.16);
+  --sgep-header-bg: #1c1005;
+  --sgep-header-border: #3b230c;
+  --sgep-page-bg: #110b05;
+}
+
+/* Cabeçalho, barra superior e fundo geral harmonizados com a paleta ativa */
+.sgep-themed-header {
+  background-color: var(--sgep-header-bg) !important;
+  border-color: var(--sgep-header-border) !important;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.sgep-themed-page {
+  background-color: var(--sgep-page-bg);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Formulários e controles interativos sensíveis à paleta e ao tema Claro/Escuro */
+:root input[type="checkbox"],
+:root input[type="radio"],
+:root input[type="range"] {
+  accent-color: var(--sgep-accent);
+}
+
+:root input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *),
+:root select:not(#print-area-content *):not(.sgep-rich-doc *),
+:root textarea:not(#print-area-content *):not(.sgep-rich-doc *) {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+:root input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *):focus,
+:root select:not(#print-area-content *):not(.sgep-rich-doc *):focus,
+:root textarea:not(#print-area-content *):not(.sgep-rich-doc *):focus {
+  border-color: var(--sgep-accent) !important;
+  box-shadow: 0 0 0 3px var(--sgep-accent-ring) !important;
+  outline: none !important;
+}
+
+/* Contraste garantido nas opções de <select> no Modo Escuro (Windows, Android, iOS) */
+:root.dark select:not(#print-area-content *):not(.sgep-rich-doc *) option,
+:root.dark select:not(#print-area-content *):not(.sgep-rich-doc *) optgroup {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+/* Estilo de Formulário: Celular / Toque (confortavel) */
+:root[data-form-style="confortavel"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *),
+:root[data-form-style="confortavel"] select:not(#print-area-content *):not(.sgep-rich-doc *) {
+  min-height: 44px;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  border-radius: 0.625rem;
+}
+
+:root[data-form-style="confortavel"] textarea:not(#print-area-content *):not(.sgep-rich-doc *) {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-radius: 0.625rem;
+  line-height: 1.5;
+}
+
+:root[data-form-style="confortavel"] input[type="checkbox"],
+:root[data-form-style="confortavel"] input[type="radio"] {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+@media (max-width: 639px) {
+  /* Evita zoom automático em iOS/Safari e facilita digitação no celular */
+  :root[data-form-style="confortavel"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *),
+  :root[data-form-style="confortavel"] select:not(#print-area-content *):not(.sgep-rich-doc *),
+  :root[data-form-style="confortavel"] textarea:not(#print-area-content *):not(.sgep-rich-doc *) {
+    font-size: 16px !important;
+  }
+}
+
+/* Estilo de Formulário: Alto Contraste (contraste) */
+:root[data-form-style="contraste"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *),
+:root[data-form-style="contraste"] select:not(#print-area-content *):not(.sgep-rich-doc *),
+:root[data-form-style="contraste"] textarea:not(#print-area-content *):not(.sgep-rich-doc *) {
+  border-width: 2px !important;
+  border-color: #475569 !important;
+  background-color: #ffffff !important;
+  color: #020617 !important;
+  font-weight: 500;
+}
+
+:root.dark[data-form-style="contraste"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *),
+:root.dark[data-form-style="contraste"] select:not(#print-area-content *):not(.sgep-rich-doc *),
+:root.dark[data-form-style="contraste"] textarea:not(#print-area-content *):not(.sgep-rich-doc *) {
+  border-width: 2px !important;
+  border-color: #94a3b8 !important;
+  background-color: #020617 !important;
+  color: #ffffff !important;
+}
+
+:root[data-form-style="contraste"] label:not(#print-area-content *):not(.sgep-rich-doc *) {
+  font-weight: 700 !important;
+}
+
+:root[data-form-style="contraste"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *):focus,
+:root[data-form-style="contraste"] select:not(#print-area-content *):not(.sgep-rich-doc *):focus,
+:root[data-form-style="contraste"] textarea:not(#print-area-content *):not(.sgep-rich-doc *):focus {
+  border-color: var(--sgep-accent) !important;
+  box-shadow: 0 0 0 4px var(--sgep-accent-ring) !important;
+}
+
 /* Estilos de Formatação Rica Oficial (Redator SGEP) */
+.sgep-rich-doc p {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+  text-indent: 0;
+}
 .sgep-rich-doc u {
   text-decoration: underline !important;
 }
@@ -485,6 +710,7 @@ img[alt*="Brasão"], img[alt*="brasao"], .brasao-oficial-img {
 
 @media print {
   html, body {
+    color-scheme: light !important;
     background: #ffffff !important;
     color: #000000 !important;
     height: auto !important;

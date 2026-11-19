@@ -1,7 +1,7 @@
 export const APPS_SCRIPT_CODE = `// =================================================================
 //   Prefeitura Municipal de Rio Claro – RJ
-//   Banco Mestre Administrativo Municipal — Backend API v3.8 (GAS)
-//   Versão Consolidada: 8 Colunas Oficiais + Autenticação Híbrida Resiliente
+//   Banco Mestre Administrativo Municipal — Backend API v4.1 (GAS)
+//   Versão Consolidada: 8 Colunas Oficiais + Filtro de Acessibilidade + Autorização de Novos Servidores (PedidosAcesso)
 //
 //   Resumo das Melhorias e Correções Integradas:
 //   1. Autenticação 100% Retrocompatível (confereSenha Híbrida):
@@ -16,15 +16,19 @@ export const APPS_SCRIPT_CODE = `// ============================================
 //      E: Servidor | F: Destinatario | G: Secretaria | H: Departamento
 //   4. Self-Healing Inteligente de Cabeçalhos:
 //      Garante a existência das colunas G e H sem risco de truncar dados.
-//   5. Isolamento e Confidencialidade por Secretaria e Departamento:
-//      Sequencial independente por pasta (001/ano) e proteção do histórico SEAD/SMA.
+//   5. Isolamento Estrito no Servidor por Secretaria, Departamento e Acessibilidade:
+//      - Sigla canônica sem colisão (SMAS != SMA, SMS != SMAS, SEGOV = GP).
+//      - Suporte à coluna 'AcessibilidadeDocs' na aba Usuarios (Secretaria / Departamento / Próprios).
+//      - CARREGAR filtra Numeração, Sugestões e Servidores conforme token da sessão.
+//      - GERAR_NUMERO valida permissão de Secretaria e fixa Departamento conforme escopo.
+//      - Sequencial independente por pasta (001/ano) e proteção do histórico SEAD/SMA.
 //   6. Suporte Universal a Requisições (POST / GET Fallback):
 //      Aceita JSON via postData e parâmetros via query string (URL).
 //   7. Blindagem contra Formatação de Data ('@') e Sequenciais > 999 (pad3).
-//   8. Funções Administrativas de Manutenção Manual Preservadas.
+//   8. Autoatendimento: Servidor pode atualizar seu próprio nome de exibição além da senha.
 // =================================================================
 
-const VERSAO = '3.8';
+const VERSAO = '4.1';
 const TZ = 'America/Sao_Paulo';
 const SESSAO_SEG = 12 * 3600; // 12 horas
 const MAX_FALHAS = 5;
@@ -77,18 +81,126 @@ function extrairSiglaSecretaria(sec) {
   if (!sec) return 'SMA';
   const str = String(sec).trim();
   const matchParen = str.match(/\\(([^)]+)\\)/);
-  if (matchParen) return matchParen[1].toUpperCase().trim();
+  if (matchParen) {
+    const paren = norm(matchParen[1]).toUpperCase();
+    if (paren === 'SEAD' || paren === 'DRH') return 'SMA';
+    if (paren === 'SEGOV') return 'GP';
+    return paren;
+  }
   const n = norm(str);
-  if (n.includes('administracao') || n.includes('sead') || n.includes('recursos humanos')) return 'SMA';
-  if (n.includes('saude')) return 'SMS';
-  if (n.includes('educacao')) return 'SME';
-  if (n.includes('fazenda') || n.includes('financas')) return 'SMF';
-  if (n.includes('obras')) return 'SMOSP';
-  if (n.includes('social') || n.includes('cidadania')) return 'SMAS';
-  if (n.includes('meio ambiente')) return 'SMMA';
-  if (n.includes('procuradoria')) return 'PGM';
-  if (n.includes('gabinete') || n.includes('prefeito') || n.includes('governo')) return 'GP';
-  return str.slice(0, 5).toUpperCase();
+  if (n === 'todas' || n === 'todas as secretarias') return 'TODAS';
+  if (n.indexOf('assistencia') !== -1 || n.indexOf('social') !== -1 || n.indexOf('cidadania') !== -1 || /\\bsmas\\b/.test(n)) return 'SMAS';
+  if (n.indexOf('saude') !== -1 || /\\bsms\\b/.test(n)) return 'SMS';
+  if (n.indexOf('educacao') !== -1 || /\\bsme\\b/.test(n)) return 'SME';
+  if (n.indexOf('fazenda') !== -1 || n.indexOf('financas') !== -1 || /\\bsmf\\b/.test(n)) return 'SMF';
+  if (n.indexOf('obras') !== -1 || /\\bsmosp\\b/.test(n)) return 'SMOSP';
+  if (n.indexOf('meio ambiente') !== -1 || /\\bsmma\\b/.test(n)) return 'SMMA';
+  if (n.indexOf('procuradoria') !== -1 || /\\bpgm\\b/.test(n)) return 'PGM';
+  if (n.indexOf('gabinete') !== -1 || n.indexOf('prefeito') !== -1 || n.indexOf('governo') !== -1 || /\\bgp\\b|\\bsegov\\b/.test(n)) return 'GP';
+  if (/\\bsma\\b|\\bsead\\b/.test(n) || n.indexOf('administracao') !== -1 || n === 'departamento de recursos humanos') return 'SMA';
+  return str.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() || 'SMA';
+}
+
+function mesmaSecretaria(secA, secB) {
+  if (!secA || !secB) return false;
+  return extrairSiglaSecretaria(secA) === extrairSiglaSecretaria(secB);
+}
+
+function mesmoDepartamento(depA, depB) {
+  const a = norm(depA);
+  const b = norm(depB);
+  if (!a || !b) return false;
+  return a === b;
+}
+
+function usuarioAutorizadoParaSecretaria(sessao, secAlvo) {
+  if (!sessao) return false;
+  if (normTipo(sessao.nivel) === 'ADMIN') return true;
+  const lista = [];
+  if (sessao.secretaria) lista.push(sessao.secretaria);
+  if (Array.isArray(sessao.secretarias)) {
+    sessao.secretarias.forEach(function(s) { if (s) lista.push(s); });
+  }
+  const expandida = [];
+  lista.forEach(function(item) {
+    String(item).split(/[,;]/).forEach(function(p) {
+      if (p && p.trim()) expandida.push(p.trim());
+    });
+  });
+  if (expandida.length === 0) return false;
+  return expandida.some(function(secUser) {
+    return mesmaSecretaria(secUser, secAlvo);
+  });
+}
+
+function parseFiltroAcessibilidadeGas(raw, nivel, departamento) {
+  const niv = normTipo(nivel || 'PADRAO');
+  if (niv === 'ADMIN') {
+    return { acessarSecretaria: true, acessarDepartamento: true, acessarProprios: true };
+  }
+  if (raw && typeof raw === 'object') {
+    return {
+      acessarSecretaria: Boolean(raw.acessarSecretaria),
+      acessarDepartamento: Boolean(raw.acessarDepartamento),
+      acessarProprios: Boolean(raw.acessarProprios)
+    };
+  }
+  const str = String(raw || '').trim();
+  if (str) {
+    try {
+      const parsed = JSON.parse(str);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          acessarSecretaria: Boolean(parsed.acessarSecretaria),
+          acessarDepartamento: Boolean(parsed.acessarDepartamento),
+          acessarProprios: Boolean(parsed.acessarProprios)
+        };
+      }
+    } catch (e) {}
+  }
+  if (niv === 'EDITOR') {
+    return { acessarSecretaria: true, acessarDepartamento: true, acessarProprios: true };
+  }
+  const dep = norm(departamento);
+  if (dep && dep !== 'todos' && dep !== 'todas' && dep !== 'geral' && dep !== 'nao informado') {
+    return { acessarSecretaria: false, acessarDepartamento: true, acessarProprios: true };
+  }
+  return { acessarSecretaria: true, acessarDepartamento: true, acessarProprios: true };
+}
+
+function usuarioRestritoADepartamento(sessao) {
+  if (!sessao) return false;
+  if (normTipo(sessao.nivel || 'PADRAO') === 'ADMIN') return false;
+  const dep = norm(sessao.departamento);
+  if (!dep || dep === 'todos' || dep === 'todas' || dep === 'geral' || dep === 'nao informado') return false;
+  const filtro = parseFiltroAcessibilidadeGas(sessao.filtroAcessibilidade, sessao.nivel, sessao.departamento);
+  return !filtro.acessarSecretaria;
+}
+
+function registroDoProprioServidor(sessao, servStr) {
+  if (!sessao || !servStr) return false;
+  const docUser = norm(servStr);
+  const mat = norm(sessao.matricula);
+  const nome = norm(sessao.nome);
+  if (mat && docUser.indexOf(mat) !== -1) return true;
+  if (nome && nome.length >= 3 && docUser.indexOf(nome) !== -1) return true;
+  return false;
+}
+
+function usuarioPodeVisualizarNumeracao(sessao, secStr, deptoStr, servStr) {
+  if (!sessao) return false;
+  if (normTipo(sessao.nivel) === 'ADMIN') return true;
+  if (!usuarioAutorizadoParaSecretaria(sessao, secStr)) return false;
+
+  const filtro = parseFiltroAcessibilidadeGas(sessao.filtroAcessibilidade, sessao.nivel, sessao.departamento);
+  if (filtro.acessarSecretaria) return true;
+
+  const depSessao = norm(sessao.departamento);
+  const temDeptoEspecifico = Boolean(depSessao && depSessao !== 'todos' && depSessao !== 'todas' && depSessao !== 'geral' && depSessao !== 'nao informado');
+  const mesmoDepto = filtro.acessarDepartamento && temDeptoEspecifico && mesmoDepartamento(deptoStr, sessao.departamento);
+  const proprio = filtro.acessarProprios && registroDoProprioServidor(sessao, servStr);
+
+  return mesmoDepto || proprio;
 }
 
 // -------------------------------------------------------------
@@ -251,6 +363,7 @@ function autenticarServidor(ss, matriculaInformada, senhaInformada) {
   const idxSec = findColumnIndex(headers, ['secretaria', 'secretarias', 'setor', 'lotacao', 'orgao']);
   const idxDepto = findColumnIndex(headers, ['departamento', 'depto', 'divisao', 'setorinterno']);
   const idxCargo = findColumnIndex(headers, ['cargo', 'funcao']);
+  const idxAcess = findColumnIndex(headers, ['acessibilidadedocs', 'acessibilidade', 'filtrodocs', 'permissoesdocs']);
 
   if (idxMatricula === -1) throw new Error("Coluna 'Matrícula' não encontrada na aba 'Usuarios'.");
   if (idxSenha === -1) throw new Error("Coluna 'Senha' não encontrada na aba 'Usuarios'.");
@@ -291,6 +404,8 @@ function autenticarServidor(ss, matriculaInformada, senhaInformada) {
         const secBruta = (idxSec !== -1 && row[idxSec]) ? String(row[idxSec]).trim() : 'Secretaria Municipal de Administração (SMA)';
         const depto = (idxDepto !== -1 && row[idxDepto]) ? String(row[idxDepto]).trim() : 'Departamento de Recursos Humanos (DRH)';
         const cargo = (idxCargo !== -1 && row[idxCargo]) ? String(row[idxCargo]).trim() : '';
+        const rawAcess = (idxAcess !== -1 && row[idxAcess]) ? String(row[idxAcess]).trim() : '';
+        const filtroAcessibilidade = rawAcess ? parseFiltroAcessibilidadeGas(rawAcess, nivelAcesso, depto) : undefined;
 
         const secretariasList = secBruta.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
         const secretariaPrincipal = secretariasList[0] || 'Secretaria Municipal de Administração (SMA)';
@@ -312,7 +427,9 @@ function autenticarServidor(ss, matriculaInformada, senhaInformada) {
           secretaria: secretariaPrincipal,
           secretarias: secretariasList,
           departamento: depto,
-          cargo: cargo
+          cargo: cargo,
+          acessibilidadeDocs: rawAcess,
+          filtroAcessibilidade: filtroAcessibilidade
         };
 
         const token = criarSessao(usuarioObj);
@@ -363,6 +480,12 @@ function doGet(e) {
       return autenticarServidor(ss, e.parameter.matricula, e.parameter.senha);
     }
 
+    const token = (e && e.parameter && e.parameter.token) ? String(e.parameter.token).trim() : '';
+    const sessao = token ? validarSessao(token) : null;
+    const sessaoExpirada = Boolean(token && !sessao);
+    const podeLerNumeracao = Boolean(sessao);
+    const filtrarPorSessao = Boolean(sessao && normTipo(sessao.nivel) !== 'ADMIN');
+
     // 1. Carregar Modelos Documentais Ativos (Aba 'Modelos')
     const sheetModelos = ss.getSheetByName('Modelos') || ss.getSheets()[0];
     const dataModelos = sheetModelos.getDataRange().getValues();
@@ -390,7 +513,7 @@ function doGet(e) {
       }
     }
 
-    // 2. Extrair Histórico e Sugestões da Aba 'Numeração' (8 Colunas Oficiais)
+    // 2. Extrair Histórico e Sugestões da Aba 'Numeração' (filtrado pelo escopo da sessão)
     const sugestoes = {
       destinatarios: [],
       assuntos: [],
@@ -418,7 +541,7 @@ function doGet(e) {
 
     const registrosNumeracao = [];
     const sheetNum = ss.getSheetByName('Numeração') || ss.getSheetByName('Numeracao');
-    if (sheetNum) {
+    if (sheetNum && podeLerNumeracao) {
       const dataNum = sheetNum.getDataRange().getValues();
       if (dataNum.length > 1) {
         const numHeaders = dataNum[0].map(function(h) { return String(h).trim(); });
@@ -462,7 +585,12 @@ function doGet(e) {
           const servStr = String(rawServ || '').trim() || 'Servidor Municipal';
           const destStr = String(rawDest || '').trim();
           const secStr = String(rawSec || '').trim() || 'Secretaria Municipal de Administração (SMA)';
-          const deptoStr = String(rawDepto || '').trim() || 'Departamento de Recursos Humanos (DRH)';
+          const deptoStr = String(rawDepto || '').trim() || (mesmaSecretaria(secStr, 'SMA') ? 'Departamento de Recursos Humanos (DRH)' : 'Gabinete');
+
+          // Isolamento estrito por Secretaria, Departamento e Filtro de Acessibilidade no servidor
+          if (filtrarPorSessao) {
+            if (!usuarioPodeVisualizarNumeracao(sessao, secStr, deptoStr, servStr)) continue;
+          }
 
           if (destStr && destStr !== 'Não informado') destSet.add(destStr);
           if (assStr && assStr !== 'Sem assunto' && assStr !== 'Sem Assunto') assSet.add(assStr);
@@ -483,12 +611,14 @@ function doGet(e) {
         }
         sugestoes.destinatarios = Array.from(destSet).filter(Boolean).sort();
         sugestoes.assuntos = Array.from(assSet).filter(Boolean).sort();
-        sugestoes.secretarias = Array.from(secSet).filter(Boolean).sort();
-        sugestoes.departamentos = Array.from(depSet).filter(Boolean).sort();
+        if (!filtrarPorSessao) {
+          sugestoes.secretarias = Array.from(secSet).filter(Boolean).sort();
+          sugestoes.departamentos = Array.from(depSet).filter(Boolean).sort();
+        }
       }
     }
 
-    // 3. Extrair Lista Central de Servidores para Autocomplete do Login (Sem Senhas)
+    // 3. Extrair Lista Central de Servidores para Autocomplete do Login / Signatários (Sem Senhas)
     const sheetUsers = ss.getSheetByName('Usuarios');
     if (sheetUsers) {
       const dataUsers = sheetUsers.getDataRange().getValues();
@@ -496,18 +626,28 @@ function doGet(e) {
         const uHeaders = dataUsers[0].map(function(h) { return String(h).trim(); });
         const idxM = findColumnIndex(uHeaders, ['matricula', 'mat', 'login']);
         const idxN = findColumnIndex(uHeaders, ['nome', 'servidor', 'funcionario']);
-        const idxS = findColumnIndex(uHeaders, ['secretaria', 'setor', 'lotacao', 'orgao']);
+        const idxS = findColumnIndex(uHeaders, ['secretaria', 'secretarias', 'setor', 'lotacao', 'orgao']);
         const idxD = findColumnIndex(uHeaders, ['departamento', 'depto', 'divisao']);
         const idxC = findColumnIndex(uHeaders, ['cargo', 'funcao']);
+        const idxL = findColumnIndex(uHeaders, ['nivelacesso', 'nivel', 'perfil', 'role', 'acesso']);
         const idxA = findColumnIndex(uHeaders, ['ativo', 'status', 'situacao']);
+        const idxAc = findColumnIndex(uHeaders, ['acessibilidadedocs', 'acessibilidade', 'filtrodocs', 'permissoesdocs']);
+
+        const isSessaoAdmin = Boolean(sessao && String(sessao.nivel || '').toUpperCase() === 'ADMIN');
 
         if (idxM !== -1) {
           for (let u = 1; u < dataUsers.length; u++) {
             const uRow = dataUsers[u];
+            let uAtivoBool = true;
             if (idxA !== -1) {
-              const uAtivo = String(uRow[idxA]).trim().toUpperCase();
-              if (uAtivo === 'FALSE' || uAtivo === 'INATIVO' || uAtivo === 'NÃO' || uAtivo === '0') continue;
+              const uAtivoStr = String(uRow[idxA]).trim().toUpperCase();
+              if (uAtivoStr === 'FALSE' || uAtivoStr === 'INATIVO' || uAtivoStr === 'NÃO' || uAtivoStr === 'NAO' || uAtivoStr === '0') {
+                uAtivoBool = false;
+              }
             }
+            // Administradores visualizam também servidores inativos/pendentes de autorização
+            if (!uAtivoBool && !isSessaoAdmin) continue;
+
             let uMat = String(uRow[idxM] !== undefined ? uRow[idxM] : '').trim();
             if (uMat.endsWith('.0')) uMat = uMat.slice(0, -2);
             if (!uMat) continue;
@@ -516,13 +656,75 @@ function doGet(e) {
             const uSec = (idxS !== -1 && uRow[idxS]) ? String(uRow[idxS]).trim() : '';
             const uDepto = (idxD !== -1 && uRow[idxD]) ? String(uRow[idxD]).trim() : '';
             const uCargo = (idxC !== -1 && uRow[idxC]) ? String(uRow[idxC]).trim() : '';
+            const uNivel = (idxL !== -1 && uRow[idxL]) ? String(uRow[idxL]).trim().toUpperCase() : 'PADRAO';
+            const uAcessRaw = (idxAc !== -1 && uRow[idxAc]) ? String(uRow[idxAc]).trim() : '';
+            const uFiltro = uAcessRaw ? parseFiltroAcessibilidadeGas(uAcessRaw, uNivel, uDepto) : undefined;
+
+            // Quando autenticado como não-ADMIN, filtra signatários para o mesmo escopo
+            if (filtrarPorSessao) {
+              const uSecLista = uSec.split(/[,;]/).map(function(p) { return p.trim(); }).filter(Boolean);
+              const uAutorizado = uSecLista.some(function(s) { return usuarioAutorizadoParaSecretaria(sessao, s); });
+              if (!uAutorizado) continue;
+              if (usuarioRestritoADepartamento(sessao) && !mesmoDepartamento(uDepto, sessao.departamento)) continue;
+            }
 
             sugestoes.servidores.push({
               matricula: uMat,
               nome: uNome,
               secretaria: uSec,
               departamento: uDepto,
-              cargo: uCargo
+              cargo: uCargo,
+              nivel: uNivel,
+              ativo: uAtivoBool,
+              acessibilidadeDocs: uAcessRaw,
+              filtroAcessibilidade: uFiltro
+            });
+          }
+        }
+      }
+    }
+
+    // 4. Carregar Fila de Solicitações de Novos Cadastros e Redefinição de Senha (somente para ADMIN)
+    let pedidosAcesso = [];
+    if (sessao && String(sessao.nivel || '').toUpperCase() === 'ADMIN') {
+      const sheetPedidos = ss.getSheetByName('PedidosAcesso');
+      if (sheetPedidos) {
+        const dataPed = sheetPedidos.getDataRange().getValues();
+        if (dataPed.length > 1) {
+          const pHeaders = dataPed[0].map(function(h) { return String(h).trim(); });
+          const pIdxId = findColumnIndex(pHeaders, ['id']);
+          const pIdxData = findColumnIndex(pHeaders, ['datahora', 'data']);
+          const pIdxMat = findColumnIndex(pHeaders, ['matricula', 'mat']);
+          const pIdxNome = findColumnIndex(pHeaders, ['nome', 'servidor']);
+          const pIdxCargo = findColumnIndex(pHeaders, ['cargo', 'funcao']);
+          const pIdxSec = findColumnIndex(pHeaders, ['secretaria', 'lotacao']);
+          const pIdxDepto = findColumnIndex(pHeaders, ['departamento', 'depto', 'setor']);
+          const pIdxContato = findColumnIndex(pHeaders, ['contato', 'telefone', 'whatsapp']);
+          const pIdxTipo = findColumnIndex(pHeaders, ['tipo']);
+          const pIdxStatus = findColumnIndex(pHeaders, ['status', 'situacao']);
+          const pIdxResEm = findColumnIndex(pHeaders, ['resolvidoem']);
+          const pIdxResPor = findColumnIndex(pHeaders, ['resolvidopor']);
+          const pIdxSenhaProv = findColumnIndex(pHeaders, ['senhaprovisoria']);
+
+          for (let p = dataPed.length - 1; p >= 1; p--) {
+            const pr = dataPed[p];
+            let pMat = pIdxMat !== -1 ? String(pr[pIdxMat] == null ? '' : pr[pIdxMat]).trim() : '';
+            if (pMat.endsWith('.0')) pMat = pMat.slice(0, -2);
+            if (!pMat) continue;
+            pedidosAcesso.push({
+              id: (pIdxId !== -1 && pr[pIdxId]) ? String(pr[pIdxId]).trim() : ('ped-' + p),
+              dataHora: (pIdxData !== -1 && pr[pIdxData]) ? String(pr[pIdxData]).trim() : '',
+              matricula: pMat,
+              nome: (pIdxNome !== -1 && pr[pIdxNome]) ? String(pr[pIdxNome]).trim() : '',
+              cargo: (pIdxCargo !== -1 && pr[pIdxCargo]) ? String(pr[pIdxCargo]).trim() : '',
+              secretaria: (pIdxSec !== -1 && pr[pIdxSec]) ? String(pr[pIdxSec]).trim() : '',
+              departamento: (pIdxDepto !== -1 && pr[pIdxDepto]) ? String(pr[pIdxDepto]).trim() : '',
+              contato: (pIdxContato !== -1 && pr[pIdxContato]) ? String(pr[pIdxContato]).trim() : '',
+              tipo: (pIdxTipo !== -1 && pr[pIdxTipo]) ? String(pr[pIdxTipo]).trim().toUpperCase() : 'REDEFINICAO',
+              status: (pIdxStatus !== -1 && pr[pIdxStatus]) ? String(pr[pIdxStatus]).trim().toUpperCase() : 'PENDENTE',
+              resolvidoEm: (pIdxResEm !== -1 && pr[pIdxResEm]) ? String(pr[pIdxResEm]).trim() : '',
+              resolvidoPor: (pIdxResPor !== -1 && pr[pIdxResPor]) ? String(pr[pIdxResPor]).trim() : '',
+              senhaProvisoria: (pIdxSenhaProv !== -1 && pr[pIdxSenhaProv]) ? String(pr[pIdxSenhaProv]).trim() : ''
             });
           }
         }
@@ -533,10 +735,12 @@ function doGet(e) {
 
     return createJsonResponse({
       success: true,
+      sessaoExpirada: sessaoExpirada,
       data: records,
       sugestoes: sugestoes,
       numeracoes: listaNumeracaoOrdenada,
       registrosNumeracao: listaNumeracaoOrdenada,
+      pedidosAcesso: pedidosAcesso,
       versao: VERSAO,
       versaoBackend: VERSAO
     });
@@ -587,7 +791,7 @@ function doPost(e) {
 
     // 3. AÇÃO: CARREGAR
     if (action === 'CARREGAR') {
-      return doGet(null);
+      return doGet({ parameter: { token: req.token || '' } });
     }
 
     // 4. AÇÃO: SALVAR_USUARIO (Gestão Administrativa de Servidores e Senhas)
@@ -618,6 +822,18 @@ function doPost(e) {
       const idxSec = findColumnIndex(headers, ['secretaria', 'secretarias', 'lotacao']);
       const idxDepto = findColumnIndex(headers, ['departamento', 'depto', 'setor']);
       const idxAtivo = findColumnIndex(headers, ['ativo', 'status', 'liberado']);
+      let idxAcess = findColumnIndex(headers, ['acessibilidadedocs', 'acessibilidade', 'filtrodocs', 'permissoesdocs']);
+
+      const acessPayload = u.acessibilidadeDocs !== undefined
+        ? String(u.acessibilidadeDocs)
+        : (u.filtroAcessibilidade ? JSON.stringify(u.filtroAcessibilidade) : '');
+
+      if (idxAcess === -1 && acessPayload) {
+        const nextCol = headers.length + 1;
+        sheet.getRange(1, nextCol).setValue('AcessibilidadeDocs').setFontWeight('bold').setBackground('#002b82').setFontColor('#ffffff');
+        headers.push('AcessibilidadeDocs');
+        idxAcess = nextCol - 1;
+      }
 
       let rowIndex = -1;
       for (let i = 1; i < data.length; i++) {
@@ -633,7 +849,7 @@ function doPost(e) {
         ? u.secretarias.join(', ') 
         : (u.secretaria || 'Secretaria Municipal de Administração (SMA)');
 
-      const adminLogado = req.usuarioAdmin || (currentUser => currentUser && currentUser.nome) || 'Administrador';
+      const adminLogado = req.usuarioAdmin || 'Administrador';
 
       if (rowIndex !== -1) {
         // Atualização de Servidor Existente
@@ -641,7 +857,13 @@ function doPost(e) {
         if (idxNivel !== -1 && u.nivel) sheet.getRange(rowIndex, idxNivel + 1).setValue(u.nivel);
         if (idxSec !== -1 && secFinal) sheet.getRange(rowIndex, idxSec + 1).setValue(secFinal);
         if (idxDepto !== -1 && u.departamento) sheet.getRange(rowIndex, idxDepto + 1).setValue(u.departamento);
-        if (idxAtivo !== -1 && u.ativo !== undefined) sheet.getRange(rowIndex, idxAtivo + 1).setValue(Boolean(u.ativo));
+        const ativoParsed = u.ativo === undefined
+          ? undefined
+          : (u.ativo === true || String(u.ativo).trim().toLowerCase() === 'true');
+        if (idxAtivo !== -1 && ativoParsed !== undefined) sheet.getRange(rowIndex, idxAtivo + 1).setValue(ativoParsed);
+        if (idxAcess !== -1 && (u.acessibilidadeDocs !== undefined || u.filtroAcessibilidade)) {
+          sheet.getRange(rowIndex, idxAcess + 1).setNumberFormat('@').setValue(acessPayload);
+        }
 
         const novaSenha = u.novaSenha || u.senha;
         if (idxSenha !== -1 && novaSenha && String(novaSenha).trim()) {
@@ -654,6 +876,9 @@ function doPost(e) {
         // Cadastro de Novo Servidor
         const novoID = 'USR-' + ('000' + data.length).slice(-3);
         const senhaDef = u.senha && String(u.senha).trim() ? hashSenha(String(u.senha).trim()) : hashSenha('123456');
+        const ativoNovo = u.ativo === undefined
+          ? true
+          : (u.ativo === true || String(u.ativo).trim().toLowerCase() === 'true');
 
         const novaLinha = headers.map(function(h) {
           const nh = norm(h);
@@ -664,16 +889,85 @@ function doPost(e) {
           if (nh.indexOf('nivel') !== -1) return u.nivel || 'PADRAO';
           if (nh.indexOf('secretaria') !== -1 || nh.indexOf('lotacao') !== -1) return secFinal;
           if (nh.indexOf('departamento') !== -1 || nh.indexOf('depto') !== -1) return u.departamento || 'Gabinete';
-          if (nh.indexOf('ativo') !== -1) return u.ativo !== undefined ? Boolean(u.ativo) : true;
+          if (nh.indexOf('ativo') !== -1) return ativoNovo;
+          if (nh.indexOf('acessibilidade') !== -1 || nh.indexOf('filtrodocs') !== -1) return acessPayload;
           return '';
         });
 
         sheet.appendRow(novaLinha);
         sheet.getRange(sheet.getLastRow(), idxMat + 1).setNumberFormat('@').setValue(matInput);
 
-        registrarLog(adminLogado, 'CRIAR_SERVIDOR', matInput, 'Cadastro do servidor ' + (u.nome || matInput));
-        return createJsonResponse({ success: true, message: 'Novo servidor cadastrado com sucesso!', novoID: novoID });
+        registrarLog(adminLogado, 'CRIAR_SERVIDOR', matInput, 'Cadastro do servidor ' + (u.nome || matInput) + (ativoNovo ? ' (Ativo)' : ' (Pendente de Autorização)'));
+        return createJsonResponse({
+          success: true,
+          message: ativoNovo ? 'Novo servidor cadastrado com sucesso!' : 'Solicitação de cadastro registrada! Aguardando autorização do Administrador.',
+          novoID: novoID
+        });
       }
+    }
+
+    // 4B. AÇÃO: CRIAR_PEDIDO_ACESSO (Solicitações de Novo Cadastro e Redefinição de Senha)
+    if (action === 'CRIAR_PEDIDO_ACESSO') {
+      const p = req.pedido || req;
+      const matPed = String(p.matricula || '').trim();
+      if (!matPed) throw new Error('Matrícula obrigatória para registrar solicitação.');
+
+      let sheetPed = ss.getSheetByName('PedidosAcesso');
+      if (!sheetPed) {
+        sheetPed = ss.insertSheet('PedidosAcesso');
+        sheetPed.appendRow(['ID', 'DataHora', 'Matricula', 'Nome', 'Cargo', 'Secretaria', 'Departamento', 'Contato', 'Tipo', 'Status', 'ResolvidoEm', 'ResolvidoPor', 'SenhaProvisoria']);
+        sheetPed.getRange('A1:M1').setFontWeight('bold').setBackground('#002b82').setFontColor('#ffffff');
+      }
+
+      const idPed = String(p.id || ('ped-' + Date.now()));
+      const dataHoraPed = String(p.dataHora || Utilities.formatDate(new Date(), 'America/Sao_Paulo', 'dd/MM/yyyy HH:mm'));
+      sheetPed.appendRow([
+        idPed,
+        dataHoraPed,
+        matPed,
+        String(p.nome || ''),
+        String(p.cargo || 'Servidor Municipal'),
+        String(p.secretaria || ''),
+        String(p.departamento || ''),
+        String(p.contato || ''),
+        String(p.tipo || 'REDEFINICAO').toUpperCase(),
+        'PENDENTE',
+        '',
+        '',
+        ''
+      ]);
+      sheetPed.getRange(sheetPed.getLastRow(), 3).setNumberFormat('@').setValue(matPed);
+
+      registrarLog(p.nome || ('Matrícula ' + matPed), 'SOLICITACAO_ACESSO', matPed, 'Nova solicitação (' + (p.tipo || 'REDEFINICAO') + ') aguardando autorização do Administrador.');
+      return createJsonResponse({ success: true, id: idPed, message: 'Solicitação registrada na planilha para autorização do Administrador.' });
+    }
+
+    // 4C. AÇÃO: ATUALIZAR_PEDIDO_ACESSO (Aprovação ou Recusa pelo Administrador)
+    if (action === 'ATUALIZAR_PEDIDO_ACESSO') {
+      const sheetPed = ss.getSheetByName('PedidosAcesso');
+      if (!sheetPed) {
+        return createJsonResponse({ success: true, message: 'Aba PedidosAcesso ainda não criada.' });
+      }
+      const dataPed = sheetPed.getDataRange().getValues();
+      const idTarget = String(req.id || '').trim();
+      const matTarget = String(req.matricula || '').trim();
+      const novoStatus = String(req.status || 'ATENDIDO').toUpperCase();
+
+      for (let i = 1; i < dataPed.length; i++) {
+        const rowId = String(dataPed[i][0] || '').trim();
+        let rowMat = String(dataPed[i][2] || '').trim();
+        if (rowMat.endsWith('.0')) rowMat = rowMat.slice(0, -2);
+        const rowStatus = String(dataPed[i][9] || '').trim().toUpperCase();
+
+        if ((idTarget && rowId === idTarget) || (!idTarget && matTarget && norm(rowMat) === norm(matTarget) && rowStatus === 'PENDENTE')) {
+          sheetPed.getRange(i + 1, 10).setValue(novoStatus);
+          if (req.resolvidoEm) sheetPed.getRange(i + 1, 11).setValue(String(req.resolvidoEm));
+          if (req.resolvidoPor) sheetPed.getRange(i + 1, 12).setValue(String(req.resolvidoPor));
+          if (req.senhaProvisoria !== undefined) sheetPed.getRange(i + 1, 13).setNumberFormat('@').setValue(String(req.senhaProvisoria));
+          break;
+        }
+      }
+      return createJsonResponse({ success: true, message: 'Status da solicitação atualizado para ' + novoStatus + '.' });
     }
 
     // 5. AÇÃO: ALTERAR_STATUS_USUARIO
@@ -767,17 +1061,29 @@ function doPost(e) {
         sheetNum.getRange('A1:H1').setFontWeight('bold').setBackground('#002b82').setFontColor('#ffffff');
       }
 
+      const sessaoEmissor = req.token ? validarSessao(req.token) : null;
+
       const rawTipo = req.tipoDocumento ? String(req.tipoDocumento).trim() : 'MEMORANDO';
       const tipoDoc = rawTipo.toUpperCase();
       const tipoNormalizado = normTipo(rawTipo);
 
-      const reqSecretaria = req.secretaria ? String(req.secretaria).trim() : 'Secretaria Municipal de Administração (SMA)';
-      const reqDepartamento = req.departamento ? String(req.departamento).trim() : 'Departamento de Recursos Humanos (DRH)';
+      let reqSecretaria = req.secretaria ? String(req.secretaria).trim() : 'Secretaria Municipal de Administração (SMA)';
+      let reqDepartamento = req.departamento ? String(req.departamento).trim() : 'Departamento de Recursos Humanos (DRH)';
       const reqServidor = req.servidor || req.usuarioLogado ? String(req.servidor || req.usuarioLogado).trim() : 'Servidor Municipal';
-      const reqSigla = req.sigla ? String(req.sigla).trim().toUpperCase() : extrairSiglaSecretaria(reqSecretaria);
+
+      if (sessaoEmissor && normTipo(sessaoEmissor.nivel) !== 'ADMIN') {
+        if (!usuarioAutorizadoParaSecretaria(sessaoEmissor, reqSecretaria)) {
+          throw new Error('Acesso negado: sua matrícula (' + sessaoEmissor.matricula + ') não possui autorização para emitir documentos pela pasta "' + reqSecretaria + '".');
+        }
+        if (usuarioRestritoADepartamento(sessaoEmissor)) {
+          reqDepartamento = String(sessaoEmissor.departamento).trim();
+        }
+      }
+
+      const reqSigla = extrairSiglaSecretaria(reqSecretaria);
       const incluirSigla = req.incluirSigla === true || req.incluirSigla === 'true';
 
-      const isTargetSEAD = reqSigla === 'SMA' || reqSecretaria.toLowerCase().indexOf('administra') !== -1 || reqSecretaria.toLowerCase().indexOf('sead') !== -1;
+      const isTargetSEAD = reqSigla === 'SMA';
 
       const anoCorrente = Utilities.formatDate(new Date(), TZ, 'yyyy');
       const numRows = sheetNum.getLastRow();
@@ -823,11 +1129,11 @@ function doPost(e) {
         for (let i = 0; i < tiposRange.length; i++) {
           const tRow = tiposRange[i][0];
           const nRow = numerosRange[i][0];
-          const sRow = secsRange ? String(secsRange[i][0] || '').trim().toLowerCase() : '';
+          const sRow = secsRange ? String(secsRange[i][0] || '').trim() : '';
           if (!tRow || !nRow) continue;
 
-          const rowIsSEAD = !sRow || sRow.indexOf('administra') !== -1 || sRow.indexOf('sma') !== -1 || sRow.indexOf('sead') !== -1;
-          const matchSec = isTargetSEAD ? rowIsSEAD : (sRow.indexOf(reqSecretaria.toLowerCase()) !== -1 || sRow.indexOf(reqSigla.toLowerCase()) !== -1);
+          const rowIsSEAD = !sRow || mesmaSecretaria(sRow, 'SMA');
+          const matchSec = isTargetSEAD ? rowIsSEAD : mesmaSecretaria(sRow, reqSecretaria);
           if (!matchSec) continue;
 
           if (normTipo(tRow) === tipoNormalizado) {
@@ -902,7 +1208,7 @@ function doPost(e) {
       });
     }
 
-    // 8. AÇÃO: ALTERAR_SENHA
+    // 8. AÇÃO: ALTERAR_SENHA (com suporte opcional a novoNome)
     if (action === 'ALTERAR_SENHA') {
       const sheet = ss.getSheetByName('Usuarios');
       if (!sheet) throw new Error("Aba 'Usuarios' não configurada na planilha.");
@@ -910,9 +1216,10 @@ function doPost(e) {
       const matricula = String(req.matricula || '').trim();
       const senhaAtual = String(req.senhaAtual || '').trim();
       const novaSenha = String(req.novaSenha || '').trim();
+      const novoNome = String(req.novoNome || '').trim();
 
-      if (!matricula || !novaSenha) throw new Error('Matrícula e nova senha são obrigatórias.');
-      if (novaSenha.length < 3) throw new Error('A nova senha deve possuir pelo menos 3 caracteres.');
+      if (!matricula || (!novaSenha && !novoNome)) throw new Error('Matrícula e alteração de senha ou nome são obrigatórias.');
+      if (novaSenha && novaSenha.length < 3) throw new Error('A nova senha deve possuir pelo menos 3 caracteres.');
 
       const data = sheet.getDataRange().getValues();
       const headers = data[0].map(function(h) { return String(h).trim(); });
@@ -935,19 +1242,24 @@ function doPost(e) {
           encontrado = true;
           const rawSen = data[i][idxSenha];
 
-          if (senhaAtual && !confereSenha(rawSen, senhaAtual)) {
+          if (novaSenha && senhaAtual && !confereSenha(rawSen, senhaAtual)) {
             throw new Error('A senha atual informada está incorreta.');
           }
 
-          const novaSenhaHash = hashSenha(novaSenha);
-          sheet.getRange(i + 1, idxSenha + 1).setNumberFormat('@').setValue(novaSenhaHash);
+          if (novaSenha) {
+            const novaSenhaHash = hashSenha(novaSenha);
+            sheet.getRange(i + 1, idxSenha + 1).setNumberFormat('@').setValue(novaSenhaHash);
+          }
+          if (novoNome && idxNome !== -1) {
+            sheet.getRange(i + 1, idxNome + 1).setValue(novoNome);
+          }
 
-          const nomeUsuario = (idxNome !== -1 && data[i][idxNome]) ? data[i][idxNome] : matricula;
-          registrarLog(nomeUsuario, 'ALTERAR_SENHA', matricula, 'Senha de acesso alterada com sucesso.');
+          const nomeUsuario = novoNome || ((idxNome !== -1 && data[i][idxNome]) ? data[i][idxNome] : matricula);
+          registrarLog(nomeUsuario, novaSenha ? 'ALTERAR_SENHA' : 'ALTERAR_PERFIL', matricula, 'Atualização de perfil/senha pelo servidor.');
 
           return createJsonResponse({
             success: true,
-            message: 'Senha alterada com sucesso!'
+            message: 'Dados atualizados com sucesso!'
           });
         }
       }

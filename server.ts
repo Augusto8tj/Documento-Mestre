@@ -1,8 +1,9 @@
 import express from 'express';
+import http from 'http';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 
 dotenv.config();
 
@@ -10,9 +11,23 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const httpServer = http.createServer(app);
 const port = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+
+function createGeminiClient(): GoogleGenAI | null {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
 
 // Fallback generator for administrative texts if Gemini API key is missing or quota exceeded
 function gerarRedacaoFallback(data: any): string {
@@ -85,15 +100,13 @@ app.post('/api/ai/gerar-redacao', async (req, res) => {
       acao = 'NOVO_TEXTO'
     } = req.body;
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const ai = createGeminiClient();
 
-    if (!apiKey) {
+    if (!ai) {
       console.warn('GEMINI_API_KEY ausente. Utilizando motor de redação oficial municipal fallback.');
       const fallbackTexto = gerarRedacaoFallback(req.body);
       return res.json({ success: true, texto: fallbackTexto, fonte: 'motor_regras_municipais' });
     }
-
-    const ai = new GoogleGenAI();
 
     const tipoDocUpper = String(tipoDocumento).toUpperCase();
     const isEmailDoc = tipoDocUpper === 'EMAIL';
@@ -170,11 +183,10 @@ AÇÃO SOLICITADA: ${acao}
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-4-hydrogen',
       contents: promptUser,
       config: {
         systemInstruction,
-        temperature: 0.3
       }
     });
 
@@ -185,11 +197,170 @@ AÇÃO SOLICITADA: ${acao}
       return res.json({ success: true, texto: fallbackTexto, fonte: 'fallback_vazio' });
     }
 
-    res.json({ success: true, texto: textoGerado, fonte: 'gemini-3.8-flash' });
+    res.json({ success: true, texto: textoGerado, fonte: 'gemini-4-hydrogen' });
   } catch (error: any) {
     console.error('Erro na chamada Gemini:', error);
     const fallbackTexto = gerarRedacaoFallback(req.body);
     res.json({ success: true, texto: fallbackTexto, fonte: 'fallback_erro', error: error.message });
+  }
+});
+
+// Endpoint de reconhecimento, OCR (PDF digitalizado ou texto) e catalogação automática (PDF / DOCX / TXT)
+app.post('/api/ai/catalogar-documento', async (req, res) => {
+  try {
+    const {
+      fileName = 'documento',
+      mimeType = 'text/plain',
+      fileBase64 = '',
+      textoExtraido = '',
+      categoriasExistentes = [],
+      secretariasExistentes = [],
+    } = req.body || {};
+
+    const ai = createGeminiClient();
+    if (!ai) {
+      return res.status(503).json({
+        success: false,
+        code: 'MISSING_API_KEY',
+        error: 'Serviço de reconhecimento inteligente indisponível: configure a chave GEMINI_API_KEY em Settings > Secrets para analisar PDFs e catalogar automaticamente.',
+      });
+    }
+
+    const isPdf = mimeType === 'application/pdf' || /\.pdf$/i.test(String(fileName));
+    if (isPdf && !fileBase64) {
+      return res.status(400).json({
+        success: false,
+        error: 'Arquivo PDF vazio ou inválido para processamento.',
+      });
+    }
+    if (!isPdf && !String(textoExtraido || '').trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nenhum conteúdo textual recebido para reconhecimento e catalogação.',
+      });
+    }
+
+    const categoriasLista = Array.isArray(categoriasExistentes) && categoriasExistentes.length > 0
+      ? categoriasExistentes.slice(0, 60).join(' | ')
+      : '1. Férias e Licenças | 2. Gestão de Pessoal | 3. Folha de Pagamento | 4. Atos Normativos | 5. Protocolo e Expediente | 6. Compras e Contratos';
+
+    const secretariasLista = Array.isArray(secretariasExistentes) && secretariasExistentes.length > 0
+      ? secretariasExistentes.slice(0, 30).join(' | ')
+      : 'Secretaria Municipal de Administração (SMA) | Secretaria Municipal de Saúde (SMS) | Secretaria Municipal de Educação (SME) | Secretaria Municipal de Fazenda e Finanças (SMF) | Gabinete do Prefeito';
+
+    const systemInstruction = `Você é o Arquivista-Chefe e Especialista em Redação Oficial da Prefeitura Municipal de Rio Claro – RJ.
+Sua função é ler documentos administrativos enviados (em PDF pesquisável, PDF digitalizado/escaneado ou texto extraído de DOCX/DOC/TXT) e retornar uma catalogação estruturada precisa em JSON.
+
+REGRAS OBRIGATÓRIAS:
+1. tipoDocumento: escolha EXATAMENTE um destes valores em maiúsculas: MEMORANDO, OFICIO, DESPACHO, CIRCULAR, PORTARIA, DECRETO, ATO, TERMO, PARECER, EMAIL, CHECKLIST. Se o documento não deixar explícito, infira o mais adequado ao teor administrativo.
+2. categoria: prefira escolher uma das categorias existentes fornecidas no prompt quando houver afinidade semântica; caso seja um tema totalmente novo, sugira uma categoria clara e concisa em português (ex: "Gestão de Pessoal", "Licitações e Contratos").
+3. titulo: título curto, institucional e padronizado (máx. 90 caracteres) ideal para catálogo de modelos/acervo.
+4. assunto: ementa/assunto objetivo do documento (sem o prefixo "Assunto:").
+5. destinatario: órgão, secretaria ou autoridade destinatária identificada no documento (ou "" se não houver).
+6. secretariaOrigem: secretaria ou órgão emissor identificado (preferencialmente usando o nome oficial da lista de secretarias fornecida, ou "" se não constar).
+7. numeroOriginal: número oficial identificado no documento (ex: "042/2026 - SMA", "Portaria nº 120/2026") ou "" se não houver numeração.
+8. dataDocumento: data do documento no formato DD/MM/AAAA se encontrada, ou "".
+9. referencia: número de processo administrativo ou documento anterior citado (ex: "Processo nº 1234/2026", "Ofício nº 15/2026") ou "".
+10. baseLegal: leis, decretos, artigos ou normas citadas no documento (ou "" se não houver).
+11. palavrasChave: de 4 a 7 termos relevantes em minúsculas separados por vírgula para busca rápida.
+12. resumoCatalogacao: resumo de 1 frase clara explicando a finalidade do documento.
+13. textoLimpo: transcreva integralmente o corpo principal do documento (realizando OCR fiel se for PDF digitalizado), removendo apenas cabeçalhos repetitivos de timbrado, rodapés de página, espaços/tabulações residuais e blocos de assinatura duplicados, mantendo parágrafos separados por linha em branco (\\n\\n).
+14. textoModelo: versão reutilizável do mesmo corpo de texto, substituindo dados específicos de pessoas/datas/processos (ex: nome do servidor, matrícula, CPF, datas pontuais, números de processo, valores) por marcadores claros em caixa alta entre colchetes como [NOME_SERVIDOR], [MATRICULA], [DATA_INICIO], [NUMERO_PROCESSO], preservando integralmente a redação técnica e jurídica.`;
+
+    const userPrompt = `Analise e catalogue o documento enviado.
+NOME DO ARQUIVO: ${fileName}
+CATEGORIAS EXISTENTES NO BANCO MESTRE: ${categoriasLista}
+SECRETARIAS MUNICIPAIS OFICIAIS: ${secretariasLista}
+${!isPdf ? `\nCONTEÚDO EXTRAÍDO DO DOCUMENTO:\n"""\n${String(textoExtraido).slice(0, 45000)}\n"""` : '\nO arquivo PDF original segue anexado para leitura integral (incluindo OCR se escaneado) e catalogação.'}`;
+
+    const parts: any[] = [];
+    if (isPdf) {
+      parts.push({
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: String(fileBase64).replace(/^data:application\/pdf;base64,/i, ''),
+        },
+      });
+    }
+    parts.push({ text: userPrompt });
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-4-hydrogen',
+      contents: { parts },
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            tipoDocumento: { type: Type.STRING, description: 'Tipo documental padronizado em maiúsculas' },
+            categoria: { type: Type.STRING, description: 'Categoria temática para catalogação' },
+            titulo: { type: Type.STRING, description: 'Título institucional conciso' },
+            assunto: { type: Type.STRING, description: 'Assunto ou ementa do documento' },
+            destinatario: { type: Type.STRING, description: 'Destinatário identificado ou vazio' },
+            secretariaOrigem: { type: Type.STRING, description: 'Secretaria ou órgão emissor ou vazio' },
+            numeroOriginal: { type: Type.STRING, description: 'Número oficial do documento se existir' },
+            dataDocumento: { type: Type.STRING, description: 'Data no formato DD/MM/AAAA se existir' },
+            referencia: { type: Type.STRING, description: 'Referência a processo ou documento anterior' },
+            baseLegal: { type: Type.STRING, description: 'Base legal, leis ou artigos citados' },
+            palavrasChave: { type: Type.STRING, description: 'Palavras-chave separadas por vírgula' },
+            resumoCatalogacao: { type: Type.STRING, description: 'Resumo breve de 1 frase do documento' },
+            textoLimpo: { type: Type.STRING, description: 'Corpo integral limpo do documento' },
+            textoModelo: { type: Type.STRING, description: 'Corpo parametrizado com [CAMPOS] reutilizáveis' },
+          },
+          required: [
+            'tipoDocumento',
+            'categoria',
+            'titulo',
+            'assunto',
+            'destinatario',
+            'secretariaOrigem',
+            'numeroOriginal',
+            'dataDocumento',
+            'referencia',
+            'baseLegal',
+            'palavrasChave',
+            'resumoCatalogacao',
+            'textoLimpo',
+            'textoModelo',
+          ],
+        },
+      },
+    });
+
+    const rawJson = (response.text || '').trim();
+    if (!rawJson) {
+      return res.status(502).json({
+        success: false,
+        error: 'O serviço de reconhecimento não retornou conteúdo legível para este documento.',
+      });
+    }
+
+    const catalogacao = JSON.parse(rawJson);
+    return res.json({
+      success: true,
+      catalogacao,
+      fonte: 'gemini-4-hydrogen',
+    });
+  } catch (error: any) {
+    console.error('Erro ao catalogar documento com Gemini:', error);
+    const msg = String(error?.message || '');
+    if (msg.includes('API_KEY_INVALID') || msg.includes('PERMISSION_DENIED') || error?.status === 403) {
+      return res.status(403).json({
+        success: false,
+        error: 'Chave da API Gemini inválida ou sem permissão. Verifique em Settings > Secrets.',
+      });
+    }
+    if (msg.includes('RESOURCE_EXHAUSTED') || error?.status === 429) {
+      return res.status(429).json({
+        success: false,
+        error: 'Limite temporário de requisições da IA atingido. Aguarde alguns instantes e tente novamente.',
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      error: msg || 'Não foi possível reconhecer e catalogar o documento.',
+    });
   }
 });
 
@@ -202,12 +373,17 @@ if (process.env.NODE_ENV === 'production') {
 } else {
   const { createServer } = await import('vite');
   const vite = await createServer({
-    server: { middlewareMode: true },
+    server: {
+      middlewareMode: true,
+      hmr: false,
+      ws: { server: httpServer },
+      allowedHosts: true
+    },
     appType: 'spa'
   });
   app.use(vite.middlewares);
 }
 
-app.listen(port, () => {
+httpServer.listen(port, () => {
   console.log(`[Banco Mestre API] Servidor Express + Vite escutando na porta ${port}`);
 });

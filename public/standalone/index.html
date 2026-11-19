@@ -92,6 +92,16 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         .dark ::-webkit-scrollbar-thumb { background: #334155; }
         body.modal-open { overflow: hidden; }
+        #modal-redator-oficial.redator-modo-simples .redator-avancado-only { display: none !important; }
+        #modal-redator-oficial.redator-fullscreen { padding: 0 !important; }
+        #modal-redator-oficial.redator-fullscreen #redator-modal-dialog {
+            max-width: 100vw !important;
+            width: 100vw !important;
+            height: 100dvh !important;
+            max-height: 100dvh !important;
+            border-radius: 0 !important;
+            border: 0 !important;
+        }
 
         /* REGRAS DE ALTO CONTRASTE E EFICÁCIA PARA O MODO ESCURO */
         html.dark, html.dark body {
@@ -362,7 +372,9 @@
                     <div id="login-servidor-info" class="hidden mt-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-md text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5"></div>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Senha de Acesso</label>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Senha de Acesso</label>
+                    </div>
                     <div class="relative">
                         <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-xs">
                             <i class="fa-solid fa-lock"></i>
@@ -370,9 +382,13 @@
                         <input type="password" id="login-senha" required placeholder="••••••••" autocomplete="current-password" class="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                     </div>
                 </div>
-                <button type="submit" id="btn-login" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md hover:shadow-emerald-600/20 active:scale-[0.98] mt-2 flex items-center justify-center gap-2">
+                <button type="submit" id="btn-login" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md hover:shadow-emerald-600/20 active:scale-[0.98] mt-2 flex items-center justify-center gap-2 cursor-pointer">
                     <i class="fa-solid fa-right-to-bracket"></i>
                     <span>Entrar no Sistema</span>
+                </button>
+                <button type="button" onclick="abrirRecuperarSenhaModal()" class="w-full py-2 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/40 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 rounded-lg text-xs font-semibold transition-all border border-sky-200 dark:border-sky-800 flex items-center justify-center gap-1.5 cursor-pointer">
+                    <i class="fa-solid fa-key"></i>
+                    <span>Primeiro acesso / Esqueci minha senha</span>
                 </button>
                 <div id="login-error" class="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 text-center font-medium shadow-xs hidden"></div>
             
@@ -384,18 +400,18 @@
 
             <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-center">
                 <span class="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800/60">
-                    <i class="fa-solid fa-flask"></i> Fase Beta • Acesso com Matrícula Real
+                    <i class="fa-solid fa-shield-halved"></i> Acesso Oficial • Matrícula Funcional • DRH/SMA (Ramal 407)
                 </span>
             </div>
 
             <div class="mt-4 text-center">
-                <button type="button" onclick="abrirGuiaAjuda()" class="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
+                <button type="button" onclick="abrirGuiaAjuda()" class="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer">
                     <i class="fa-solid fa-circle-question"></i> Primeira vez no sistema? Veja o guia passo a passo
                 </button>
             </div>
 
             <div class="mt-3 text-center">
-                <p class="text-[10px] text-slate-400">Recursos Humanos & Gestão de Pessoal • PMRC • <span class="text-emerald-500 font-bold">v1.3</span></p>
+                <p class="text-[10px] text-slate-400">Recursos Humanos & Gestão de Pessoal • PMRC • <span class="text-emerald-500 font-bold">v1.6</span></p>
             </div>
         </div>
     </div>
@@ -426,7 +442,7 @@
                 <div>
                     <div class="flex items-center gap-1.5 sm:gap-2">
                         <h1 class="font-bold text-xs sm:text-base tracking-tight text-slate-100 truncate max-w-[190px] sm:max-w-none">Rio Claro – RJ</h1>
-                        <span class="hidden md:inline-block px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded">v1.3 Oficial</span>
+                        <span class="hidden md:inline-block px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded">v1.6 Oficial</span>
                     </div>
                     <p class="text-[11px] sm:text-xs text-slate-400 flex items-center gap-1.5">
                         <span class="hidden sm:inline">Banco Mestre Administrativo</span>
@@ -1039,6 +1055,98 @@
         </div>
     </div>
 
+    <!-- MODAL 3B: RECUPERAÇÃO DE SENHA ESQUECIDA (AUTOSSERVIÇO & PROTOCOLO DRH) -->
+    <div id="modal-recuperar-senha" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div class="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-300 dark:border-amber-800 shrink-0">
+                        <i class="fa-solid fa-key text-base"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-extrabold text-sm sm:text-base text-slate-800 dark:text-slate-100">Recuperação de Senha de Acesso</h3>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">Departamento de Recursos Humanos • PMRC</p>
+                    </div>
+                </div>
+                <button type="button" onclick="fecharRecuperarSenhaModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div class="p-5 space-y-4 text-xs">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Informe sua Matrícula Funcional:</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="recuperar-matricula" placeholder="Ex: 1001" class="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <button type="button" onclick="verificarServidorRecuperacao()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg text-xs transition-all shadow-xs active:scale-95 flex items-center gap-1.5">
+                            <i class="fa-solid fa-user-check"></i>
+                            <span>Verificar</span>
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1">Digite somente os números da matrícula cadastrada no Recursos Humanos.</p>
+                </div>
+
+                <div id="recuperar-resultado-servidor" class="hidden p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 space-y-3">
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 font-bold text-xs">✓</div>
+                        <div>
+                            <h4 id="recuperar-servidor-nome" class="font-bold text-sm text-slate-900 dark:text-slate-100">Nome</h4>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400" id="recuperar-servidor-info">Cargo / Secretaria</p>
+                        </div>
+                    </div>
+                    <div class="pt-3 border-t border-slate-200 dark:border-slate-700/60 space-y-2">
+                        <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                            Confirme para redefinir para a senha provisória institucional <code class="bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded font-mono font-bold">123456</code>.
+                        </p>
+                        <button type="button" onclick="executarRedefinicaoProvisoria()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-xs transition-all shadow-md active:scale-95 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-key"></i>
+                            <span>Redefinir para Senha Provisória (123456)</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="recuperar-sucesso" class="hidden p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 space-y-2">
+                    <div class="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-sm">
+                        <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                        <span>Senha Redefinida com Sucesso!</span>
+                    </div>
+                    <p class="text-xs text-emerald-900 dark:text-emerald-200">
+                        A senha foi alterada para <b class="font-mono text-base font-black">123456</b>. Faça o login e altere na chave (🔑) no topo.
+                    </p>
+                </div>
+
+                <div class="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                    <h5 class="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <i class="fa-solid fa-phone text-sky-500"></i>
+                        <span>Solicitação Direta ao Administrador do DRH / SMA</span>
+                    </h5>
+                    <div id="recuperar-texto-solicitacao" class="p-2.5 bg-slate-100 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-[11px] text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed max-h-24 overflow-y-auto select-all">
+SOLICITAÇÃO DE REDEFINIÇÃO DE SENHA - SGEP/DOCS PMRC
+Servidor: Matrícula Funcional
+Prezado Administrador do DRH/SMA, solicito a redefinição de senha de acesso no Banco Mestre.
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="copiarSolicitacaoSenha()" class="flex-1 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-copy"></i>
+                            <span id="btn-copiar-solicitacao-text">Copiar Solicitação Formal</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 dark:bg-slate-800/30 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                    <span>Plantão DRH/SMA:</span>
+                    <span class="font-semibold text-slate-700 dark:text-slate-300">Ramal 407 • DRH/SMA • rh@rioclaro.rj.gov.br</span>
+                </div>
+            </div>
+
+            <div class="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex justify-end">
+                <button type="button" onclick="fecharRecuperarSenhaModal()" class="px-4 py-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: PAINEL DE ADMINISTRAÇÃO MUNICIPAL (SERVIDORES, SENHAS, SECRETARIAS E DEPARTAMENTOS) -->
     <div id="modal-admin-gestao" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-0 sm:p-5 overflow-y-auto">
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-none sm:rounded-2xl max-w-5xl w-full shadow-2xl flex flex-col h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -1402,15 +1510,15 @@
 
     <!-- MODAL 4: REDATOR OFICIAL DE MEMORANDO / OFÍCIO COM NUMERAÇÃO AUTOMÁTICA -->
     <div id="modal-redator-oficial" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-0 sm:p-5">
-        <div class="bg-white dark:bg-slate-900 border-0 sm:border border-slate-200 dark:border-slate-800 rounded-none sm:rounded-2xl max-w-6xl w-full shadow-2xl overflow-hidden flex flex-col h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[95vh] animate-in fade-in zoom-in-95 duration-200">
+        <div id="redator-modal-dialog" class="bg-white dark:bg-slate-900 border-0 sm:border border-slate-200 dark:border-slate-800 rounded-none sm:rounded-2xl max-w-6xl w-full shadow-2xl overflow-hidden flex flex-col h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[95vh] animate-in fade-in zoom-in-95 duration-200">
             <!-- Header -->
-            <div class="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 flex-shrink-0">
+            <div class="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap bg-slate-50 dark:bg-slate-800/50 flex-shrink-0">
                 <div class="flex items-center space-x-3">
                     <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white flex items-center justify-center shadow-sm">
                         <i class="fa-solid fa-file-signature text-lg"></i>
                     </div>
                     <div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 flex-wrap">
                             <h3 class="font-bold text-base text-slate-800 dark:text-slate-100">
                                 Redator Oficial de Memorando e Ofício
                             </h3>
@@ -1424,15 +1532,39 @@
                     </div>
                 </div>
 
-                <button onclick="fecharRedatorOficial()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
+                <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                    <div id="btn-redator-modo-standalone" class="inline-flex items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-0.5 text-[11px] font-bold shadow-2xs" title="Alternar entre Modo Simples (essencial) e Modo Avançado (ferramentas completas)">
+                        <button type="button" id="btn-modo-simples-standalone" onclick="setModoAvancadoRedator(false)" class="px-2.5 py-1 rounded-md transition-all cursor-pointer bg-emerald-600 text-white">Simples</button>
+                        <button type="button" id="btn-modo-avancado-standalone" onclick="setModoAvancadoRedator(true)" class="px-2.5 py-1 rounded-md transition-all cursor-pointer text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">Avançado</button>
+                    </div>
+                    <button type="button" id="btn-toggle-previa-flutuante-top" onclick="togglePreviaFlutuante()" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs" title="Alternar entre modo lado a lado e janela flutuante sempre visível">
+                        <i id="btn-toggle-previa-icon" class="fa-solid fa-up-right-from-square text-[11px]"></i>
+                        <span id="btn-toggle-previa-text">Prévia Flutuante</span>
+                    </button>
+                    <button type="button" id="btn-redator-fullscreen-standalone" onclick="toggleFullscreenRedator()" class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer shadow-2xs" title="Expandir ou restaurar tela toda">
+                        <i id="icon-redator-fullscreen" class="fa-solid fa-expand text-[11px]"></i>
+                        <span id="text-redator-fullscreen">Tela Toda</span>
+                    </button>
+                    <button onclick="fecharRedatorOficial()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer" title="Fechar redator">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
             </div>
 
             <!-- Body: Split View (Editor Form & Timbrado Preview) -->
             <div class="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-6 p-5 sm:p-6">
-                <!-- Coluna 1: Formulário de Redação (Col 7) -->
-                <div class="lg:col-span-7 space-y-4">
+                <!-- Coluna 1: Formulário de Redação (Col 7 ou Col 12 quando flutuante) -->
+                <div id="redator-editor-col" class="lg:col-span-7 space-y-4">
+                    <!-- Banner de Modo Flutuante Ativo -->
+                    <div id="banner-modo-flutuante" class="hidden p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl flex items-center justify-between text-xs text-blue-800 dark:text-blue-300 shadow-2xs">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-desktop text-blue-600 dark:text-blue-400"></i>
+                            <span><strong>Modo Prévia Flutuante Ativo:</strong> O editor foi expandido para largura total e a visualização do documento está flutuando no canto inferior da tela em tempo real.</span>
+                        </div>
+                        <button type="button" onclick="togglePreviaFlutuante()" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[11px] font-bold shrink-0 transition-colors cursor-pointer shadow-2xs">
+                            Acoplar Lado a Lado
+                        </button>
+                    </div>
                     
                     <!-- Tipo & Numeração Card -->
                     <div class="p-4 bg-gradient-to-br from-slate-50 to-emerald-50/40 dark:from-slate-800/60 dark:to-emerald-950/20 border border-emerald-200/80 dark:border-emerald-900/60 rounded-xl space-y-3">
@@ -1450,7 +1582,7 @@
                                         <i class="fa-solid fa-file-contract text-sky-600 dark:text-sky-400"></i>
                                         <span>PORTARIA</span>
                                     </button>
-                                    <button type="button" onclick="setRedatorTipo('DECRETO')" class="redator-tipo-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 flex items-center gap-1.5" data-tipo="DECRETO">
+                                    <button type="button" onclick="setRedatorTipo('DECRETO')" class="redator-tipo-btn redator-avancado-only px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 flex items-center gap-1.5" data-tipo="DECRETO">
                                         <i class="fa-solid fa-landmark text-amber-600 dark:text-amber-400"></i>
                                         <span>DECRETO</span>
                                     </button>
@@ -1474,7 +1606,7 @@
                     </div>
 
                     <!-- Referência a Documento Anterior do Livro de Numeração -->
-                    <div id="redator-referencia-container">
+                    <div id="redator-referencia-container" class="redator-avancado-only">
                         <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
                             <span class="flex items-center gap-1.5">
                                 <i class="fa-solid fa-book-open text-blue-500"></i>
@@ -1691,7 +1823,7 @@
                         <!-- Barra de Ferramentas Completa de Edição Oficial -->
                         <div class="sgep-toolbar flex-wrap gap-1.5 p-2 bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 rounded-t-xl border-b-0 text-xs" role="toolbar" aria-label="Formatação do texto oficial">
                             <!-- Seletor de Fonte -->
-                            <div class="flex items-center gap-1 bg-white dark:bg-slate-900 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+                            <div class="redator-avancado-only flex items-center gap-1 bg-white dark:bg-slate-900 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">
                                 <i class="fa-solid fa-font text-slate-500 text-[10px]"></i>
                                 <select id="redator-select-fonte" onchange="mudarFonteRedator(this.value)" class="bg-transparent text-[11px] font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer" title="Família da fonte oficial">
                                     <option value="Times New Roman">Times New Roman (Oficial PMRC)</option>
@@ -1701,7 +1833,7 @@
                             </div>
 
                             <!-- Seletor de Tamanho da Fonte -->
-                            <div class="flex items-center gap-1 bg-white dark:bg-slate-900 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+                            <div class="redator-avancado-only flex items-center gap-1 bg-white dark:bg-slate-900 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700">
                                 <span class="text-[10px] font-bold text-slate-400">Tam:</span>
                                 <select id="redator-select-tamanho" onchange="mudarTamanhoFonteRedator(this.value)" class="bg-transparent text-[11px] font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer" title="Tamanho base da fonte">
                                     <option value="12pt">12 pt (Padrão)</option>
@@ -1710,15 +1842,15 @@
                                 </select>
                             </div>
 
-                            <div class="h-4 w-px bg-slate-300 dark:bg-slate-700 mx-0.5"></div>
+                            <div class="redator-avancado-only h-4 w-px bg-slate-300 dark:bg-slate-700 mx-0.5"></div>
 
                             <!-- Estilos Básicos: Negrito, Itálico, Sublinhado, Tachado, Marca-texto -->
                             <div class="flex items-center bg-white dark:bg-slate-900 rounded-md border border-slate-200 dark:border-slate-700 p-0.5 space-x-0.5">
                                 <button type="button" onmousedown="event.preventDefault()" onclick="formatarSelecaoRedator('**', '**')" class="px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold" title="Negrito (**texto**)"><b>B</b></button>
                                 <button type="button" onmousedown="event.preventDefault()" onclick="formatarSelecaoRedator('*', '*')" class="px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 italic" title="Itálico (*texto*)"><i>I</i></button>
                                 <button type="button" onmousedown="event.preventDefault()" onclick="formatarSelecaoRedator('<u>', '</u>')" class="px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 underline" title="Sublinhado (<u>texto</u>)"><u>U</u></button>
-                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarSelecaoRedator('~~', '~~')" class="px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 line-through" title="Tachado (~~texto~~)"><s>S</s></button>
-                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarSelecaoRedator('<mark>', '</mark>')" class="px-2 py-1 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300" title="Marca-texto / Destaque Amarelo (<mark>texto</mark>)"><i class="fa-solid fa-highlighter text-[10px]"></i></button>
+                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarSelecaoRedator('~~', '~~')" class="redator-avancado-only px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 line-through" title="Tachado (~~texto~~)"><s>S</s></button>
+                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarSelecaoRedator('<mark>', '</mark>')" class="redator-avancado-only px-2 py-1 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300" title="Marca-texto / Destaque Amarelo (<mark>texto</mark>)"><i class="fa-solid fa-highlighter text-[10px]"></i></button>
                             </div>
 
                             <div class="h-4 w-px bg-slate-300 dark:bg-slate-700 mx-0.5"></div>
@@ -1736,18 +1868,18 @@
                             <div class="flex items-center bg-white dark:bg-slate-900 rounded-md border border-slate-200 dark:border-slate-700 p-0.5 space-x-0.5">
                                 <button type="button" onmousedown="event.preventDefault()" onclick="formatarMarcadorRedator()" class="px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold" title="Lista com Marcadores (- item)"><i class="fa-solid fa-list-ul text-[10px] mr-1"></i>• Lista</button>
                                 <button type="button" onmousedown="event.preventDefault()" onclick="formatarNumeradaRedator()" class="px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold" title="Lista Numerada Sequencial (1. item)"><i class="fa-solid fa-list-ol text-[10px] mr-1"></i>1. 2. 3.</button>
-                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarPrefixoLinhaRedator('I - ', 'Disposição normativa')" class="px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold" title="Inciso Normativo (I - texto)">I -</button>
-                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarPrefixoLinhaRedator('a) ', 'Alínea correspondente')" class="px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold" title="Alínea Normativa (a) texto)">a)</button>
-                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarPrefixoLinhaRedator('> ', 'Transcrição de artigo de lei ou parecer')" class="px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800" title="Recuo de Citação / Ementa (> texto)"><i class="fa-solid fa-quote-left text-[10px]"></i></button>
-                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarPrefixoLinhaRedator('---')" class="px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800" title="Linha Divisória (---)"><i class="fa-solid fa-minus text-[10px]"></i></button>
+                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarPrefixoLinhaRedator('I - ', 'Disposição normativa')" class="redator-avancado-only px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold" title="Inciso Normativo (I - texto)">I -</button>
+                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarPrefixoLinhaRedator('a) ', 'Alínea correspondente')" class="redator-avancado-only px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold" title="Alínea Normativa (a) texto)">a)</button>
+                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarPrefixoLinhaRedator('> ', 'Transcrição de artigo de lei ou parecer')" class="redator-avancado-only px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800" title="Recuo de Citação / Ementa (> texto)"><i class="fa-solid fa-quote-left text-[10px]"></i></button>
+                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarPrefixoLinhaRedator('---')" class="redator-avancado-only px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800" title="Linha Divisória (---)"><i class="fa-solid fa-minus text-[10px]"></i></button>
                             </div>
 
                             <div class="h-4 w-px bg-slate-300 dark:bg-slate-700 mx-0.5"></div>
 
                             <!-- Utilitários: Inserir Campo, Limpar Formatação, Desfazer, Refazer -->
                             <div class="flex items-center space-x-1 ml-auto">
-                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarSelecaoRedator('[', ']', 'PREENCHER')" class="px-2 py-1 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded text-[11px] font-bold" title="Inserir campo pendente [CAMPO]">[+] Campo</button>
-                                <button type="button" onmousedown="event.preventDefault()" onclick="limparFormatacaoRedator()" class="px-2 py-1 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded text-[11px] font-medium" title="Remover formatações de estilo"><i class="fa-solid fa-eraser text-[10px] mr-1"></i>Tx Limpo</button>
+                                <button type="button" onmousedown="event.preventDefault()" onclick="formatarSelecaoRedator('[', ']', 'PREENCHER')" class="redator-avancado-only px-2 py-1 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded text-[11px] font-bold" title="Inserir campo pendente [CAMPO]">[+] Campo</button>
+                                <button type="button" onmousedown="event.preventDefault()" onclick="limparFormatacaoRedator()" class="redator-avancado-only px-2 py-1 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded text-[11px] font-medium" title="Remover formatações de estilo"><i class="fa-solid fa-eraser text-[10px] mr-1"></i>Tx Limpo</button>
                                 <button type="button" onmousedown="event.preventDefault()" onclick="desfazerRedator()" class="p-1 px-1.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded text-xs cursor-pointer" title="Desfazer alteração"><i class="fa-solid fa-rotate-left text-[10px]"></i></button>
                                 <button type="button" onmousedown="event.preventDefault()" onclick="refazerRedator()" class="p-1 px-1.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded text-xs cursor-pointer" title="Refazer alteração"><i class="fa-solid fa-rotate-right text-[10px]"></i></button>
                                 <span id="sgep-autosave-indicator" class="text-[10px] text-slate-400 dark:text-slate-500 font-normal flex items-center gap-1 ml-1">
@@ -1860,14 +1992,20 @@
                     </div>
                 </div>
 
-                <!-- Coluna 2: <!-- Visualização em Tempo Real (Col 5) - Alterna entre Timbrada A4 e Webmail Institucional -->
-                <div class="lg:col-span-5 flex flex-col space-y-3">
+                <!-- Coluna 2: Visualização em Tempo Real (Col 5) - Fixa ao rolar o formulário -->
+                <div id="redator-previa-coluna" class="lg:col-span-5 flex flex-col space-y-3 lg:sticky lg:top-0 lg:self-start lg:max-h-[calc(95vh-130px)]">
                     <div class="flex items-center justify-between">
                         <h4 class="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider flex items-center gap-1.5">
                             <i id="previa-header-icon" class="fa-solid fa-eye text-blue-500"></i>
                             <span id="previa-header-title">Visualização Timbrada (Padrão Rio Claro – RJ)</span>
                         </h4>
-                        <span id="previa-header-badge" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-semibold">Papel Timbrado Oficial (A4)</span>
+                        <div class="flex items-center gap-1.5">
+                            <button type="button" onclick="togglePreviaFlutuante()" class="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-800 rounded-md text-[11px] font-semibold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer" title="Tornar a visualização flutuante para acompanhar a tela durante a digitação">
+                                <i class="fa-solid fa-up-right-from-square text-[10px]"></i>
+                                <span>Tornar Flutuante</span>
+                            </button>
+                            <span id="previa-header-badge" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-semibold">Papel Timbrado Oficial (A4)</span>
+                        </div>
                     </div>
 
                     <!-- MODO 1: FOLHA A4 TIMBRADA SIMULAÇÃO (Memorando, Ofício, Despacho, Parecer, Circular) -->
@@ -2045,6 +2183,63 @@
                     </button>
                 </div>
             </div>
+
+            <!-- JANELA DE PRÉVIA FLUTUANTE (PICTURE-IN-PICTURE) -->
+            <div id="janela-previa-flutuante" class="hidden fixed bottom-5 right-5 z-[80] bg-white dark:bg-slate-900 border-2 border-blue-600 dark:border-blue-500 shadow-2xl rounded-2xl overflow-hidden flex flex-col transition-all duration-200 w-[410px] sm:w-[470px] max-w-[92vw] max-h-[76vh]">
+                <!-- Header da Janela Flutuante -->
+                <div class="p-3 bg-gradient-to-r from-slate-900 to-[#002b82] text-white flex items-center justify-between gap-2 select-none shadow-sm">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFYAAABkCAYAAAAc5MdRAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAEMrSURBVHhe7Z0HUFXJ1qgNoIA55xwQJRzO4RDFhJHBnLMCZiWYEEVRARURzFmyAQkKijnOqGOOY5akJEFJSk7fq97o/afmeu/MG2feX69qFtV10j5nd3+9eq3Va3dvKvGP/C1S6bdv/CN/jfwD9m+Sf8D+TfK3gy0vL5fKb5+XlZX923FllPPh40fi4uLIzMykqKiIlJQU0tPTyc3NpbS0lLS0NDIyMqTnv5XfnufX5/t/LX8LWNEY0XABr6SkRHouSnFxsQTo8+fP5OXl8eOPP3LgwAGePHlMSWkx2fmf8T8ciH+QL37+fty7dwc/3/2EhUYQcvggDx49xtfPDz8/P27evCmdS8B/+PAhCQkJ0nNxHvH4Fap4/b8B928FK4oAKbSsoKCAq1evsnXrVtavX09MTAwHDx7kyJEj7N+/j8LCfLI/Z7PR25MdW71ZZG/PzOnW2M+eg4ebB06Ojqx2XYX72rV4uLtz6tQp6VyJSYnMmzcPe3t7zp49y7lz5wgJCeH58+dkZWVJkEXn/r+W7wYrtPK3w068J7QzKSmJ48ePs2vXLkmrxHOhbZ6enmzfvh13N3c8PNyws5vH58855BXks8HDg9XOy1m3Zi3mfQbT2LQPDfoNwqDfcKx+GMrSRYuYM2cO5y+ck851685tZs+ZzcqVK1mwYAEzZ85k27ZtODo6Eh4ezrFjx6QOff/+vXT813p+q95/pXwXWFEhAVCUr9op7J/QEPHZ/fv3Je0UDV22bJlU3Nzc2Lx5MyNGjGD48OHMmDGDCRPGERcXQ0FeHjt37MZ25jw6mfWn0QxP6u64TF3/m9RbdpDG5sPoO/gH1m/cyJkzZ6Q6HIuKZOWqVbi7uzNgwACWLFnC3r17pdfit6dPny6dV3SqqJcoQotFnb8+ivJXw/0usEK+9vwvv/wiAfP29ubt27fSZ8LxCJBCO/fv38/EiRNxcHBg/vz5hIaGcunSJUnLBIA7d25RUlTMyrXrkVkMov7kRTTdc4OmXmE0Wb2L5vvu0GjlXtr16c302bO4f/ee6Fn2HdjP3v37WLFihWQeAgICJK2dO3cuI0eOlDpVfCZMxNf6vn79WhpFouOFifo7TMWfAisqJzRUeO7r16/z7Nkzdu/ezYYNGyRowsaJz0WFhXMSjRw6dKjU6NOnTzNr1iw8PDykY9escZNA3Ll9k9y8zyxesZK6yr7oODsxzr0f0xbJmDTXgBkb+tB9tR31+g1jpp0DcTExFBcVsc7dg9GjRkvnEOcVQ3/RokVSnYR5EO87OTmRmJj4L2cqzNHq1atxcXHhxYsXEmjRFiHfijb+jPwpsOLkwqsLLQwODpY0YuzYsWzcuJGdO3dKQ+/NmzfSscK+rVu3TmqgKNbW1v9q1KxZs9m7dz92C+zw8d7EwUNBLFy6jOYj7dBzXohfuIz9ezphP6cd5y4ZYOk6joY2K+k7YiSrXFcR4B/IGtfVLHNykhzY1KlTcXZ2ls4hNFJ03I4dOyQn+VUrBUQxaoQNFiNl7dq1ktk4dOgQqampknn4K+RPgy0sLJSGvtA8f39/qREC8MKFCxk/fjzR0dHSscJp2NjYMGzYMElTvx4jYLu6umJjM4Ohg4cxZ9ZsqXOmTp1J49nu1N17BoNlE1jurIPd9E6MXWZKfW8/Gm0KZZj1LJYsXoqt7SxcV66i/4B+0m8Ley6iAwFMgF6zZo30/OnTp/+qt9Bq4fwE2FGjRjFu3DhWrVol1f/Ro0f/Fl//WflTYL+GU48fP5aGmfDyixcvloa50EYBUjiQV69ecfLkSakDhJaIIS8A2NrasmnTJmbPns2sWTOx+sGKmbYzmDR1KrbWC2jisImax+Jps3gloya2YvrUphjbWKC+9yqNdp6l57Cx2NjYsnDRYrZv3SrBESDFo3BgotOEOZg8eTJLly6VzEJ+fr4Ufvn6+v7r/YiICKkuokO9vLzIycn5y5zYnwL71X6KYSMqKuAKYAKocBZCi8VrAVs0UmiHcFzCFIjhKjy1+Lxfv36Spnh7bWKZ0zLu3H9AcNBh2tusoPbhV7R0Wcv8ZV2wmdmCgS4jqHvgHo1dg1izeROJyfGsWLmCieMmSE5KaJ/4TWEGBDgzMzOpPqIDRWcL+y/svYijr127JtVNnFvUSdRROF8hXyOa75XvAiskOTlZsmtCI0WoI+yrACcaJaKBadOmSdojivhMNEg0RjS8R48e2Frb4LluPWPHjWPrjm3s378H3RHTaem8hjEeQ9nqo8uiOe3ZtKcvui4uNBoxg4nWkwg+Gsj4KZMY1G8QritdWbd+HVZWVpLJEXBFKCe0UZgeocmi8ytMj41kHkRni8mJqKvQ3K9A/1dNwT9gf1/+FNhfz1bEo7BhIl4VUYGIY8XwGzNmjARTDD8Rr4oQR4Rk4hgRu1arVo1atWrRr2/filmYuzu2tjZ4em5AR2mIdve2HPDvyfIVnZk9qzOH/HoyfIIezTppYmZmwuYtPkyYNEmCOnvWbCZNmkSlSpXQ1taWhrsY/iLcElGKMBHiUdj9gQMHSqBFHYVCiIlGdnb2b5v43fKnwP5avk4QBFxhR4VGCi8rwik7Oztu3LjB5cuXJS0RzkrAFg2qV6+eBGLw4MESFGGXv37X23sTY2fYoGdjTacFk5AvnYjmjFn0Gj+FsPBwtmzezKBBgyTNFCNFfL9r167S7wn7KkAKRylGiHCgQUFBkgZbWlpK5xDRg7DJQlvFTFHIX2FXfy3fDfZr1kpUbN++fXTv3l2CJeJIocXi+ZYtWyRwYiiKISnCoI4dO0og9PX1mTJlihQSiZhTfD8sLIz9AcHoD55K+wnz6WjtSMveo3BwXsO1az9J2j9kyBBpciLiT+GE6tSpg7q6+r8cqY+PjzRtFo5p9OjR9O/fXzr/1xjW3NxccrRf8xp/lQn4Kt8NVsjX3hYxqwCpqakpxbJCO0TMKDRLaJBomEj3CbC9evVCTU0NhUIh2T0RqAsbPWHCBAn0mDHjGTNsLFaDh9BzQF+GDLJi2JChDB02TAqPBBxhQoRWCoAqKip07txZAnfx4kUpWhGaLF6LqEEAFyZInKNx48ZSRCImBL+u/18pfwnYX4vQoNq1a0vDTjgP4SCEPRNTWjEkRcZJmAzRaDFsxXAUkISWiVg0NDRMCvIPHQri+vWfOXTkKHaOC7l9+xaBgX6sXbuGqKgoSSOFrRQdJ0yL6CwBTmjn4cOHJdMkhr/oUDH0v5qbZs2aSZ0g7O3fKX85WJEqtLCwoGbNmhIs0UgxZIUzE15bwBZaIxortElMHoQWCzPydQiLqGGFywrsHOxwcnZhxkw75syfj6vrKgm6GN4iLhXfFzMp8d2vCR6hxWLCIo4TdvT8+fNS/kAcL0AL8yPss4hm/k75S8EKWyVEeOXq1atLdkyYATG0xVAUmismCGKWI6IFAVeYADHFFWZCaLTQMGFjRQgk4Pj7+REUGMS8+fM4d/6cdIxwhBcuXJCOEUAFSDGTEpGF+E2h+cJJCg0V5xUjQtRDOExhi0VnC/k7TMBX+cvBihyCACM0U9g/0TDRKJFPEMCXL18u2T8xhEXqUGT9RWj01WaKEEk4FaG5AowI34QjFN8VSZ89e/ZIAMVQFiGUMCX37t3j5cuXUgd9TROKCORreCfqIH5H2GLh9IRtFU73r3ZYv5a/FKyo6JUrV6TGC80Rti8yMlLSQhEhCBMg4Ij3hCcXQMUwFjDEZ8JcCKcmIoUuXbrQoUMH2rdvLz2K+NTIyEgyM2IECA0X4ITmC2hfcxTCrIgMlhgJQmsFYHG8eC06VNTtzp07Un3/v9DYr4kZcQlGaJOovOsqV+Z9yYeKbJewc18z/Hv27pGAi/izbt26qKqqULVqVSpXrizZwf9WqlSpIpma+vXro6WlJc3uhEYL0KIDhWlwcBTRwQUpPBOJnsWLF0mjQji+hPh4SktKKPvfBPvrGdZvZ1wig1/xAqmSheJyR0lFEa/PX7yI8woXKQslXecSl2iclmFqYoqamroEScAUXlrAqlxZlMpUqVrx+BVk5V9BrVqlKlUqV0WligqqVVWpUqmK9L56dTXkMjlzZ89lncc6vDZuYs+u3Xht3Cjla1eudJFGk6i3mL4Kk1X8m6R2OeWUfr0mJp5L7/w5+P8V7NdKSEVc1yoqlnr6TVwMSR/fU1IG5SIrX1hEcVExn0uLyS0rld5/9PQJuwN82RsQIA33mbY2dOzUUQIoaV2lqlStWo0qVcWjasXzyqpUrVKNKlVUqaxS8b74vFLlqlSuWgXVKpWpXlWFalWrUa2yKtUF3MpVqVZVQK4q/ab47cYNmmA5YBAbPNZz9MhRaaa21GkJsfExEijhC0oK8ikuzfsyc6wohWUl5JZWtLOwpJS8sjKKpKsOZRXaLaD/FtJ/kD8EVuQxn8a84kN2Jqmf0rD1XsreC6GkZWWQkpRMcbFIfBeTlZFFzodUoo4cwWWFM6fPnMLFYRGdm7ZBrZIqKpUqoVK5EioqlVGpXBnVSlUq3qsknle8FqAqYFVFo2q1CvNQtSZVK1dDRdLWKlSuUpXKVVSoLIBXVqFSFRUqVVWlkkr1ilKlQttr1KpJ95698AsMJPJUNK4eblz5+RrJ6WmkpSdTWJxFSVnFuoOy8jKKy0qlUjGbLCE99T1vk97xWXSEgCtp0m8pfVu+CVYMg38N/bIy4t8mYLt6CVO3LWdRqCdt1gxhgKcNs72cCI+OlL7z5vkzttpOI2DaaJwVejh07MYqTT1m1m/KpPqNmNS4GdMaNsa6QTOmNWiBdcNmTGvUjCmNmjK9YTOsGzZneoNm/ypTGzRmSqNmGNZvSB0tEzRMhqDWfTAa5mPQMB8nFfUeE1DvMRGN7pPQMJuMutkkNEwnUqP7eNTNRlO9+2hUzEbTaNAMDBeso6v1ctqOnk/vpR4Md1xKQvK7XzW64jpesfRYQuanj0xwmMYP8yfwIO6FBLS8tCIv8kfk22DFj3zRWHHBrrysnH3nwmmxdjTqi7rTaGkPalnL6Og0hFtvHkjfeXA2iiPaOsQrlbxXKkkzMCZNX0mKqSkPDRTclMl4pNAlxbw7aSa9SetuwofuSjKNjMk2NCZHaSSVbKkYk2FozEezXnh1k9PWzp2GB+9T89BDah56Tu1DL6hz6AW1Dj2n5qFn0ut6h19T9+AL6gU+o/7hF9Q+9JSawb9QQypP0Qh8IhXxuk7Qz7RasJqnr+KIefWaM5fOkJj6loLSYgqKSyktKyXs7FEa2Peh4+IhnL9xucKPlP5P0un35Jtgfy1SnrKsjJScDwzZtYTGLgOoO12XRot78cN2BzILsyUj/+DCSS5206VIbkC5vh5lego+G/bgnH4X9o1oz4kl3fCf0J5AeTveKs3JNVZSaKRLmZ4BZXpyymT6lMv0Kx719SlW6FNiZMj2zl1ovNCHGmEpqIQlUjlClLcVJTyByuHxqB98Ts29P1Nv38/U3fszan73UAt5geqXzyuFx1Ply3dUjqdR7fhbWi3ZzNPnb1i5awOtbHpjs8mJjKwsSorLef8xHcvF46m1ojdtZ/bi4s+XJRZF5UjO7Y/IN8FW2BzhmMopKCqWHFN5SRE3Hl7DZIQprfp3ROE0gugnP0m9K1Ledy6e5qyOHoUKA/INDUk2NOSEkYyVfVow37odS1drMsNekzGWrVhj0YHz5jrEy3XJMTChVGFImVxJmegU8aivpEyhpNTYhO1dNGnkuAn1o/GohL2iSvgbqkS8obJ4DHtF1SPPaLU2kCmeu1mwzY/ZO30Z5LGLRm7BVAt9IR0nlYhYVMPiqBYaj3roS9o5buDB0yfM3rocjbndaTbZBN8j/lL794UH0squL/VGatJU2Y6o8xUXRktESPk9YEskQ15GaUk5uSXF0g+WFBcRsXUbjkbdsTbvzu5tmygRi9CEQQfuX4rmpF43PirlnO6qiV8/LZxt27JxtQyH2c3ZE9ACB+eWjB/bArs57XGZ0ZYDY1tx1qgzuYZGlMsNKJXLJbgCcrm+EaVGpuzQ7ExTOy/Uw+KoHvGSauFvUImIoXpoPKpHY6kS/BDlBn8SUlK+1L6MG49f0nndYVSOCq19g2poDCrhsVQ/Gov6kRjUQ5/TxsGL+2+e4xbgTa2e7Wk4qBuG0wZw4+41bL2X0WR2Xya6zETez5wtvnsRF8VLSssp/YOztW+CLSsTwX455SXl5JWVEpv4jocvHxN1YD8zxw8naMdmfj5+kpysHIrFJZpyuHfxNCf1ZLxQ6DNfuxFrHXTY4CHD2rYtTotac+WijJUrWzJxfEvm2LRnybK2hBxU4DOwE++V+pQbGFIuV1CmbyBpbLm+MaVGJuzU1KSJfQXYauEvqf5F69SOxlE9JAaVoF8wWhdIbFJiRd0p4/r9J2iv2Y/GkUeohb5E7egL1MJfS99ViXgraWxrh028SIhjX+gBOvXTZ8rSWXSY2AerBRMxn2FF21GmhJ4/wdgZ05i5yJHPBYUVdlYM5T8g3wQrhWylIrxAGubRP11k4qp5HPkpkgErJ7MrYh+r9njxOj6ekhKxZFKYgnOc0Vbwi74C6x7NcXTSx3pSaybMaMk027Y4zO/EMmdtxk5oz5RpnZi7sC0eHtps6deVVIUClEaU6ysoE3AljVVSamTE7s6aNLbbRPWIeNR8f6bl8r10WbYTLeeddHHeScfFPgxz3sC7ZAFWaFM59x49pc9CVzSdfKRjuizbhtbyHbRc4kut/XfRCHtFG8fNxL59R+TZSAwHmHL1+gV6zxtJ45E66PVrTt/x5qSmJeO2cT3dB/Xn/fs0ic0fzS98G6z4k+K2itcX719Da8Voms3rQbMVg2hn3w+DtVN5kZZASUmBdIwAe1pbRqJMjod+U0YPbMb06e0ZOaEtM2w0cV/ZBUeHNsxfoMUcm3Z4rpExz6wpP+nKKFIag0LA/B+wQnNLjQwlsI3sNqF67C1qXsdYGXCI2KQk4lKTiH+fQkJqKu/T0igqyqeopIDy0nLy8oqISUsjJjWFhJR0YpNTiEt7j1dgNI03HKdW2BvaOG4j/l0yl69eYeT4kbx9F8PRcyHU7dUKexcZWzaPoqAgh7OXLqJjqODSpQoH9keXIH0TbIkUy5VL4YVQ/xu/3EJ302TUHQyot8qCWvYmDPaZx/vMVMpKCyU9uX3xLJE62hTJlbwxM2SZsi1TRrTG2rYzNradWbxME4elrVm5Soc51m1YbtWCy0p98oyMJZjl+vIKG6tQUKYQ9laANWKPiArsN6IWnoC6VwQbw45RXFJEYVk+JWXFkvMsLS2iuCSXkpJCSgpKKCkUi50LKCnLk9ogOr+IfPaf+JEGm05QO/QNbRdtIfZtsrQM1NVtNR8ys/j4IY2x1sNxWdmOA9sG8ik7k5y8fDw8NxAVGUlZaZl0vj8i3wQrpm/CYQl7Ul5Swqv3CQzbZE/dMVrUn2FAp9k9OXg5nIJisYL6i/O6eJYoXT1KZAYUGpqwW1+T+RPbM258C0ZPaI3dos5MGNeeufM7sWW9Ntt6tCDHsDsFCn3KBFD9L0VeAbhErqBYacSOzl1pbO+JRngc6l5ReIZHUS4NJWHbRWApYiAx7cynuLiA/PwiCgvyKCv5THl5HhQjdUQBeeyNukT9TZHUCntNG0cfYhKSiI2L5eKli9LMUciFc0c45G+M7/ZBZOVkkpqWTmxcHNkfMiktFtP17wArwq3S8rKKUlxCQXEJPz+6jdO8qUwZPYDx/Xty+8dLFIoGlVYY84cXznJSR0axvpIiQwMCjTRZay9n2pQODB3RnCnjOjB1YlvmLWiHs3UrDpt0Il/Zg0KDL5r6FeyXUiKXS2C3d+5KQ4f11IiIocbmM8zYHsCFew+5+OAhV+4/5urdJ9x79JLPeTkVmllSxvvMDC49esT5h0+4eu8N5+8+5fT9OyzcGUg9rwhqhr+mteMmXsa9lfIGYvnR1zDq9r3znAjrReCOIbxLjGPKygXoj+/P5Xs3pRxI0feYAnGO0rJySgS4whKp11NjYjkZcIDowH04DxrMs+vXKhZufAV77jQndfQksIWGxvjpdsVhTAcWOnTGaZUeTsta4+qqx6rlbVkzQ5NIg87kGxpTJNenVCb7j2C3dupKIwdP1MLfoBb8kPobw2jq5kczD1+arD1AXZc9WDh7E5/4FkqLJf917f5jFHaraewaSNM14TRzO0xTtwM0dDuExsFHqIeJqMCbpzFxFJeVVCyc/uJQ7j26SlRIf/ZvsiTomC+tZ/akoV0fVu/dSGFZGfnFFVHQ78l/ACvyBBUmIb+gkLy8fB5fu8HWJUvZvdaFHfPmc+ZcFBmfMr9kfeBO9AmiuulIYAuUhgQZdWHRtNbMnNEKyyF1WbK4E0uXdMNpaRscJ7cm1LAzOUpDCvWMKNMTcCvK/4A1oMTQhM3tNWmyYD3q4bGohMVSPewt1USodfQN1cNiqHLwGYYbQ4hPTJTm+0JuPHqGjkcQaodfoxLyDpXQWKqHPkMj5BXVxEztC9jnsfGSfxBQy8oLpe8+fXKTyJCRLFtiiIm1BXUm6FJnlgmrtq+lCJHt+gNU/zvYihRZWsZH1gfsIfDyCa7cuszqra7sOrKdfiuncz/xZcUQKoPb0VFfwBqSZ6jggElLVi/pxOz5bbGZ3wmbaV2xndqN8RM7MGO6DlvNNPmoUFKkp6D0G2CF8xJgt7TrTJO5HmiExqEaFotqeAwqIS9QCXmOathLKh96jHLDQcnDV0gZtx49RtMjGJUjr6kSGk+l0Dgqh8ZR7Ugc1cQkIewlbey9eR1XsfJcaEapmAKUQ0LsC0JCbOk5rjUtRsup36sdDScY4LrdXWqrAPtHkoffBCtsq5RoKIOP2dnM2rcerWVj6eUxjTYrh9BmcX90Xcbz/O1raZYmznP75AlOaulQoq8k01CG76BmuLvrMXxoU4YPb41VnwZMH9+W0dPbMnlWa9yGtCFWX49SmS6lBvqgkINcAXKlFHphqKTc1JQtHbRoOt+bGuHJqB57h8rxeFQiXqMa/hK1Y29QOfwYw3UBJLxL+lp7bj98iKZHEKohTyX4VcJeU0l0SNgbqoXGUCPsFW3tvXgZWwG2qLCI/KJCCVd8QgzWcyxoYtkCxZxBzHC1o+P0vqzavl7i8tvk+H+SfwMrflzAKhMzr1IoLCzA/Yw/TdcORmOpMbXX9qGGnQmjdzqTlpnxL2N+K+oE0VralBsY8dxYF7cRnRk3uTlO07uwfYQ2/oN1WDm+E84rurFwSTs2zenIzzpdKJDJSNBX8LBrV+5168wjzU480dThnpaM2zraLGzZjroTV1Hd5wpVt55Cbds51LaeQ9UnGrXtF1Hf8yMGq3cQ9/YdIu8vWnDz8RM6rw+mSshLKofGUDn0DZW+FJUwYQpe08rBk2exCRQWlXDgUBBrvD1I/fiBuPjXzJn3Ay16tGThxqVEXjqN9hgL3Pb6SOnUkj8LVoj4AWE7hQMrKy3h2pv79HOdQoMxXWltY4zWeFMO3zjzJSqosGu3ThzjlFY3yowtiDDQYvaoTixb3pnlw9twz1BBiokML/MOrFkhY45tU9xs23FOtzPvjYxY364juybY4DPVlp0209k/fTbbrBewecZsVtvOZp6LG9brtzFj/U4muKxjuIszNu7eDJy3mkbLdqNcu5u4t4mUUdHon588pdP6g1QJeUWl0Jh/QRWligT2DW0cNvIy/h2piSkMnzOOuuO74e6/jbjYVwQcmoLtXEPiY1/x/PVLTEcNwsXLvSKV+j02VrIllFEsogNxmaIoH9/dW5g4eiAzbSew3tGRlPdJ0nRXZNYlu3YinBNa3chR9iWgpw6O05uwdklXvPq1JU3fgDx9OQe6d2Ht8vZs3KDJOkdtjhm0I8lUyZKuXTgcfo6+Llv5wXUTYed/JOV9Gu9SkklKT+bFqye8TYjFP/QMfZZtwnD5akIuXiL6xEXaLHBD6b6duIR3VOTZyrn56Bc6rQumasjLfwNb+WgsaqGvaL1wE69i35KWmsZAm+GozdRG324o58+fITx8Als2WlL06RP5ufmMnjKJJa4uFVcbvmdKK2xJkdBaEX8XV2hB7JMnnAoJJCnmFSf8D/L2xWtycj5T/CW7dTMqkmhtPRL0DdgyRBunpa1Z59yFLX2a8kmpRaGOMUHm2jg7tMHDvRU2I1sQbNiZZMM+uBr0ZMb2o9TbFE7z9WEo7Dyw37iNiavXsfbwMXo6OjPZfTvKRZtp4HaMOq4Hcdh7kNPXbtLaYQMGbruITxQ2tkKb7jx+huaGIKoc/XewVcPiJFPQ0t6TV2/iyc7KYaTdVCr1aUYnJ0vsXBcSFTaZzRsGkZOTKf1iQEAQnj4+5BcXUfY9puAfsH8TWDGVLRFmoKRcmuqlZ2bx9OYd/L292LlrGxvd17N781Y8NnhIzk3KJ0RGc0Jbj+dyTbwmaOKxsQuOsxuxZ0B7Mk20+azQ4kgvHRZad8DHuyPTxrdlt3EXkk3M2dyjH8FRpxnvs42ZPv50m+NGA+ddNN0aRhufMFrsOksTj0B6uO1ghs825njv49SNm0TfuErbRRvQd9nNzw+fkpiWTmr6RyIv36CDexBVj76kcliF86rypaiExqER/oYW8zfw/NlrKfU53X0RKmZNaTxTid7knuzb3gev9f34+DmNgrIysj5m8ujpUwpE/llMEP6AfBOscK7CeYlISlwm3hW0lwnzpuKzx5suPxgz0WkmPeeNpNfkH8gr+iR95UaUAKvPPd3OOFu2wMdbm9ULmxM6UJfPhubk68uJ6KWHi3Vntvt0wnpCazbrtuONiYyVCh3SMpJIz0gmITkBk3kraLzQkzar99HayYtGq4Oou2ANE3aHEJ+WzOfMHOkCVNTlC7R12kyLVaH0XXGAQWt8sXT1xWTFXhpvjEQt5JWUDFcNjUXlaKwUw6qGxlMj9DWt5njy8MUbMrMymLhoFt0sDGg1Tka9ad1YsKgzWzxG8uHTe/LF2t/SEil2lRL7xX9s88d/BCvlC6T0YREb93rTfKQxrYcqaDhRSd2+HWk43pDBCyaTV5QvaeytqOOc1tUh3kCbzcaN8V7QgVAfY07270KBgXBeMk71UeI2tyPuS9rjOag912UyXpspcZBrk531QRrKJ27cout0B3rNc8Fi7iqW7PJHc547yukO6M9bzrUnLykrFzWD8EtXaLlkOzUDXlPd9yGqB+6h4fsAtYCHXxLcb1A/+hoV4bS+aGzV8Bhqhr6izWw3fnn9ko/vUxkxZBTe27YybvUM6jkaIxuvxayZI8jM/UBWZjoHT4fjtduHxPh4KeHzR+SbYL9e76pIkZVx6vp5OjsOpuFiC+oO7UJdSy3qDtJhW7AvReI8JXA78hhnu+qRrzAlyag71030OKJswW29rpTrGVGglPPQSI/g3h04aqHDMyNjivSNSTAyZZFcj9zsTOLTUhm5xgeThatx3XeIQfOc8QoOR+HkhdNOXyzWejLS3ZvUnI9Swvnkhau0WLKFKuFJVI1IoGp4HKrhcVQ7Fo9qRMW0Vy30NdXC3qAaJqbAb6TPNcJjaDnPjSevnvIu8R3LFrvw+PF9wi9H02JWfxqPNqKXpSk5eR/xDfGlvnF7WlgZsHX39t+i+o/ybbDSBPrLTRRKxDX2LFwCvGkzyYzqXevQWKcFSmMFz1/FSFcuKS/hbvRRznSTUWLckzK5OWVyMwrNjCgwNqHUUEmpiYx8Y32yDHtTZDKAYgNzUBqTZGLKCj0ZORmJbD0TTas5K/AJieRAxEksHJbhHRqFbLk3fqfP4hlylk5zVnPw/AWpnlHnL9Fp5UZqHH+BugAZKq5nxVAz7I0Uq6qHVsy0Ki7niHxBrHRRsm54Ai3ne3L36TM+ZHzg4e1H5GVlkvwhjlGLrKnRvTnDx/fh4S+P6DFjGDWNWtJosglTVsyjsKgip/B78k2w4oJZWUmJtCqkSFz+Li4lPSOdqeNGo9u0CboNG7LI1pasjIyKRDLFXD53nCnt2rGsfSdWtGuPa5t2uLZqy8rWbVnVug1rWrXBtXUbXFtqsrZ5R9a2aYNbu7Y4tm3PMD19Xr25x5AtfjRY5MOpuw/YFxGNhd1yvI+eRt9pC0FnLnDgxHXarA3GcoM3OQX5HL94hnYTR1Fj7lJqzF2D2lxXNGavQsNmBerTlqM+bQUaokxfifrUFahNXY7a1KXUmL6M5r3H8uzxC4ryCkhMSCQ3N5vPuWls93HAxb0Vy1f3wnr1UpoPkjN/rT1tp5jRz2E8qR8q7nvwe/JNsGUiKy8WjpWV8LmkUJpLi1nYqePHGdZRm15NWzN52GBev34uORHxF/HjddrOdKGJ22EauIfQ0OMQ9dcfpv66EOp5hFF/fTj1PcOk9xusO0y99Yept+EgjV32opwyk5uP76J0P0r9bRcwW7WdXks9sVzqic/hKLou2Yq54xqUHrupu+cyZmt38O59Khd/vETr4UbUWmiBhnM/agtTNdGQmlONqec8iLrO/ai5wJwaU42otciCWiv6UsO5J3WWDKD1sB788uo5IVFR6FiYsitoH2nJyUT4TeTFbSWDJ7Wk7iBdrF3sSEmPZ+ySKRhZD+Lpiye/xfVN+SZYSaQ1YOUUl4pFcaWUlJcS9/Q5cwx707VOPSyNjTkU5M9P165Ih0f+eI1ma/3QiE6l+okUVE8kUzkyiapRyVQ7mYLamWTUTiVR+3gyNU+9o9qZRNROp1I/9Bdkc9bwOiaWHzwDqBFwm5qHnqCx72d6bT3IxiNH6LgphBr+D6l99Dn19//IaLcd5ObnceXGZdrO7o3G7iFo+A2n8eretByuRS1nc2oFj6Dm4eHU2TyQFqM0aby2OzUCh6DuZ0WN/SNoZd2DO4/v4LhpOdXNWzJxzmTevHzMnm39WLqmA80mdkM224rbD+5K7TsQEUSHHnqcO3v6N6C+Ld8E+zVtKERorkgEfy7IJ/fTJ6KCApEPMmGg7UhGThvL5AU2FJaXEX39Oi1WH6D6yRRUTyahGplIlWPJVIlKokZ0AnXDn9Fwx2VaOnnSdL0PdQ7eoUZEMnWOPEXLdhVZmR84GnWZzku2UNc7jDp7TtN7czAbj0SitVG8/on67kfQXbmTsJsVC4dPXzhNi1lmqB6wRD1wDI0W9qb9OG0arTSmtqshGq7GNFliyHBHQ3RWm6K2ZyjVA3+gpt9IWk7rzt3H95i7YQlqvVpiPrQ393+5grePnH7TWtBkmB67QwIpKxbX/8qIf5+M2UALtu7c8Rta35b/ClYKuUpLyc/LY822jUxZY8f+Y/vo5mRFPRtDNMxa08thIrFJ77jy4AFtXH2pHp2ManQS1U4ko3I8GZXoJGqejKHergt0s5uLh48xdmuNaD13EXWOvKLWyRhaznHj9dt48nPyOXv3EUt3H6bHAmcs5zngvm07rYdMpvtiN5y3+3Lx/kM+leZJ9dwfuI9G841RDbBENXA8DdaPRGtcNwZP78TEWZ2YPUuHmfad6TuzA81czam1bwyqBwejcWA4raeac//pIxZ4OaNu0ZqWPTpz4LAXRw52Ys/ejixcOlHKE7zPyGDL3p3sCwtmT/ghfr5b0am/J98EK+TXYIVsDdpNi1k9aTCuGw2m6VF/lgEaY3XpvmQCT5+/4JeYeNot34P6iSRUot6iEvmOKseSJO1Vi46jpu8NGi9ZjL2njKEu3am7ais1TiagEfmOBo778QuOkOK2IopYt3kvPSbOxXSaHeYT56NtZYNywixGTJ/N86fCxpVSWFKA9aq51FjZQxriNfcPo5VHb5QTOrLeozM/XujArcstORIqw2J6W7qtkFF7Tz+qBQ6nxq4hdLa24PHrl9i6O1KjfxuaDtfGdIiCqMNNeHC7LZFRq8nOz2bVzvW0nG5BbdOOjJw0lszcignR78l/BPtVpJCrvJzEd2+xWDqJGot6UXdoZ+qat6ZGX016zxhB8tt3JH3Mos2ibaifeEf1k4kS2ErH36ESmUj1E0lUP5VEXd8LWC62QLFmNrWPP0cj6gMax99T2/cOFnZrSExNJyc/Gyf39QxdsJyR9usYO389Y+3dGLHImdFzF3P60k/S5ODSz1fQsu2J2o7B1Ageg8aa7sjnaNJrjgKX7Z1I/9CK5KSmLNnZjoEr5Qxa3IX6i2SoBY+mxnZLei0cw8vYWCznj6fewE40m6Sk2dD2RB1vxpWzbYiM3MjKA960ndWHOtZGVDNrzrAZ40jPrrjFye/J74L9l+aWlXPp+X0meznRyawbTZvURqtZE+wmTSIj7QOZeYWYrdiORthL1E4mohadIq3q0zj+lvpHf6F+8DVabvTFbkN3rJaPptHmg9TdcZB6+69S63g8TZz247LNl9jYOKbMXED/iTPpN9mGPpNs6D1tNj1tp2I+ZiK7/Q8TGx+Lld0oai43Qy1gOBp+I1H37kcj997UdBtAT7e2vHzcnMRnnei2sBkaPn2ou9aYOmu7Uz14KCqefZixzlEyBbpW3bFZbYfVksk0t9XDfXc7jgboMWRSTxrZ96KFQ39GO02m9Qgl45bM4FN+hRn6PfldsF+lvLiMsuJyUtPe42bvgH6d+shq1MHDZj5ZHzKlS8jzvAPROHCTmiffox75DrWIFBpvDqHX6olM2TiCUQ49OXBIh9WuXXBY2wcvP0vmeI6i9bYD1Ax5QGvHDQybPBsdvZ5omfRBv5cJCvPuGJgOQNu0D1oKC/pa9GfI7NHUc+iOuv9IVAJHUs13NGoBI1A7NBK1/cPRdu1KcISM49EmtHPujMbBoVQJtkLddwgaQcNQX2jCJv+dHIwOx7RfD548fUTomTA6/aDDiOntGDpdkzrWcuo59WTJvnXEJL2hh80wpjrOpujLXrbfkz8MVnjG4tIykhISWDhmPG1Uq2Heqi1zR09hmdsanj1/QEj0NWp7HEc9KoPq0e+ofeg+vVdMYOQKC3SXzKGPXS+OHmvDlq3tMbYfid5yW5w392GgyyDqHntOnaMvqeXsi1r34Wj2sWLYTBtmOtox234+gyeNpImsK6rGrai3rB+19o2mmv8oqgWPpmrgOKqJUCpgEDX9RlBnqyUNXHVp6NoN9T29UT00hGoBw1ENGEY1PytaO/Tj5I+XCAo5ynGxwqW8jA+fM1m8cCAzZmvRcGQXmi7pjf02V2mbgJjau3itZcG8eX/o0reQPwxWzM1FWPX00UNcR0+it5Ym7Tu2xGLYDzTuK2N3xB4e/fKc9i57qBH6Fo3oJBoHnsdySX8Um9dSKywWTc8tRJzuynY/E+rvPEXt4/H08XBkkF0fGoe+olZkOjUj31En+DoNVwegu+oAylmLUFpb0nZBT2otNKPm1gFo+A1FLXA41f2HUu2AFdUDh1A1YDCqfsNQE9rrP4qaASOp5T+cmn5WaOwYivqGodTYPJjaGwcycO0MYt69431yGnn5+eQWl/AxK5Og/b3x2tyBrmMUeAR7kZGdTUlxhUL9fOMndmzYVLHu7g/IHwYrLklk52TzLOYZd29dZd7qBbQbZ0xjs87Un2bKrM1LSEtLZtJmPzT2XUH9fAoNA35igMsIZOsc0Ih6QeOdwWz312WRe3ea+t2lbuAL9ObMQ9NpLrUi4qke+RHVyLeonE5E40QKDY8nUWP+ahossKC27zDUDw1D9dAg1HytqLVrKDW3WVF9txVqAYOp4T8U9YDhVA0ejtqhUdTeN4y6q3pRb1wXdCf0ZcC8sShs+lO/X1eWbVpDVnYm+Z+yKC3Ok9a+Pnlxk1Nh3Th3vCW+B73JLcylUFo6X0RRYT6fPr7nXfwbSkq/Jx/7xWmJJHZhcUHFRTSxz+DJY4zGDUSxbBjtJihoOsWI6som1JluRP/F08j5mE7giWgaevijHp2MesQ72ntuxnT2UNovWIjx4qFs26PN3BU6yK2n09nWkdYzp9Eo4CLVTySjGhWPamQcVSJSqBaVSI3T6dRwWE+d4TI0PHqj5tOfGmt6U3+eKdqTe2E+sT8dJxhT3747NTwGoL7Tkqq7LdBw60PjyWYMsZ9K8LEjxMckcOZMFDv37WLlmnUEbN3Fnllz2GZpSfBiR55du0FExAZu3dTldMRAXr+suPFOYnwMUd7e7Bg1Bp/Bw3BzmM+z5xWf/Z58E2xKUhI3/AO5tHw5F9eu5urBQF49f0z25xxsPRZT27k3dTYNQH1oe+r27EAb7eaMlOty1GklZ45FYem1k9rBD6hxKo16R39Ba94UFsxvy4kofXZs68hGr85sXq+H3gBzGm8NRu3kW6pFJVE1MgFV4fTENDgyEfWTidRy9GKRhxvD5k/G2MaKITMnsX67D1euXub9+1TuPnjA3GWL6WE9Et0ZlnS17c3A2aM4HHqEq1d/4uSli9IqwZs3fybo4GE2bdiM7zhbrneV8cFYySt9BWFG5iyz6sKxUB1OhC2S7tH4/NYd/EeO5aa+obRBJVppzM6lC3n/r5Xj/12+CfZcRBjL9Q240s2AlzriUZdgy37cOhPB/ReP6bl4MrUX96TOkE4oWjdkX/sOvFLqclFbk91TJ+O1K4B264NRj0qmZugTzDeMxXdPZza6tcJvr4xtWzRZuLwlFtPMaexzVIIqpsAi9q1+PBENATYqkeon31LPwYszl6/jGxzIZv/dvE1JJCUllevXbpCfW8DH9ExOnb7I/UdP+fH6NdZ6uBJ5IoLP+bk8fvELl6/9SHFxES+eP2eu/Xx2erhyyMicD917UWBoQImejM9KYyK1O2HXR5OrP4bzy80fCba0JE7bgBJ9Y1Llcg6PH0XKB7GnTYzd3ze0/w62HLLSPvLwyjnChljyQWZGocKYJD0ZgRa9eXTvDi+SEvDctYGh3dpzrKMumaa9yBjWk9Q+JpzWURK10ZvxG7ZTK+gKNU89o/V6D5Zu0MNzdTM81zdl84amLFnUDjP74TTYd5HqUckVYKMSKzRVgD1RAbauvSc7dvtyLvoU8e/ieRnzijOXLvDhUzaXfvyJS5d/IuNjFlfOX+L542fExsQQEhrK3UcPSU1N5vXzF7xLTmbj9m14bVxH0PgJPDLpSabbCj4vnk+6qTGfjeR8NlByVqcH++wWc2j6TJ7qdaNErxt5Sl1SDAwJHjmW9M9Z5Et3b/r90OCbYMXVhzwK8XecwTu5GZ8MlRQbyHkhMyBwui0v7twibOZMbumZkanfh6yZs8nct5Oc1e4kGPYlwsgMt1m2NJw4nzrhL6gXloj2/NEcPWrAk3u63L8mZ6Vnb+q5+FAnUsBMkoCqnhCPFUXM1tRPvqOWnSf+h8NIefuWtPRU0j+k8eDBA56/eEZ8XCz+vgfw9trI3du3efjgMYmJqZQWlxPz+g079u5g096dLHZxYerMqXiMG821rkZk/TCKzO3beG+/lCyfdWTOmESuXEa+zJDTWtp4t+jECyNjcg1lFJkoeKalx34Dc57dukEhYinSnwH7ZdtNYVEuwTOteaRjwqPOmhQq5dIGtyN6Cjxkcp4rupPdsy8flzqSvMmbhJ37Sd97gIwJU0iU63NaqwujW3Sh6bSV1ImIp/6BC5h4uDJ2hx1DN8+ls7unlAasHZ2C2vEKTf01WGEe1KMTqTHPg/mLnbhx6xp+Qb6cPXeewMMHcfJYwbRV89CfaoHuhF7Yuixg1Xo3goMOceniBdy2rENu2496Y+Q06NoMa30tLsqV5CiMyR0/mrQF9rz38SHluD/vly0kq/8P5Jp3J9tYh8jOHdjQvDmntfV5JDdjc6NmuHbuSsS2ikszfxqstPir4BNhNtZEa8nZ3rIV73r05Uo3bdwbNeJOVwM+9/uB99YTydrgSrL/bpL37OajizNZVgP4ZKxDvokxzw3MGa+lRwN7H+ocf0ut8ATUDv2C2qGX1IiIRyP6LdUjE6gubGtUhZYK2yqBPZGExqkk1Be4U3+wPt3m98Vs6VCUc61oO9eCWg7mVFvZixqbLVH3tkR1cQ8azeuN1gJL2szvjbqjMbXc+tFkqA7yFvVZ2bI517RlxBgakGVsQkb/YeTs386HiAO83+pNlt9+Uhwd+DC0Px/NDPi5U2dCWrcjqFVLDrbpwAFdY875B/wB61oh/w5WWlZURlHRJwId53DJoAerW7ZgdeNmbGjUlJ90tEnr2YuPm9z4ELiH+IlTSfVZQ8ZSez6bm5NnbEa80pTLnbpyom0nvNt1Qq+jIXXttlHr2BvUT6RT/WQqVU7Eo3IsDpVjCRWOKkpAfUe1SFGEfU2mxqlE1B3cqOXUF7Xt/amxyQJ1n4Go7rVCJWg41YKGoRYwBJWgoVQNGoGK3zBU9w5GbbcVdbdZ0caqM2NatMS+YTOOa3bDv1VrljWuz0ktbdKM+pI5wJLUyeN5H+RLRlQUSbsOkLjbm9yxQ8g1kJNmbEiqviGP9Lvj2a8f7948o0Ra2fb78k2wYjdibmk+d86c4IiyN89k3XmuLSNZ35icQT/wYeFc0jxWk308jJydu0i3Hk9+DyV5Mjk/aung06Qte1tqcq6THiGdOjO5QQNaN2pLy/kbqON3S7rKUDUqHZVjSRJYtchE1KKS0IhKQk1orAQ6GY0T7yrArhyAWvBIaaYlcgLV/IdS1deK6n5WqARaSXkAlYM/UCV4MNWCRlB7/QA0p5qwSFeb6C4GnG7Tjjxjc7IMTbmta8T65m0IbNeOdJmcAh0DsiZNJcV1DclBB3l/KJDs0aPIk8vINTDhrq4R+wdZcff6j9KeNrEr/E+DFUsV88rEzRIKuLh/H4f79OWZvpxshT6Zo8eTG+jLu8VL+bDKhcz5s/jUw4RPShmnOnfFtWkTflLo8dmkNyUyE0oMjIk1NGWdrgneO8R2zL3U9o5GQ2hntLiEkyglxoUZUD3+riI6OC60NokaUW/RsF+Lxsr+qAQOQyVoCFUCh6PmP4JqfsOo5l8BVzXQimoHh1FjzxDqLezJyFW2nL5ykt3DR5GgZ06mji7FSgXlYt+utjFx8u74tGmHT8s2vJYZkW1kwMdRg8nwcCXLfgEZpqbky+Rc1dPDb/Z0Yp49kpa0ipVB37WBTthY4cCklTDFhTy+cZmgcaN4JNMjx8icz1bjyFnsRJJVX7IMDcjVN+SKjgFrGjfjjr6MzyYK8o1lFBh1o1hPjyKZMaEmfXj++BGv4hJx2hZEK0d36uw9R62IN1Q/+Y6qUW+pElkBVhQRbomoQGisxqr+VA0cTpWgIVQKGELlgGESYJUAkRsYSu3dw6jj3Ieus/vh6b+Fd1+2y++bNoN4uSn5RrrkKfUo1ZNTrC8jX6ngpaE5Tppd2dy3F7elOhuSb96DPKUxuUoFr2VKto0bQWJKnLReuLSopGKb1vesNpRu4SEWbJSUUVBYJO0WeR8XT/DwUcQbGpGr14U8QzmFhmakKU04ruyOY6v2/GSgINdQQbGOgbQXocRARr5cn3xDI4LMexAf81IKrkVgf+XOQyZ57qSdy1bqiMXEBx9SNewNKmKyIKa3p1JRP52ChqM76qv6oxI8XBrqlYXWBgyj6p4hqHkNpN4yc7Tm9cN+iyv3Xz0mr7RQLImQYvhQjw3cl5tQIBcrx+WU6BtQYCSnQKlDvkzBIUMjIoMPsG+6tbTB+oOBqbT34bO+IQFaMq5duCCFniWFxRSJrVdiBc73gP0qv772Jep658xpIuVGFIi9Awb6JOgpOGTRh+gD+wgcOpJUhSH5RvqUiA0busaU6RhSpNQm3VSPvYMGkZGZUbGDWtqkV86nvCKu3XuC8+6D/LBmK7rrfWmw9RgaOy5Qw+8uNYMeUX3GYtTFJWzvgVR3M0ZtVU9aOg9CsXgko5xs2Ojrw9OYF+SJu2BIa7rFbZ8qcqbXIyI5p2dMvlxGqb4ORQYyCg1kFBsoKFLIuauQE7hmA8kpyfg5OXNE34QnugZE6OlxyGkJOfn5Fdtff3Vx9Y/KfwX7P1JOYVkpGVkf8Z08gaf6ZryU98DXsj/3L58iMTGBE4PHkqNnTLFUeaEdMkp19ClR6PFQ2Q3/RQvJLxX3XSmlSLpFSLGUKSqSFjlDRvYnfr77gAPHT7FiVyBT1+7EwnkLPWYtoIftEKyWTGXuuiWs3+9D2JnjPHrxnM95X1aliOWmX+5+IUygtFISePX4AYEKBfkGSkrkol4GFCj1yDPUpcBIRorcgP1WI0hNjCU/N5eLO/exd/o0IrZ6kf7xPfnipg+/RfEH5Q+CFbOxUimNdufcabZaDiZk+ixe3r0lraF+/PIXTg8cwQddU4oM5BQpZBSIbUn6phTrdyeyazfunjohHSu26xcWl5CblUPK23f88uA+N05Gc3rHLiKWuRBiO5sDI0azu0dPdhiasNXEiK1GeuzqYYbfiNEE28wiZOlSjntt4MyB3fwcFsKTa1eJffaM5IRE3mdUbNMszC8iOeUtO3r0JMvAgjy5GQVGRhQaKShV9uC9noIrHTsTYmrGT8dDK9pYUMKHDx/IFXdjEvZUrA3+k2T/Afu/DVYMM7Fwo6C4kA+JiWSmp5Et7r0K3L1xFT+Lvuxs1IxYhQHZ+kpSdY15qjDlsrYRq3X0OXswkDN++whZ7sS+CRPYZWnJnu7mHJYbcFmmzwOFnJf6uiTp6ZOqZ0iqgSlpgwfzfsxYUnv1JkNbl7f6ZsQZWRCnZ8JjPQX39BVcEWk/Y2MClMb4Gpmxv0cfDlhZETRpMofs7VncrRt7OmoT1lWXG1pa3NPpwmsdQ25pK1jUsC6+Ojocd1lPXqHYdVEh0sLrL3cz+rPyfwVWnKhA3HGjqIz8klI+lVSsU71/+QweRgbY1W/E4Q6ahLZty+7WrfBs0QyvJk040LoDxzpoca6bDnd79uJFn94kGhmSK2yeXE6hQkmxniiGFBkYk2NqSqarC7nhR8k7FEZOQCDplsPIsl9K+qRJ5MtFgkRJoZ6CHANTUsYMI6tfP3L1leQYGBFvbsgvZgY8lMm4260r0Z06caRVO0KaNMevWRP2Nm2CV/OW7GzVirt6XQmztiElLf3LiCqRQioRYv3RrUffkv8rsNIdfISTKKnYnCxCMiE3QgIIU8oJ0tQiVGHChYG9+WnoIF4bm5E+YRqfJs4jp99Q8r028+lQEJ9Cgsia60CB0phiQwX5CiOKdZWU6OnzWSYjddwY8n+KIn2+LR+tRvLJx4N029HkRYSQ4bycXIUJecZKsmUGZMyYSeGtK3xY606WrgmfxkykwN+fvAN+FG7bw6cp08k2MCS790A+2swicfIkEnr1IcbImCwjfTJkOhwaPJS3sXFSW8SUVXjAr+39s/KHwf4nEWgv7vbhnq42edNnUXD+Ip9PHObzpRNke6zmk5cbH3bvIWXdBvLCjpM2zYaPHp7knT9DquUAKRQqliko0TWkQF9OjjAlTivIuhhNgpkxn7sa8NGkO+nj+pN34RTpokN0Dfks1+djv0F8Oh7O+5+vkRkewocefclavp7PN+/ydsVaMg6G8SkqjISxVuQH7OZz1BFyww+Td2AXOYMGUCTX4pNCn8MDBhD3WsTYf518N1gxWE5vcue+jhb5DvZkXrnAk/nzSAoIJufgQTLWrSHlaBBpUUfJ2bKNbG0dPg4aTt718yRPmECBnpISfbGP1oBCEZyL+23ZziX3ygWSljjwwXkpORvcSZhvw6cr50mbNpFPerqkieO8PMl/+JCYoKPk37hM6ujhpG/dxqcnt0gJPEDmibNk7NhD0lZvPkcc5L1lHxJHTODT2bNkrHDgk0yXbLmCIwP6E//m1W+b9l3y3WCFHbqwYgWPdbTJmDeP3Ad3yYiMpODuIxJmzCHFyZ734SFk+vuSc/w4iZaDSF/oSN7FE6QPHEiBgVKaxeXLDSiS6VGs05VsUxPSVjiRExZAXlgwmQuWkjp7HsWXr/L5QADZ6zz54LqG3IsnyD4UTGbwIfLv3yJluSMfQwNJDQvm4+Ej5P30I/EjJpJ5KIQsbx9ytHVI7zGY7IiTZLg780lfQZZMwdHBVsTHxv62ad8l3w1W3Hnz1IoVPNPqRqa1taRV7xc5k3v0MB/3+hC/xpmssCN8mDKdT0HBZEcG8vl4AGlLl/FJaUyhXI8ifTmf9U35JDckx0CPj3IDXsjl3OzXm/M9e3Jaoc9li17ctrbhpf1iEhYtIXXhQjLs55LW05yk3uakr19H1ip3cg+Fk2FnR+rgwRRcOcmHhU5keq3l04XjJM+aRuaaNRRcOM3H6ZPJlcl5p1ASZD2RlJS/9tbS3w1WyOntPtyQ6ZE7ciwFAfvIHD6MNKsfKHBfS/aMBWTZ2JBt0pMsix9IGjuU2P59iZf1JElfQZxON57p6nBZT0mkSXcO/9CPo2PGcmahI5d8NvEgPJyXVy/w6NRJru/35fya1Zx1WETYpGmcGjqaE/0sOGcs46aZGU/N+/LY8gfe9DIlTq5P4oTxZI4az/vePcn28iTv6BE+H/Yl224+ucY9KJQZcKurDlHr11JY8tf8u6mv8t1gxX6wZw9ucmC4Fdf15Lw1MeKtQofEbt14qyUjRkvGA21dftTR45LckDNmZkT37UfYqHEEzZ7BwaVLOLXZi/snInn35Il0N8/i/Fxpuf5vRcqtiEyTmGTkF5L3MZv0+HgS7t3i6Ylj/LRvF1EeqzjuvISIBfM5O2k6V0aM4SfLwfzcz5KbFgO5bdaL+9oKHmrpc0FHwRGb6SS8qPi3VH+lfDdYsUk5v6SQl3dvErV8OZdnzeXqnLlcnD2Hc7NnETl3JpHLlnB2ixcXj/hx+9IpEp4+JOt9svSfPUWK8tvy7SnP19swSOXLE/ELX98TkbXolOKiArI+fCQxNo439+/z5MIFboWFcsvfj6sbPYleuZIf9+wm5W0s4j5Mf/Xdj78brLihrdAiIWKrTnZWBlmZH8nJziInK5PsHPEvTL+9hedfIH6VRZPe/xONrEjAVNwi7/cgSZOdL/+EqOIux/+pc/+8fDfYf+Tb8g/Yv0n+Afs3yT9g/yb5B+zfJP+A/Zvk/wCKXLqINdVA7gAAAABJRU5ErkJggg==" alt="Brasão Rio Claro" class="w-5 h-6 object-contain shrink-0" />
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-1.5">
+                                <span class="font-bold text-xs truncate">Visualização Flutuante</span>
+                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                    Ao Vivo
+                                </span>
+                            </div>
+                            <p id="flutuante-subtitulo" class="text-[10px] text-slate-300 truncate">
+                                Documento Oficial • Rio Claro RJ
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <!-- Controles de Escala quando aberta -->
+                        <div id="flutuante-zoom-controls" class="flex items-center bg-slate-800/80 rounded border border-slate-700 p-0.5 mr-1">
+                            <button type="button" onclick="setZoomFlutuante(0.75)" class="zoom-btn px-1.5 py-0.5 text-[9px] font-bold rounded text-slate-300 hover:text-white cursor-pointer" data-zoom="0.75" title="Escala 75%">75%</button>
+                            <button type="button" onclick="setZoomFlutuante(0.85)" class="zoom-btn px-1.5 py-0.5 text-[9px] font-bold rounded bg-blue-600 text-white cursor-pointer" data-zoom="0.85" title="Escala 85%">85%</button>
+                            <button type="button" onclick="setZoomFlutuante(1.0)" class="zoom-btn px-1.5 py-0.5 text-[9px] font-bold rounded text-slate-300 hover:text-white cursor-pointer" data-zoom="1.0" title="Escala 100%">100%</button>
+                        </div>
+
+                        <!-- Minimizar / Restaurar -->
+                        <button type="button" onclick="toggleMinimizarFlutuante()" class="p-1.5 rounded text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer" title="Minimizar / Expandir">
+                            <i id="btn-flutuante-minimize-icon" class="fa-solid fa-window-minimize text-[10px]"></i>
+                        </button>
+
+                        <!-- Acoplar na Tela (volta ao modo fixo lateral) -->
+                        <button type="button" onclick="togglePreviaFlutuante()" class="px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold flex items-center gap-1 shadow-xs transition-colors cursor-pointer" title="Acoplar de volta ao lado do editor">
+                            <span>Acoplar</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Conteúdo Flutuante -->
+                <div id="flutuante-corpo" class="flex-1 overflow-y-auto p-3 sm:p-4 bg-slate-100 dark:bg-slate-950 max-h-[60vh]">
+                    <div id="flutuante-zoom-wrapper" style="transform: scale(0.85); transform-origin: top center; transition: transform 0.15s ease;">
+                        <div id="flutuante-render-clone"></div>
+                    </div>
+                </div>
+
+                <!-- Barra Minimizada -->
+                <div id="flutuante-barra-minimizada" onclick="toggleMinimizarFlutuante()" class="hidden p-2.5 px-4 bg-slate-900 text-slate-200 text-xs flex items-center justify-between gap-3 cursor-pointer hover:bg-slate-800 transition-colors">
+                    <span class="flex items-center gap-2 font-medium">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Prévia Flutuante minimizada • Clique para expandir
+                    </span>
+                    <i class="fa-solid fa-window-maximize text-blue-400 text-xs"></i>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2122,14 +2317,19 @@
                     <select id="filtro-depto-livro-modal" onchange="filtrarTabelaLivroModal()" class="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-[11px] font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
                         <option value="TODOS">Todos os Deptos</option>
                     </select>
-                    <button type="button" id="btn-meus-docs-livro" onclick="toggleMeusDocumentosLivro()" class="px-2.5 py-1 rounded-md text-[11px] font-bold transition-all bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200">
+                    <button type="button" id="btn-meus-docs-livro" onclick="toggleMeusDocumentosLivro()" class="px-2.5 py-1 rounded-md text-[11px] font-bold transition-all bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 cursor-pointer">
                         <i class="fa-solid fa-user-check mr-1"></i> Meus Docs
                     </button>
-                    <button type="button" onclick="setFiltroTipoLivroModal('TODOS')" class="filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-bold transition-all bg-blue-600 text-white" data-tipo="TODOS">Todos</button>
-                    <button type="button" onclick="setFiltroTipoLivroModal('MEMORANDO')" class="filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700" data-tipo="MEMORANDO">Memorandos</button>
-                    <button type="button" onclick="setFiltroTipoLivroModal('OFICIO')" class="filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700" data-tipo="OFICIO">Ofícios</button>
-                    <button type="button" onclick="setFiltroTipoLivroModal('DESPACHO')" class="filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700" data-tipo="DESPACHO">Despachos</button>
-                    <button type="button" onclick="setFiltroTipoLivroModal('CIRCULAR')" class="filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700" data-tipo="CIRCULAR">Circulares</button>
+                    <button type="button" onclick="setFiltroPeriodoLivroModal('HOJE')" class="filtro-periodo-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-pointer" data-periodo="HOJE">Hoje</button>
+                    <button type="button" onclick="setFiltroPeriodoLivroModal('MES')" class="filtro-periodo-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-pointer" data-periodo="MES">Este mês</button>
+                    <button type="button" id="btn-ordem-data-livro" onclick="toggleOrdemDataLivroModal()" class="px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 cursor-pointer" title="Alterar ordem cronológica dos registros">
+                        <i class="fa-solid fa-arrow-down-wide-short mr-1"></i> Mais recentes
+                    </button>
+                    <button type="button" onclick="setFiltroTipoLivroModal('TODOS')" class="filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-bold transition-all bg-blue-600 text-white cursor-pointer" data-tipo="TODOS">Todos</button>
+                    <button type="button" onclick="setFiltroTipoLivroModal('MEMORANDO')" class="filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-pointer" data-tipo="MEMORANDO">Memorandos</button>
+                    <button type="button" onclick="setFiltroTipoLivroModal('OFICIO')" class="filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-pointer" data-tipo="OFICIO">Ofícios</button>
+                    <button type="button" onclick="setFiltroTipoLivroModal('DESPACHO')" class="filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-pointer" data-tipo="DESPACHO">Despachos</button>
+                    <button type="button" onclick="setFiltroTipoLivroModal('CIRCULAR')" class="filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-pointer" data-tipo="CIRCULAR">Circulares</button>
                 </div>
             </div>
 
@@ -2360,8 +2560,8 @@
 
     <!-- CORE JAVASCRIPT (VANILLA JS) -->
     <script>
-        // URL Oficial da API Google Apps Script (Web App v12 - Implantação 01/11/2026 - v3.8)
-        const PRIMARY_API_URL = "https://script.google.com/macros/s/AKfycbysxJ3UUAP57KcFiXfgEmCWqcXw90rghpF4txRH44mpfELv68c4_N1VRshcJ5MFm5fP0g/exec"; 
+        // URL Oficial da API Google Apps Script (Web App v14 Oficial)
+        const PRIMARY_API_URL = "https://script.google.com/macros/s/AKfycbxKi-BFIcA2dzkMijlVxtVzr-Dpi4QYnOoEu6JwvRjyChJT5ybw7z50pubYGH3J4R0L7Q/exec"; 
         const FALLBACK_API_URL = "https://script.google.com/macros/s/AKfycbykb6eIM_MPeYf9ixq45t6-g_V7MQacvwTTlkfVRLtYgO-iQeNiy8dbisqDRjV7V3jsvA/exec";
         let savedApiUrl = localStorage.getItem('sgep_api_url');
         if (savedApiUrl && (
@@ -2371,7 +2571,8 @@
             savedApiUrl.includes('AKfycbws_QQlz') || 
             savedApiUrl.includes('AKfycbwehV822') || 
             savedApiUrl.includes('AKfycbxOJHeSV8LAWpaIrsP657v7G0mNrqSdF-8rWwHZ73mUHlsmtvsnLBIUxPprmrvXogEG2g') || 
-            savedApiUrl.includes('AKfycbxzOzIlowNAzC2V4q1wSXaPuQ_CprYiEhOVm1pl629hc964mZO7gea12p1jn7woMAyXIw')
+            savedApiUrl.includes('AKfycbxzOzIlowNAzC2V4q1wSXaPuQ_CprYiEhOVm1pl629hc964mZO7gea12p1jn7woMAyXIw') ||
+            savedApiUrl.includes('AKfycbysxJ3UUAP57')
         )) {
             savedApiUrl = null;
             localStorage.removeItem('sgep_api_url');
@@ -2867,7 +3068,14 @@
 
             const s = servidores.find(x => String(x.matricula).trim().toLowerCase() === matDigitada);
             if (s && s.nome) {
-                infoEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> <span>${sanitizeHTML(s.nome)} • ${sanitizeHTML(s.secretaria || 'PMRC')}</span>`;
+                const isPendente = s.ativo === false || String(s.ativo || '').toLowerCase() === 'false' || String(s.ativo || '').toLowerCase() === 'nao' || String(s.ativo || '').toLowerCase() === 'não';
+                if (isPendente) {
+                    infoEl.className = "mt-1.5 px-2.5 py-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-md text-[11px] font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5";
+                    infoEl.innerHTML = `<i class="fa-solid fa-clock text-amber-600"></i> <span>${sanitizeHTML(s.nome)} • Aguardando autorização do Administrador (DRH/SMA • Ramal 407)</span>`;
+                } else {
+                    infoEl.className = "mt-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-md text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5";
+                    infoEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600"></i> <span>${sanitizeHTML(s.nome)} • ${sanitizeHTML(s.secretaria || 'PMRC')}</span>`;
+                }
                 infoEl.classList.remove('hidden');
             } else {
                 infoEl.classList.add('hidden');
@@ -3012,7 +3220,14 @@
 
                 // Mensagem de erro explícita retornada pelo backend do Google Apps Script
                 if (result && result.error) {
-                    errEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1.5 text-rose-500"></i> ' + sanitizeHTML(result.error);
+                    const msgLow = String(result.error).toLowerCase();
+                    if (msgLow.includes('inativ') || msgLow.includes('desativ') || msgLow.includes('suspens') || msgLow.includes('autoriza')) {
+                        errEl.className = "p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 text-center font-medium shadow-xs";
+                        errEl.innerHTML = '<i class="fa-solid fa-clock mr-1.5 text-amber-600"></i> Cadastro aguardando autorização do Administrador (DRH/SMA • Ramal 407). Assim que liberado, seu acesso funcionará normalmente.';
+                    } else {
+                        errEl.className = "p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 text-center font-medium shadow-xs";
+                        errEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1.5 text-rose-500"></i> ' + sanitizeHTML(result.error);
+                    }
                     errEl.classList.remove('hidden');
                     return;
                 }
@@ -3781,6 +3996,109 @@
         function fecharModalAlterarSenha() {
             document.body.classList.remove('modal-open');
             document.getElementById('modal-alterar-senha').classList.add('hidden');
+        }
+
+        function abrirRecuperarSenhaModal() {
+            const el = document.getElementById('modal-recuperar-senha');
+            if (el) {
+                el.classList.remove('hidden');
+                document.body.classList.add('modal-open');
+                const matInput = document.getElementById('login-matricula');
+                const mat = matInput ? matInput.value.trim() : '';
+                if (mat) {
+                    document.getElementById('recuperar-matricula').value = mat;
+                    verificarServidorRecuperacao();
+                }
+            }
+        }
+
+        function fecharRecuperarSenhaModal() {
+            const el = document.getElementById('modal-recuperar-senha');
+            if (el) {
+                el.classList.add('hidden');
+                document.body.classList.remove('modal-open');
+                document.getElementById('recuperar-matricula').value = '';
+                document.getElementById('recuperar-resultado-servidor').classList.add('hidden');
+                document.getElementById('recuperar-sucesso').classList.add('hidden');
+            }
+        }
+
+        let _servidorRecuperando = null;
+
+        function verificarServidorRecuperacao() {
+            const mat = document.getElementById('recuperar-matricula').value.trim();
+            if (!mat) {
+                showToast('Informe o número da matrícula.', 'Aviso', true);
+                return;
+            }
+            const resBox = document.getElementById('recuperar-resultado-servidor');
+            const sucBox = document.getElementById('recuperar-sucesso');
+            sucBox.classList.add('hidden');
+            
+            let found = null;
+            if (typeof USUARIOS !== 'undefined' && Array.isArray(USUARIOS)) {
+                found = USUARIOS.find(u => String(u.matricula).trim() === mat);
+            }
+            if (!found) {
+                try {
+                    const salvas = JSON.parse(localStorage.getItem('bm_usuarios') || '[]');
+                    found = salvas.find(u => String(u.matricula).trim() === mat);
+                } catch(e){}
+            }
+            if (!found && mat === '1001') {
+                found = { matricula: '1001', nome: 'Augusto Lourenço da Silva Júnior', cargo: 'Chefe de Divisão de Treinamento e RH', secretaria: 'Secretaria Municipal de Administração (SMA)' };
+            }
+
+            if (found) {
+                _servidorRecuperando = found;
+                document.getElementById('recuperar-servidor-nome').textContent = found.nome;
+                document.getElementById('recuperar-servidor-info').textContent = 'Matrícula: ' + found.matricula + ' • ' + (found.secretaria || 'SMA');
+                resBox.classList.remove('hidden');
+                
+                const protocolo = `SOLICITAÇÃO DE REDEFINIÇÃO DE SENHA - SGEP/DOCS PMRC\nServidor: ${found.nome}\nMatrícula: ${found.matricula}\nCargo: ${found.cargo || 'Servidor'}\nSecretaria: ${found.secretaria || 'SMA'}\nData: ${new Date().toLocaleDateString('pt-BR')}\nPrezado Administrador do DRH/SMA, solicito a redefinição de senha de acesso no Banco Mestre.`;
+                document.getElementById('recuperar-texto-solicitacao').textContent = protocolo;
+            } else {
+                resBox.classList.add('hidden');
+                showToast('Matrícula ' + mat + ' não localizada. Verifique os números ou contate o DRH/SMA no Ramal 407.', 'Atenção', true);
+            }
+        }
+
+        function executarRedefinicaoProvisoria() {
+            if (!_servidorRecuperando) return;
+            const prov = '123456';
+            if (typeof USUARIOS !== 'undefined' && Array.isArray(USUARIOS)) {
+                const idx = USUARIOS.findIndex(u => String(u.matricula) === String(_servidorRecuperando.matricula));
+                if (idx !== -1) USUARIOS[idx].senha = prov;
+            }
+            try {
+                const salvas = JSON.parse(localStorage.getItem('bm_usuarios') || '[]');
+                const idx = salvas.findIndex(u => String(u.matricula) === String(_servidorRecuperando.matricula));
+                if (idx !== -1) {
+                    salvas[idx].senha = prov;
+                } else {
+                    salvas.push({ ..._servidorRecuperando, senha: prov });
+                }
+                localStorage.setItem('bm_usuarios', JSON.stringify(salvas));
+            } catch(e){}
+
+            document.getElementById('recuperar-resultado-servidor').classList.add('hidden');
+            document.getElementById('recuperar-sucesso').classList.remove('hidden');
+            showToast('Senha provisória redefinida para 123456 com sucesso!');
+        }
+
+        function copiarSolicitacaoSenha() {
+            const txt = document.getElementById('recuperar-texto-solicitacao').textContent;
+            try {
+                navigator.clipboard.writeText(txt);
+                document.getElementById('btn-copiar-solicitacao-text').textContent = 'Copiado!';
+                showToast('Solicitação copiada para a área de transferência!');
+                setTimeout(() => {
+                    const b = document.getElementById('btn-copiar-solicitacao-text');
+                    if (b) b.textContent = 'Copiar Solicitação Formal';
+                }, 3000);
+            } catch(e) {
+                showToast('Selecione e copie o texto manualmente.');
+            }
         }
 
         async function salvarNovaSenha(e) {
@@ -4614,10 +4932,62 @@
             }
         }
 
+        let filtroPeriodoLivroModal = 'TODOS';
+        let ordemDataLivroModal = 'DESC';
+
+        function parseDataBrLivro(dataStr) {
+            if (!dataStr) return 0;
+            const s = String(dataStr).trim();
+            const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+            if (m) {
+                const dia = parseInt(m[1], 10);
+                const mes = parseInt(m[2], 10) - 1;
+                let ano = parseInt(m[3], 10);
+                if (ano < 100) ano += 2000;
+                const h = m[4] ? parseInt(m[4], 10) : 0;
+                const min = m[5] ? parseInt(m[5], 10) : 0;
+                const seg = m[6] ? parseInt(m[6], 10) : 0;
+                return new Date(ano, mes, dia, h, min, seg).getTime();
+            }
+            const parsed = Date.parse(s);
+            return Number.isNaN(parsed) ? 0 : parsed;
+        }
+
+        function atualizarBotoesPeriodoLivro() {
+            document.querySelectorAll('.filtro-periodo-livro-btn').forEach(btn => {
+                const p = btn.getAttribute('data-periodo');
+                if (p === filtroPeriodoLivroModal) {
+                    btn.className = "filtro-periodo-livro-btn px-2.5 py-1 rounded-md text-[11px] font-bold transition-all bg-emerald-600 text-white cursor-pointer";
+                } else {
+                    btn.className = "filtro-periodo-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-pointer";
+                }
+            });
+            const btnOrdem = document.getElementById('btn-ordem-data-livro');
+            if (btnOrdem) {
+                btnOrdem.innerHTML = ordemDataLivroModal === 'DESC'
+                    ? '<i class="fa-solid fa-arrow-down-wide-short mr-1"></i> Mais recentes'
+                    : '<i class="fa-solid fa-arrow-up-short-wide mr-1"></i> Mais antigos';
+            }
+        }
+
+        function setFiltroPeriodoLivroModal(periodo) {
+            filtroPeriodoLivroModal = (filtroPeriodoLivroModal === periodo) ? 'TODOS' : periodo;
+            atualizarBotoesPeriodoLivro();
+            filtrarTabelaLivroModal();
+        }
+
+        function toggleOrdemDataLivroModal() {
+            ordemDataLivroModal = ordemDataLivroModal === 'DESC' ? 'ASC' : 'DESC';
+            atualizarBotoesPeriodoLivro();
+            filtrarTabelaLivroModal();
+        }
+
         function abrirModalLivroNumeracao() {
             const modal = document.getElementById('modal-livro-numeracao');
             if (!modal) return;
             filtroTipoLivroModal = "TODOS";
+            filtroPeriodoLivroModal = "TODOS";
+            ordemDataLivroModal = "DESC";
             filtroApenasMeusDocs = false;
             
             const btnMeus = document.getElementById('btn-meus-docs-livro');
@@ -4631,11 +5001,12 @@
             document.querySelectorAll('.filtro-livro-btn').forEach(btn => {
                 const tipo = btn.getAttribute('data-tipo');
                 if (tipo === 'TODOS') {
-                    btn.className = "filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-bold transition-all bg-blue-600 text-white";
+                    btn.className = "filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-bold transition-all bg-blue-600 text-white cursor-pointer";
                 } else {
-                    btn.className = "filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700";
+                    btn.className = "filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-pointer";
                 }
             });
+            atualizarBotoesPeriodoLivro();
 
             const secSelect = document.getElementById('filtro-secretaria-livro-modal');
             const secAtual = secSelect ? secSelect.value : 'TODAS';
@@ -4654,12 +5025,16 @@
 
         function setFiltroTipoLivroModal(tipo) {
             filtroTipoLivroModal = tipo;
+            if (tipo === 'TODOS') {
+                filtroPeriodoLivroModal = 'TODOS';
+                atualizarBotoesPeriodoLivro();
+            }
             document.querySelectorAll('.filtro-livro-btn').forEach(btn => {
                 const bTipo = btn.getAttribute('data-tipo');
                 if (bTipo === tipo) {
-                    btn.className = "filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-bold transition-all bg-blue-600 text-white";
+                    btn.className = "filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-bold transition-all bg-blue-600 text-white cursor-pointer";
                 } else {
-                    btn.className = "filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700";
+                    btn.className = "filtro-livro-btn px-2.5 py-1 rounded-md text-[11px] font-medium transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 cursor-pointer";
                 }
             });
             filtrarTabelaLivroModal();
@@ -4689,6 +5064,7 @@
 
             const meuNome = (currentUser && currentUser.nome ? currentUser.nome.toLowerCase().trim() : '');
             const minhaMat = (currentUser && currentUser.matricula ? String(currentUser.matricula).toLowerCase().trim() : '');
+            const agora = new Date();
 
             const docsFiltrados = historicoNumeracao.filter(doc => {
                 const docSec = doc.secretaria || '';
@@ -4725,12 +5101,33 @@
                     return false;
                 }
 
+                if (filtroPeriodoLivroModal !== 'TODOS') {
+                    const ts = parseDataBrLivro(doc.dataHora);
+                    if (!ts) return false;
+                    const dt = new Date(ts);
+                    if (filtroPeriodoLivroModal === 'HOJE') {
+                        if (dt.getDate() !== agora.getDate() || dt.getMonth() !== agora.getMonth() || dt.getFullYear() !== agora.getFullYear()) return false;
+                    } else if (filtroPeriodoLivroModal === 'MES') {
+                        if (dt.getMonth() !== agora.getMonth() || dt.getFullYear() !== agora.getFullYear()) return false;
+                    }
+                }
+
                 if (query) {
                     const texto = `${doc.numero} ${doc.tipoDocumento} ${doc.secretaria || ''} ${doc.departamento || ''} ${doc.assunto} ${doc.destinatario} ${doc.servidor || ''} ${doc.usuario || ''} ${doc.dataHora}`.toLowerCase();
                     if (!texto.includes(query)) return false;
                 }
                 return true;
             });
+
+            docsFiltrados.sort((a, b) => {
+                const ta = parseDataBrLivro(a.dataHora);
+                const tb = parseDataBrLivro(b.dataHora);
+                if (ta !== tb) return ordemDataLivroModal === 'DESC' ? (tb - ta) : (ta - tb);
+                const na = String(a.numero || '');
+                const nb = String(b.numero || '');
+                return ordemDataLivroModal === 'DESC' ? nb.localeCompare(na, 'pt-BR') : na.localeCompare(nb, 'pt-BR');
+            });
+
             renderTabelaLivroModal(docsFiltrados);
         }
 
@@ -4806,6 +5203,10 @@
                                     <i class="fa-solid fa-file-signature"></i>
                                     <span>Responder</span>
                                 </button>
+                                <button type="button" onclick="usarDocComoBase('${sanitizeAttribute(doc.numero)}')" class="px-2 py-1 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900 text-amber-700 dark:text-amber-300 rounded text-[10px] font-semibold border border-amber-200 dark:border-amber-800 flex items-center gap-1 cursor-pointer" title="Duplicar tipo, destinatário e assunto para um novo documento (sem número)">
+                                    <i class="fa-regular fa-clone"></i>
+                                    <span>Usar base</span>
+                                </button>
                                 <button type="button" onclick="copiarCitacaoDoc('${sanitizeAttribute(doc.tipoDocumento)}', '${sanitizeAttribute(doc.numero)}')" class="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded cursor-pointer" title="Copiar citação">
                                     <i class="fa-regular fa-copy"></i>
                                 </button>
@@ -4876,6 +5277,33 @@
 
             atualizarPreviaRedator();
             showToast(`Referência e modelo de resposta ao ${doc.tipoDocumento} nº ${doc.numero} carregados no Redator!`);
+        }
+
+        function usarDocComoBase(num) {
+            const doc = historicoNumeracao.find(r => String(r.numero) === String(num));
+            if (!doc) return;
+
+            fecharModalLivroNumeracao();
+            const tipoValido = ['MEMORANDO', 'OFICIO', 'DESPACHO', 'CIRCULAR', 'PORTARIA', 'DECRETO', 'EMAIL'].includes(String(doc.tipoDocumento || '').toUpperCase())
+                ? String(doc.tipoDocumento).toUpperCase()
+                : 'MEMORANDO';
+            abrirRedatorOficial(tipoValido, null, true);
+
+            const refCombo = document.getElementById('redator-referencia-combo');
+            if (refCombo) refCombo.value = '';
+            const assEl = document.getElementById('redator-assunto');
+            if (assEl) assEl.value = doc.assunto || '';
+            const destEl = document.getElementById('redator-destinatario');
+            if (destEl && doc.destinatario && doc.destinatario !== 'Não informado') {
+                destEl.value = doc.destinatario;
+            }
+            const txtEl = document.getElementById('redator-texto');
+            if (txtEl) {
+                txtEl.value = `Cumprimentando-o(a) cordialmente, encaminhamos o presente expediente referente a "${doc.assunto || 'assunto administrativo'}", para conhecimento e providências cabíveis.\n\nPermanecemos à disposição para esclarecimentos adicionais.`;
+            }
+
+            atualizarPreviaRedator();
+            showToast(`Dados copiados do ${doc.tipoDocumento} nº ${doc.numero} como base (pronto para novo número)!`);
         }
 
         function imprimirTabelaLivroNumeracao() {
@@ -5153,10 +5581,47 @@
             showToast(`Secretaria: ${val}`);
         }
 
-        function abrirRedatorOficial(tipoPre = 'MEMORANDO', modeloIdRef = null) {
+        let redatorModoAvancado = localStorage.getItem('bm_redator_modo_avancado') === 'true';
+        let redatorFullscreen = false;
+
+        function aplicarModoRedator() {
+            const modal = document.getElementById('modal-redator-oficial');
+            if (!modal) return;
+            modal.classList.toggle('redator-modo-simples', !redatorModoAvancado);
+            const btnSimples = document.getElementById('btn-modo-simples-standalone');
+            const btnAvancado = document.getElementById('btn-modo-avancado-standalone');
+            if (btnSimples && btnAvancado) {
+                if (redatorModoAvancado) {
+                    btnSimples.className = "px-2.5 py-1 rounded-md transition-all cursor-pointer text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800";
+                    btnAvancado.className = "px-2.5 py-1 rounded-md transition-all cursor-pointer bg-indigo-600 text-white";
+                } else {
+                    btnSimples.className = "px-2.5 py-1 rounded-md transition-all cursor-pointer bg-emerald-600 text-white";
+                    btnAvancado.className = "px-2.5 py-1 rounded-md transition-all cursor-pointer text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800";
+                }
+            }
+        }
+
+        function setModoAvancadoRedator(avancado) {
+            redatorModoAvancado = !!avancado;
+            try { localStorage.setItem('bm_redator_modo_avancado', String(redatorModoAvancado)); } catch (e) {}
+            aplicarModoRedator();
+        }
+
+        function toggleFullscreenRedator() {
+            redatorFullscreen = !redatorFullscreen;
+            const modal = document.getElementById('modal-redator-oficial');
+            const icon = document.getElementById('icon-redator-fullscreen');
+            const txt = document.getElementById('text-redator-fullscreen');
+            if (modal) modal.classList.toggle('redator-fullscreen', redatorFullscreen);
+            if (icon) icon.className = redatorFullscreen ? 'fa-solid fa-compress text-[11px]' : 'fa-solid fa-expand text-[11px]';
+            if (txt) txt.textContent = redatorFullscreen ? 'Restaurar' : 'Tela Toda';
+        }
+
+        function abrirRedatorOficial(tipoPre = 'MEMORANDO', modeloIdRef = null, ignorarRascunho = false) {
             setRedatorTipo(tipoPre);
             redatorNumeroGerado = "";
             renderBotaoGerarNumeroRedator();
+            aplicarModoRedator();
 
             // Alimenta os novos combos com base na planilha e modelos
             popularCombosRedator();
@@ -5199,11 +5664,33 @@
             atualizarPreviaRedator();
             document.body.classList.add('modal-open');
             document.getElementById('modal-redator-oficial').classList.remove('hidden');
+            if (!ignorarRascunho && typeof checarRascunhoExistente === 'function') {
+                checarRascunhoExistente();
+            } else {
+                const b = document.getElementById('sgep-draft-banner');
+                if (b) b.classList.add('hidden');
+            }
+            if (isPreviaFlutuante) {
+                const janela = document.getElementById('janela-previa-flutuante');
+                if (janela) janela.classList.remove('hidden');
+                sincronizarPreviaFlutuante();
+            }
         }
 
         function fecharRedatorOficial() {
             document.body.classList.remove('modal-open');
-            document.getElementById('modal-redator-oficial').classList.add('hidden');
+            const modal = document.getElementById('modal-redator-oficial');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('redator-fullscreen');
+            }
+            redatorFullscreen = false;
+            const icon = document.getElementById('icon-redator-fullscreen');
+            const txt = document.getElementById('text-redator-fullscreen');
+            if (icon) icon.className = 'fa-solid fa-expand text-[11px]';
+            if (txt) txt.textContent = 'Tela Toda';
+            const janela = document.getElementById('janela-previa-flutuante');
+            if (janela) janela.classList.add('hidden');
         }
 
         function setRedatorTipo(tipo) {
@@ -6058,6 +6545,123 @@
 
                 const secSigLabel = document.getElementById('previa-redator-secretaria-sig');
                 if (secSigLabel) secSigLabel.textContent = secVal;
+            }
+
+            if (isPreviaFlutuante) {
+                sincronizarPreviaFlutuante();
+            }
+        }
+
+        // =================================================================
+        // CONTROLE DA VISUALIZAÇÃO FLUTUANTE (PICTURE-IN-PICTURE)
+        // =================================================================
+        let isPreviaFlutuante = false;
+        let isPreviaFlutuanteMinimizada = false;
+        let previaFlutuanteZoom = 0.85;
+
+        function togglePreviaFlutuante() {
+            isPreviaFlutuante = !isPreviaFlutuante;
+            const janela = document.getElementById('janela-previa-flutuante');
+            const colPrevia = document.getElementById('redator-previa-coluna');
+            const colEditor = document.getElementById('redator-editor-col');
+            const banner = document.getElementById('banner-modo-flutuante');
+            const btnText = document.getElementById('btn-toggle-previa-text');
+            const btnIcon = document.getElementById('btn-toggle-previa-icon');
+
+            if (isPreviaFlutuante) {
+                if (janela) janela.classList.remove('hidden');
+                if (colPrevia) colPrevia.classList.add('hidden');
+                if (colEditor) {
+                    colEditor.classList.remove('lg:col-span-7');
+                    colEditor.classList.add('lg:col-span-12');
+                }
+                if (banner) banner.classList.remove('hidden');
+                if (btnText) btnText.textContent = 'Acoplar Prévia';
+                if (btnIcon) btnIcon.className = 'fa-solid fa-table-columns text-[11px]';
+                sincronizarPreviaFlutuante();
+            } else {
+                if (janela) janela.classList.add('hidden');
+                if (colPrevia) colPrevia.classList.remove('hidden');
+                if (colEditor) {
+                    colEditor.classList.remove('lg:col-span-12');
+                    colEditor.classList.add('lg:col-span-7');
+                }
+                if (banner) banner.classList.add('hidden');
+                if (btnText) btnText.textContent = 'Prévia Flutuante';
+                if (btnIcon) btnIcon.className = 'fa-solid fa-up-right-from-square text-[11px]';
+            }
+        }
+
+        function setZoomFlutuante(zoom) {
+            previaFlutuanteZoom = zoom;
+            const wrapper = document.getElementById('flutuante-zoom-wrapper');
+            if (wrapper) {
+                wrapper.style.transform = `scale(${zoom})`;
+            }
+            document.querySelectorAll('#flutuante-zoom-controls .zoom-btn').forEach(btn => {
+                const z = parseFloat(btn.getAttribute('data-zoom'));
+                if (z === zoom) {
+                    btn.classList.add('bg-blue-600', 'text-white');
+                    btn.classList.remove('text-slate-300');
+                } else {
+                    btn.classList.remove('bg-blue-600', 'text-white');
+                    btn.classList.add('text-slate-300');
+                }
+            });
+        }
+
+        function toggleMinimizarFlutuante() {
+            isPreviaFlutuanteMinimizada = !isPreviaFlutuanteMinimizada;
+            const janela = document.getElementById('janela-previa-flutuante');
+            const corpo = document.getElementById('flutuante-corpo');
+            const zoomControls = document.getElementById('flutuante-zoom-controls');
+            const barraMini = document.getElementById('flutuante-barra-minimizada');
+            const minIcon = document.getElementById('btn-flutuante-minimize-icon');
+
+            if (isPreviaFlutuanteMinimizada) {
+                if (corpo) corpo.classList.add('hidden');
+                if (zoomControls) zoomControls.classList.add('hidden');
+                if (barraMini) barraMini.classList.remove('hidden');
+                if (janela) {
+                    janela.classList.remove('w-[410px]', 'sm:w-[470px]', 'max-h-[76vh]');
+                    janela.classList.add('w-auto', 'max-w-sm');
+                }
+                if (minIcon) minIcon.className = 'fa-solid fa-window-maximize text-[10px]';
+            } else {
+                if (corpo) corpo.classList.remove('hidden');
+                if (zoomControls) zoomControls.classList.remove('hidden');
+                if (barraMini) barraMini.classList.add('hidden');
+                if (janela) {
+                    janela.classList.remove('w-auto', 'max-w-sm');
+                    janela.classList.add('w-[410px]', 'sm:w-[470px]', 'max-h-[76vh]');
+                }
+                if (minIcon) minIcon.className = 'fa-solid fa-window-minimize text-[10px]';
+            }
+        }
+
+        function sincronizarPreviaFlutuante() {
+            const cloneDest = document.getElementById('flutuante-render-clone');
+            if (!cloneDest) return;
+
+            const sub = document.getElementById('flutuante-subtitulo');
+            if (sub) {
+                const secVal = (document.getElementById('redator-secretaria') ? document.getElementById('redator-secretaria').value.trim() : '') || 'SMA';
+                sub.textContent = `${redatorTipo} ${redatorNumeroGerado ? 'nº ' + redatorNumeroGerado : '(Minuta)'} • ${secVal}`;
+            }
+
+            const activeContainer = redatorTipo === 'EMAIL'
+                ? document.getElementById('previa-email-container')
+                : document.getElementById('previa-folha-a4-container');
+
+            if (activeContainer) {
+                cloneDest.innerHTML = activeContainer.outerHTML;
+                const inner = cloneDest.firstElementChild;
+                if (inner) {
+                    inner.id = 'flutuante-inner-preview';
+                    inner.classList.remove('hidden', 'max-h-[580px]');
+                    inner.style.maxHeight = 'none';
+                    inner.style.boxShadow = 'none';
+                }
             }
         }
 
@@ -7236,7 +7840,7 @@ ${headerAndBodyHtml}
     </script>
 <script>
     // ===== GUIA DE USO EMBUTIDO (abre pelo botão ? do cabeçalho ou pelo link da tela de login) =====
-    const GUIA_HTML = "<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Guia do Banco Mestre Administrativo – Prefeitura de Rio Claro<\/title>\n<link rel=\"icon\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📘%3C/text%3E%3C/svg%3E\">\n<link href=\"https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap\" rel=\"stylesheet\">\n<style>\n:root{--ink:#14224d;--muted:#46547a;--bg:#f3f6fc;--card:#fff;--line:#d3ddef;--brand:#12307a;--on-brand:#fff;--sun:#f6b93b;--on-sun:#3a2a00;--ok:#176b4a;--ok-bg:#e4f4ec;--warn-bg:#fff4d6;--soft:#e8eefb}\n@media(prefers-color-scheme:dark){:root:not([data-tema=\"light\"]){--ink:#e9eefc;--muted:#aab8da;--bg:#0d1530;--card:#162041;--line:#2b3b69;--brand:#9bb8ff;--on-brand:#0d1530;--ok:#74e0b0;--ok-bg:#133428;--warn-bg:#3b3012;--soft:#1d2a54}}\n:root[data-tema=\"dark\"]{--ink:#e9eefc;--muted:#aab8da;--bg:#0d1530;--card:#162041;--line:#2b3b69;--brand:#9bb8ff;--on-brand:#0d1530;--ok:#74e0b0;--ok-bg:#133428;--warn-bg:#3b3012;--soft:#1d2a54}\n*{box-sizing:border-box}\nhtml{scroll-padding-top:12px;-webkit-text-size-adjust:100%}\nbody{margin:0;background:var(--bg);color:var(--ink);font:18px/1.6 \"Atkinson Hyperlegible\",system-ui,\"Segoe UI\",Arial,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}\n.wrap{max-width:860px;margin:0 auto;padding:0 20px}\na{color:var(--brand)}\n:focus-visible{outline:3px solid var(--sun);outline-offset:3px;border-radius:6px}\n.top{background:var(--brand);color:var(--on-brand);font-size:15px;padding:10px 0}\n.hero{padding:44px 0 28px}\n.hero h1{font-size:clamp(28px,5.4vw,42px);line-height:1.15;margin:0 0 14px;letter-spacing:-.01em}\n.hero p{font-size:20px;color:var(--muted);max-width:60ch;margin:0 0 22px}\n.btn{display:inline-block;font:inherit;font-weight:700;border:2px solid var(--brand);background:var(--brand);color:var(--on-brand);padding:12px 22px;border-radius:999px;cursor:pointer;text-decoration:none;margin:0 10px 10px 0}\n.btn.alt{background:transparent;color:var(--brand)}\nsection{padding:30px 0;border-top:1px solid var(--line)}\nh2{font-size:28px;line-height:1.2;margin:0 0 6px}\n.lead{color:var(--muted);margin:0 0 20px}\n/* trilha dos 3 primeiros passos: é uma sequência de verdade */\n.trilha{list-style:none;margin:0;padding:0;counter-reset:n}\n.trilha li{counter-increment:n;position:relative;padding:0 0 22px 64px;min-height:56px}\n.trilha li::before{content:counter(n);position:absolute;left:0;top:0;width:44px;height:44px;border-radius:50%;background:var(--sun);color:var(--on-sun);font-weight:700;font-size:22px;display:grid;place-items:center}\n.trilha li::after{content:\"\";position:absolute;left:21px;top:48px;bottom:4px;width:2px;background:var(--line)}\n.trilha li:last-child::after{display:none}\n.trilha b{display:block;font-size:20px}\n/* escolha por objetivo */\n.escolhas{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}\n.escolhas button{font:inherit;font-weight:700;color:var(--ink);background:var(--card);border:2px solid var(--line);border-radius:14px;padding:12px 16px;cursor:pointer;text-align:left}\n.escolhas button[aria-pressed=\"true\"]{background:var(--brand);color:var(--on-brand);border-color:var(--brand)}\n.painel{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:24px 24px 8px}\n.painel h3{margin:0 0 12px;font-size:23px}\n.passos{margin:0 0 16px;padding-left:26px}\n.passos li{margin:0 0 10px;padding-left:4px}\n.passos li::marker{font-weight:700;color:var(--brand)}\n.nota{border-radius:12px;padding:12px 16px;margin:0 0 16px;font-size:17px}\n.dica{background:var(--ok-bg)}.atencao{background:var(--warn-bg)}\n.nota b{display:block}\nkbd,.chip{font:inherit;font-size:.9em;font-weight:700;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:1px 8px;white-space:nowrap}\n/* maquete dos botões do topo */\n.barra{display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:#0f1d44;border-radius:16px;padding:14px 16px;margin-bottom:18px}\n.barra span{display:inline-grid;place-items:center;width:46px;height:46px;border-radius:12px;background:#1d2c5c;border:1px solid #34478a;font-size:22px}\n.barra em{color:#c9d5f7;font-style:normal;font-size:15px;margin-right:auto}\ndl{margin:0}dt{font-weight:700;margin-top:14px}dd{margin:2px 0 0;color:var(--muted)}\n.legenda{list-style:none;margin:0;padding:0}\n.legenda li{display:flex;gap:14px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}\n.legenda li>span{flex:0 0 46px;font-size:26px;text-align:center}\ndetails{background:var(--card);border:2px solid var(--line);border-radius:14px;margin-bottom:10px}\nsummary{cursor:pointer;font-weight:700;padding:14px 18px;list-style-position:inside}\ndetails>div{padding:0 18px 12px;color:var(--muted)}\n.combinados{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}\n.combinados div{border-left:6px solid var(--sun);background:var(--card);padding:12px 16px;border-radius:0 12px 12px 0}\n.combinados b{display:block}\nfooter{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--muted);font-size:16px}\n@media print{.top,.escolhas,.hero .btn,footer .btn{display:none}.painel[hidden]{display:block}body{background:#fff;color:#000;font-size:14px}.painel,details{break-inside:avoid;border-color:#999}details>div{display:block}}\n@media(prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}\n<\/style>\n<\/head>\n<body>\n<div class=\"top\"><div class=\"wrap\">Prefeitura Municipal de Rio Claro – RJ · Banco Mestre Administrativo<\/div><\/div>\n\n<main class=\"wrap\">\n  <header class=\"hero\">\n    <h1>Escrever, numerar e consultar documentos oficiais, sem complicação.<\/h1>\n    <p>Este guia foi feito para quem nunca usou o sistema. Não precisa decorar nada: escolha abaixo o que você quer fazer e siga o passo a passo.<\/p>\n    <a class=\"btn\" href=\"#comecar\">Começar pelo básico<\/a>\n    <button class=\"btn alt\" type=\"button\" onclick=\"window.print()\">Imprimir este guia<\/button>\n  <\/header>\n\n  <section id=\"comecar\">\n    <h2>Os 3 primeiros passos<\/h2>\n    <p class=\"lead\">É sempre assim, toda vez que você entrar.<\/p>\n    <ol class=\"trilha\">\n      <li><b>Entre com sua matrícula e senha<\/b>Digite os números da sua matrícula funcional e a senha que o administrador entregou. Depois clique em <span class=\"chip\">Entrar no Sistema<\/span>.<\/li>\n      <li><b>Confira a sua pasta (secretaria)<\/b>No alto da tela há um seletor com a secretaria em que você está trabalhando. Os números e o histórico seguem essa escolha, então confira antes de começar.<\/li>\n      <li><b>Escolha o tipo de documento e o modelo<\/b>Memorando, Ofício, Despacho, Circular… Use a busca ou o Índice Temático para achar o modelo mais parecido com o que você precisa.<\/li>\n    <\/ol>\n  <\/section>\n\n  <section id=\"fazer\">\n    <h2>O que você quer fazer hoje?<\/h2>\n    <p class=\"lead\">Toque em uma opção para ver o passo a passo.<\/p>\n    <div class=\"escolhas\" role=\"group\" aria-label=\"Escolha uma tarefa\">\n      <button type=\"button\" data-go=\"p-escrever\">✍️ Escrever um documento<\/button>\n      <button type=\"button\" data-go=\"p-numero\">🔢 Pegar um número oficial<\/button>\n      <button type=\"button\" data-go=\"p-livro\">📚 Consultar o Livro de Numeração<\/button>\n      <button type=\"button\" data-go=\"p-senha\">🔑 Trocar minha senha<\/button>\n      <button type=\"button\" data-go=\"p-app\">📱 Instalar como aplicativo<\/button>\n      <button type=\"button\" data-go=\"p-admin\">🛠️ Sou administrador<\/button>\n    <\/div>\n\n    <article class=\"painel\" id=\"p-escrever\" hidden>\n      <h3>Escrever um documento usando um modelo<\/h3>\n      <ol class=\"passos\">\n        <li>No alto, escolha o <b>tipo de documento<\/b> (por exemplo, Memorando).<\/li>\n        <li>Procure o modelo na <b>busca<\/b> ou no <b>Índice Temático<\/b>. Se um modelo for seu preferido, marque a estrelinha para favoritá-lo.<\/li>\n        <li>Clique no modelo. Abre a tela <b>Personalizar Modelo<\/b>: preencha os campos que aparecerem (nomes, datas, assunto…).<\/li>\n        <li>Leia o texto pronto e ajuste o que for preciso. As letras <kbd>B<\/kbd> e <kbd>I<\/kbd> servem para negrito e itálico.<\/li>\n        <li>Quando estiver bom, escolha o que fazer com ele: <b>visualizar a folha timbrada<\/b>, <b>baixar para o Word<\/b>, <b>copiar<\/b> para colar em outro programa ou <b>abrir o e-mail<\/b> já preenchido.<\/li>\n      <\/ol>\n      <div class=\"nota dica\"><b>Dica: use o Assistente de IA com calma<\/b>Ele pode melhorar a gramática, deixar o texto mais formal ou resumir. Se não gostar do resultado, use <span class=\"chip\">Restaurar<\/span> para voltar. Leia sempre o texto final: o documento é de sua responsabilidade.<\/div>\n      <div class=\"nota atencao\"><b>Atenção<\/b>Não digite no Assistente de IA dados sigilosos de cidadãos (CPF, endereço, saúde).<\/div>\n    <\/article>\n\n    <article class=\"painel\" id=\"p-numero\" hidden>\n      <h3>Pegar o número oficial de um Memorando ou Ofício<\/h3>\n      <ol class=\"passos\">\n        <li>Clique no botão do <b>Redator Oficial<\/b>, que cria Memorando ou Ofício com numeração automática.<\/li>\n        <li>Escolha o tipo, informe o <b>destinatário<\/b> e o <b>assunto<\/b>.<\/li>\n        <li>Confirme a <b>secretaria<\/b> e o <b>departamento<\/b>: o número sai na sequência da sua pasta (001, 002, 003…).<\/li>\n        <li>Gere o número e escreva o documento. Ele já aparece no Livro de Numeração.<\/li>\n      <\/ol>\n      <div class=\"nota atencao\"><b>Atenção: número gerado não volta<\/b>Cada número fica registrado com seu nome. Não gere só para testar. Se errou, avise o administrador em vez de gerar outro.<\/div>\n    <\/article>\n\n    <article class=\"painel\" id=\"p-livro\" hidden>\n      <h3>Consultar o Livro de Numeração<\/h3>\n      <p>É o caderno digital de todos os documentos numerados da prefeitura.<\/p>\n      <ol class=\"passos\">\n        <li>Clique em <b>Livro de Numeração<\/b>.<\/li>\n        <li>Para achar algo, use os filtros: <b>Todos / Memorandos / Ofícios / Despachos / Circulares<\/b>, secretaria, departamento ou a caixa de busca (aceita número, assunto ou destinatário).<\/li>\n        <li>Para ver só os seus, ative <span class=\"chip\">Meus Docs<\/span>. Para recomeçar, use <span class=\"chip\">Limpar Filtros<\/span>.<\/li>\n        <li>Em cada linha você pode <b>ver a folha timbrada<\/b> para reimprimir, <b>responder no Redator Oficial<\/b> (a referência já vem preenchida) ou <b>copiar a citação<\/b> do documento.<\/li>\n      <\/ol>\n      <div class=\"nota dica\"><b>Dica<\/b>Não achou um número recente? Feche o Livro e clique no botão de sincronizar (🔄) no alto da tela.<\/div>\n    <\/article>\n\n    <article class=\"painel\" id=\"p-senha\" hidden>\n      <h3>Trocar minha senha<\/h3>\n      <ol class=\"passos\">\n        <li>Clique no botão da <b>chave 🔑<\/b>, no alto da tela.<\/li>\n        <li>Digite a <b>senha atual<\/b>, depois a <b>nova senha<\/b> duas vezes.<\/li>\n        <li>Confirme. Na próxima vez, entre já com a senha nova.<\/li>\n      <\/ol>\n      <div class=\"nota dica\"><b>Boa senha<\/b>Misture letras e números e não use sua matrícula nem datas de nascimento. Não empreste a senha: tudo que for feito com ela fica registrado no seu nome.<\/div>\n    <\/article>\n\n    <article class=\"painel\" id=\"p-app\" hidden>\n      <h3>Instalar como aplicativo (opcional)<\/h3>\n      <ol class=\"passos\">\n        <li>Quando aparecer a faixa <b>Instalar Aplicativo<\/b>, clique em instalar.<\/li>\n        <li>No computador, o atalho vai para a área de trabalho. No celular, para a tela inicial.<\/li>\n        <li>Abra pelo atalho, como qualquer outro aplicativo.<\/li>\n      <\/ol>\n      <div class=\"nota dica\"><b>Não apareceu a faixa?<\/b>No Chrome ou no Edge, abra o menu do navegador (⋮) e procure <b>Instalar aplicativo<\/b>.<\/div>\n    <\/article>\n\n    <article class=\"painel\" id=\"p-admin\" hidden>\n      <h3>Para administradores: cuidar de servidores e secretarias<\/h3>\n      <p>Só quem tem acesso de administrador vê o <b>Painel de Administração<\/b> (botão no alto da tela).<\/p>\n      <ol class=\"passos\">\n        <li><b>Cadastrar servidor:<\/b> abra o painel, clique em cadastrar novo servidor e preencha nome, matrícula, nível de acesso, secretaria e departamento.<\/li>\n        <li><b>Editar dados:<\/b> use o ícone de editar na linha da pessoa (por exemplo, para mudar de secretaria ou de departamento).<\/li>\n        <li><b>Esqueceu a senha?<\/b> Use <span class=\"chip\">Redefinir senha<\/span> e entregue uma senha provisória, que a pessoa troca no primeiro acesso.<\/li>\n        <li><b>Quando alguém sai ou muda de setor:<\/b> desative o acesso. O histórico dessa pessoa continua guardado.<\/li>\n        <li><b>Nova secretaria:<\/b> use a opção de nova secretaria municipal e informe nome e sigla.<\/li>\n      <\/ol>\n      <div class=\"nota atencao\"><b>Atenção<\/b>Nunca informe senhas por e-mail ou grupos de conversa. Entregue pessoalmente ou por telefone.<\/div>\n    <\/article>\n  <\/section>\n\n  <section id=\"tela\">\n    <h2>Conheça os botões do topo<\/h2>\n    <p class=\"lead\">Eles ficam sempre no mesmo lugar, perto do seu nome.<\/p>\n    <div class=\"barra\" aria-hidden=\"true\"><em>Seu nome · sua secretaria<\/em><span>❓<\/span><span>🔑<\/span><span>🔄<\/span><span>🌙<\/span><span>🚪<\/span><\/div>\n    <ul class=\"legenda\">\n      <li><span>❓<\/span><div><b>Interrogação:<\/b> abre este guia, a qualquer momento (também na tela de entrada).<\/div><\/li>\n      <li><span>🔑<\/span><div><b>Chave:<\/b> troca a sua senha.<\/div><\/li>\n      <li><span>🔄<\/span><div><b>Setas:<\/b> atualiza modelos e números com as informações mais recentes. Use quando alguém avisar que emitiu um documento e ele não aparecer.<\/div><\/li>\n      <li><span>🌙<\/span><div><b>Lua:<\/b> muda para o modo escuro, mais confortável para os olhos à noite.<\/div><\/li>\n      <li><span>🚪<\/span><div><b>Porta:<\/b> sai do sistema. Sempre use ao terminar em computador compartilhado.<\/div><\/li>\n    <\/ul>\n  <\/section>\n\n  <section id=\"palavras\">\n    <h2>Palavras que aparecem no sistema<\/h2>\n    <dl>\n      <dt>Modelo<\/dt><dd>Um texto pronto que você adapta, para não começar do zero.<\/dd>\n      <dt>Pasta / Secretaria ativa<\/dt><dd>A secretaria em nome da qual você está trabalhando agora. Define a sequência dos números.<\/dd>\n      <dt>Numeração sequencial<\/dt><dd>Número oficial do documento (como 012/2026), dado automaticamente pelo sistema, sem repetir.<\/dd>\n      <dt>Livro de Numeração<\/dt><dd>O registro de todos os documentos numerados: quem emitiu, quando e para quem.<\/dd>\n      <dt>Folha timbrada<\/dt><dd>A página formatada com o brasão e o cabeçalho oficial da Prefeitura.<\/dd>\n      <dt>Memorando, Ofício, Despacho, Circular<\/dt><dd>Memorando e Ofício são comunicações; Despacho é uma decisão ou encaminhamento em um processo; Circular é um aviso para vários destinatários.<\/dd>\n    <\/dl>\n  <\/section>\n\n  <section id=\"ajuda\">\n    <h2>Algo deu errado?<\/h2>\n    <p class=\"lead\">Quase tudo tem solução rápida. Toque na pergunta.<\/p>\n    <details><summary>Não consigo entrar<\/summary><div>Confira se digitou só os números da matrícula, sem espaços, e se a tecla Caps Lock está desligada. Depois de 5 erros seguidos, o acesso fica bloqueado por 15 minutos por segurança: espere e tente de novo.<\/div><\/details>\n    <details><summary>Esqueci minha senha<\/summary><div>Peça ao administrador da sua secretaria para redefinir. Você recebe uma senha provisória e troca no primeiro acesso.<\/div><\/details>\n    <details><summary>Apareceu “sessão expirada”<\/summary><div>Por segurança, o acesso vale por algumas horas. Entre de novo. O que você já copiou ou baixou não se perde.<\/div><\/details>\n    <details><summary>O número que preciso não aparece no Livro<\/summary><div>Clique em atualizar (🔄) no alto da tela e confira se os filtros não estão escondendo o documento: use Limpar Filtros.<\/div><\/details>\n    <details><summary>Gerei um número por engano<\/summary><div>Não gere outro para “compensar”. Avise o administrador, que registra o ocorrido. Assim a sequência continua correta.<\/div><\/details>\n    <details><summary>A tela ficou em branco ou travada<\/summary><div>Atualize a página com as teclas <kbd>Ctrl<\/kbd> + <kbd>F5<\/kbd>. Se continuar, avise o suporte informando o que você estava fazendo.<\/div><\/details>\n    <details><summary>Aparecem balões de dica. Como desligo?<\/summary><div>No próprio balão, clique em “Parar dicas”. Cada dica aparece só uma vez, na primeira vez que você usa o recurso. Para vê-las de novo, use o botão abaixo (ele aparece quando o guia é aberto dentro do sistema).<p><button class=\"btn alt\" id=\"rever-dicas\" type=\"button\" hidden>Mostrar as dicas de novo<\/button><\/p><\/div><\/details>\n  <\/section>\n\n  <section id=\"combinados\">\n    <h2>Combinados que ajudam todo mundo<\/h2>\n    <div class=\"combinados\">\n      <div><b>Senha é pessoal<\/b>Tudo o que é feito com ela fica registrado no seu nome.<\/div>\n      <div><b>Confira antes de gerar<\/b>Secretaria, tipo e destinatário certos evitam retrabalho.<\/div>\n      <div><b>Leia o que a IA escreveu<\/b>Ela ajuda, mas quem assina é você.<\/div>\n      <div><b>Saia ao terminar<\/b>Principalmente em computadores compartilhados.<\/div>\n    <\/div>\n  <\/section>\n<\/main>\n\n<footer>\n  <div class=\"wrap\">\n    <!-- EDITE AQUI: substitua pelo setor, ramal e e-mail de quem dá suporte -->\n    <p><b>Precisa de ajuda?<\/b> Fale com o administrador da sua secretaria ou com o setor responsável pelo sistema: <span class=\"chip\">[setor · ramal · e-mail]<\/span><\/p>\n    <p>Guia de uso · Banco Mestre Administrativo · Prefeitura Municipal de Rio Claro – RJ<\/p>\n  <\/div>\n<\/footer>\n\n<script>\n(function () {\n  var btns = Array.prototype.slice.call(document.querySelectorAll('[data-go]'));\n  var paineis = Array.prototype.slice.call(document.querySelectorAll('.painel'));\n  function abrir(id) {\n    btns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-go') === id)); });\n    paineis.forEach(function (p) { p.hidden = p.id !== id; });\n  }\n  btns.forEach(function (b) {\n    b.addEventListener('click', function () {\n      var id = b.getAttribute('data-go');\n      abrir(id);\n      try { history.replaceState(null, '', '#' + id); } catch (e) {}\n      document.getElementById(id).scrollIntoView({ block: 'nearest' });\n    });\n  });\n  var h = (location.hash || '').slice(1);\n  abrir(paineis.some(function (p) { return p.id === h; }) ? h : 'p-escrever');\n})();\n<\/script>\n<script>\n(function(){var b=document.getElementById('rever-dicas');try{if(parent!==window&&typeof parent.reiniciarDicas==='function'){b.hidden=false;b.addEventListener('click',function(){parent.reiniciarDicas();b.textContent='Pronto! As dicas voltarão a aparecer.';});}}catch(e){}})();\n<\/script>\n<\/body>\n<\/html>\n";
+    const GUIA_HTML = "<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Guia do Banco Mestre Administrativo v1.6 – Prefeitura de Rio Claro<\/title>\n<link rel=\"icon\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📘%3C/text%3E%3C/svg%3E\">\n<link href=\"https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap\" rel=\"stylesheet\">\n<style>\n:root{--ink:#14224d;--muted:#46547a;--bg:#f3f6fc;--card:#fff;--line:#d3ddef;--brand:#12307a;--on-brand:#fff;--sun:#f6b93b;--on-sun:#3a2a00;--ok:#176b4a;--ok-bg:#e4f4ec;--warn-bg:#fff4d6;--soft:#e8eefb}\n@media(prefers-color-scheme:dark){:root:not([data-tema=\"light\"]){--ink:#e9eefc;--muted:#aab8da;--bg:#0d1530;--card:#162041;--line:#2b3b69;--brand:#9bb8ff;--on-brand:#0d1530;--ok:#74e0b0;--ok-bg:#133428;--warn-bg:#3b3012;--soft:#1d2a54}}\n:root[data-tema=\"dark\"]{--ink:#e9eefc;--muted:#aab8da;--bg:#0d1530;--card:#162041;--line:#2b3b69;--brand:#9bb8ff;--on-brand:#0d1530;--ok:#74e0b0;--ok-bg:#133428;--warn-bg:#3b3012;--soft:#1d2a54}\n*{box-sizing:border-box}\nhtml{scroll-padding-top:12px;-webkit-text-size-adjust:100%}\nbody{margin:0;background:var(--bg);color:var(--ink);font:18px/1.6 \"Atkinson Hyperlegible\",system-ui,\"Segoe UI\",Arial,sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}\n.wrap{max-width:860px;margin:0 auto;padding:0 20px}\na{color:var(--brand)}\n:focus-visible{outline:3px solid var(--sun);outline-offset:3px;border-radius:6px}\n.top{background:var(--brand);color:var(--on-brand);font-size:15px;padding:10px 0}\n.hero{padding:44px 0 28px}\n.hero h1{font-size:clamp(28px,5.4vw,42px);line-height:1.15;margin:0 0 14px;letter-spacing:-.01em}\n.hero p{font-size:20px;color:var(--muted);max-width:60ch;margin:0 0 22px}\n.btn{display:inline-block;font:inherit;font-weight:700;border:2px solid var(--brand);background:var(--brand);color:var(--on-brand);padding:12px 22px;border-radius:999px;cursor:pointer;text-decoration:none;margin:0 10px 10px 0}\n.btn.alt{background:transparent;color:var(--brand)}\nsection{padding:30px 0;border-top:1px solid var(--line)}\nh2{font-size:28px;line-height:1.2;margin:0 0 6px}\n.lead{color:var(--muted);margin:0 0 20px}\n.trilha{list-style:none;margin:0;padding:0;counter-reset:n}\n.trilha li{counter-increment:n;position:relative;padding:0 0 22px 64px;min-height:56px}\n.trilha li::before{content:counter(n);position:absolute;left:0;top:0;width:44px;height:44px;border-radius:50%;background:var(--sun);color:var(--on-sun);font-weight:700;font-size:22px;display:grid;place-items:center}\n.trilha li::after{content:\"\";position:absolute;left:21px;top:48px;bottom:4px;width:2px;background:var(--line)}\n.trilha li:last-child::after{display:none}\n.trilha b{display:block;font-size:20px}\n.escolhas{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px}\n.escolhas button{font:inherit;font-weight:700;color:var(--ink);background:var(--card);border:2px solid var(--line);border-radius:14px;padding:12px 16px;cursor:pointer;text-align:left}\n.escolhas button[aria-pressed=\"true\"]{background:var(--brand);color:var(--on-brand);border-color:var(--brand)}\n.painel{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:24px 24px 8px}\n.painel h3{margin:0 0 12px;font-size:23px}\n.passos{margin:0 0 16px;padding-left:26px}\n.passos li{margin:0 0 10px;padding-left:4px}\n.passos li::marker{font-weight:700;color:var(--brand)}\n.nota{border-radius:12px;padding:12px 16px;margin:0 0 16px;font-size:17px}\n.dica{background:var(--ok-bg)}.atencao{background:var(--warn-bg)}\n.nota b{display:block}\nkbd,.chip{font:inherit;font-size:.9em;font-weight:700;background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:1px 8px;white-space:nowrap}\n.barra{display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:#0f1d44;border-radius:16px;padding:14px 16px;margin-bottom:18px}\n.barra span{display:inline-grid;place-items:center;width:46px;height:46px;border-radius:12px;background:#1d2c5c;border:1px solid #34478a;font-size:22px}\n.barra em{color:#c9d5f7;font-style:normal;font-size:15px;margin-right:auto}\ndl{margin:0}dt{font-weight:700;margin-top:14px}dd{margin:2px 0 0;color:var(--muted)}\n.legenda{list-style:none;margin:0;padding:0}\n.legenda li{display:flex;gap:14px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}\n.legenda li>span{flex:0 0 46px;font-size:26px;text-align:center}\ndetails{background:var(--card);border:2px solid var(--line);border-radius:14px;margin-bottom:10px}\nsummary{cursor:pointer;font-weight:700;padding:14px 18px;list-style-position:inside}\ndetails>div{padding:0 18px 12px;color:var(--muted)}\n.combinados{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}\n.combinados div{border-left:6px solid var(--sun);background:var(--card);padding:12px 16px;border-radius:0 12px 12px 0}\n.combinados b{display:block}\nfooter{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--muted);font-size:16px}\n@media print{.top,.escolhas,.hero .btn,footer .btn{display:none}.painel[hidden]{display:block}body{background:#fff;color:#000;font-size:14px}.painel,details{break-inside:avoid;border-color:#999}details>div{display:block}}\n@media(prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}\n<\/style>\n<\/head>\n<body>\n<div class=\"top\"><div class=\"wrap\">Prefeitura Municipal de Rio Claro – RJ · Banco Mestre Administrativo · v1.6 Oficial<\/div><\/div>\n\n<main class=\"wrap\">\n  <header class=\"hero\">\n    <h1>Escrever, numerar e consultar documentos oficiais, sem complicação.<\/h1>\n    <p>Este guia foi atualizado para a versão 1.6. Escolha abaixo o que você quer fazer e siga o passo a passo.<\/p>\n    <a class=\"btn\" href=\"#comecar\">Começar pelo básico<\/a>\n    <button class=\"btn alt\" type=\"button\" onclick=\"window.print()\">Imprimir este guia<\/button>\n  <\/header>\n\n  <section id=\"comecar\">\n    <h2>Os 3 primeiros passos<\/h2>\n    <p class=\"lead\">É sempre assim, toda vez que você entrar.<\/p>\n    <ol class=\"trilha\">\n      <li><b>Entre com sua matrícula e senha<\/b>Digite sua matrícula funcional e clique em <span class=\"chip\">Entrar no Sistema<\/span>. Se for seu primeiro acesso ou esqueceu a senha, clique em <span class=\"chip\">Primeiro acesso / Esqueci minha senha<\/span>. Cadastros novos ficam em <b>Aguardando autorização<\/b> até liberação do DRH/SMA (Ramal 407).<\/li>\n      <li><b>Confira a sua pasta (secretaria)<\/b>No alto da tela há um seletor com a secretaria em que você está trabalhando. Os números e o histórico seguem essa escolha, então confira antes de começar.<\/li>\n      <li><b>Escolha o tipo de documento e o modelo<\/b>Memorando, Ofício, Despacho, Circular ou Portaria. Use a busca ou o Índice Temático para achar o modelo ideal.<\/li>\n    <\/ol>\n  <\/section>\n\n  <section id=\"fazer\">\n    <h2>O que você quer fazer hoje?<\/h2>\n    <p class=\"lead\">Toque em uma opção para ver o passo a passo.<\/p>\n    <div class=\"escolhas\" role=\"group\" aria-label=\"Escolha uma tarefa\">\n      <button type=\"button\" data-go=\"p-escrever\">✍️ Escrever e Redator Oficial<\/button>\n      <button type=\"button\" data-go=\"p-numero\">🔢 Pegar um número oficial<\/button>\n      <button type=\"button\" data-go=\"p-livro\">📚 Consultar Livro e Reaproveitar<\/button>\n      <button type=\"button\" data-go=\"p-senha\">🔑 Senha e 1º Acesso<\/button>\n      <button type=\"button\" data-go=\"p-app\">📱 Instalar e Aparência<\/button>\n      <button type=\"button\" data-go=\"p-admin\">🛠️ Sou administrador<\/button>\n    <\/div>\n\n    <article class=\"painel\" id=\"p-escrever\" hidden>\n      <h3>Escrever no Redator Oficial (Modo Simples, Avançado e Auto-save)<\/h3>\n      <ol class=\"passos\">\n        <li><b>Modo Simples vs. Avançado:<\/b> por padrão o Redator abre no <span class=\"chip\">Modo Simples<\/span>, exibindo apenas os botões essenciais do dia a dia (Negrito, Itálico, Alinhamento e Listas). Para recursos normativos (Decretos, incisos, citação, fonte e referências cruzadas), alterne para <span class=\"chip\">Avançado<\/span> no topo do redator.<\/li>\n        <li><b>Salvamento Automático (Rascunho):<\/b> tudo que você digita é salvo automaticamente no seu navegador por matrícula. Se a janela fechar por acidente, ao abrir novamente o sistema oferece <span class=\"chip\">Restaurar rascunho<\/span>.<\/li>\n        <li><b>Tela Toda e Prévia Flutuante:<\/b> clique em <span class=\"chip\">Tela Toda<\/span> para expandir o redator em tela cheia ou ative <span class=\"chip\">Prévia Flutuante<\/span> para conferir a folha timbrada A4 enquanto redige.<\/li>\n        <li>Quando estiver pronto, visualize a <b>folha timbrada<\/b>, baixe para o <b>Word/PDF<\/b>, <b>copie formatado<\/b> ou envie por <b>e-mail<\/b>.<\/li>\n      <\/ol>\n      <div class=\"nota dica\"><b>Dica: use o Assistente de IA com calma<\/b>Ele pode melhorar a gramática, deixar o texto mais formal ou resumir. Leia sempre o texto final: o documento é de sua responsabilidade.<\/div>\n      <div class=\"nota atencao\"><b>Atenção<\/b>Não digite no Assistente de IA dados sigilosos de cidadãos (CPF, endereço, saúde).<\/div>\n    <\/article>\n\n    <article class=\"painel\" id=\"p-numero\" hidden>\n      <h3>Pegar o número oficial de um Memorando ou Ofício<\/h3>\n      <ol class=\"passos\">\n        <li>Clique no botão do <b>Redator Oficial<\/b>, que cria Memorando ou Ofício com numeração automática.<\/li>\n        <li>Escolha o tipo, informe o <b>destinatário<\/b> e o <b>assunto<\/b>.<\/li>\n        <li>Confirme a <b>secretaria<\/b> e o <b>departamento<\/b>: o número sai na sequência da sua pasta (001, 002, 003…).<\/li>\n        <li>Gere o número e escreva o documento. Ele já aparece automaticamente no Livro de Numeração.<\/li>\n      <\/ol>\n      <div class=\"nota atencao\"><b>Atenção: número gerado não volta<\/b>Cada número fica registrado com seu nome. Não gere só para testar. Se errou, avise o administrador em vez de gerar outro.<\/div>\n    <\/article>\n\n    <article class=\"painel\" id=\"p-livro\" hidden>\n      <h3>Consultar o Livro de Numeração e Reaproveitar Documentos<\/h3>\n      <p>É o caderno digital oficial de todos os documentos numerados da prefeitura.<\/p>\n      <ol class=\"passos\">\n        <li>Clique em <b>Livro de Numeração<\/b>.<\/li>\n        <li><b>Filtros Rápidos em 1 clique:<\/b> filtre por <span class=\"chip\">Meus Docs<\/span>, <span class=\"chip\">Hoje<\/span>, <span class=\"chip\">Este mês<\/span>, tipo de documento, secretaria ou departamento. Use também o botão <span class=\"chip\">Mais recentes / Mais antigos<\/span> para inverter a ordem das datas.<\/li>\n        <li><b>Usar como base (Duplicar):<\/b> precisa fazer um documento parecido com um anterior? Clique em <span class=\"chip\">Usar base<\/span> na linha do documento. O Redator abre com tipo, destinatário e assunto preenchidos e <b>sem número<\/b>, pronto para gerar uma nova numeração.<\/li>\n        <li>Você também pode <b>ver a folha timbrada<\/b>, <b>responder<\/b> citando a referência ou <b>copiar a citação<\/b>.<\/li>\n      <\/ol>\n      <div class=\"nota dica\"><b>Dica<\/b>Não achou um número recente? Feche o Livro e clique no botão de sincronizar (🔄) no alto da tela.<\/div>\n    <\/article>\n\n    <article class=\"painel\" id=\"p-senha\" hidden>\n      <h3>Primeiro Acesso, Autorização e Troca de Senha<\/h3>\n      <ol class=\"passos\">\n        <li><b>Primeiro acesso ou esqueci a senha:<\/b> na tela inicial, clique no botão <span class=\"chip\">Primeiro acesso / Esqueci minha senha<\/span> e informe sua matrícula funcional.<\/li>\n        <li><b>Aguardando autorização:<\/b> solicitações novas ficam visíveis para o Administrador do DRH/SMA aprovar. Caso precise de prioridade, ligue no <b>Ramal 407 • DRH/SMA<\/b>.<\/li>\n        <li><b>Trocar sua senha já logado:<\/b> clique no botão da <b>chave 🔑<\/b> no alto da tela, informe a senha atual e digite a nova senha duas vezes.<\/li>\n      <\/ol>\n      <div class=\"nota dica\"><b>Boa senha<\/b>Misture letras e números e não empreste sua senha: tudo que for emitido fica registrado com sua matrícula.<\/div>\n    <\/article>\n\n    <article class=\"painel\" id=\"p-app\" hidden>\n      <h3>Instalar como aplicativo e Tema Confortável<\/h3>\n      <ol class=\"passos\">\n        <li>Quando aparecer a faixa <b>Instalar Aplicativo<\/b>, clique em instalar. No computador, cria atalho na área de trabalho; no celular, vai para a tela inicial.<\/li>\n        <li>Use o botão de <b>Tema / Aparência 🌙<\/b> no cabeçalho para escolher entre modo Claro ou Escuro e melhorar o conforto visual no celular ou no computador.<\/li>\n      <\/ol>\n      <div class=\"nota dica\"><b>Não apareceu a faixa de instalação?<\/b>No Chrome ou no Edge, abra o menu do navegador (⋮) e procure <b>Instalar aplicativo<\/b>.<\/div>\n    <\/article>\n\n    <article class=\"painel\" id=\"p-admin\" hidden>\n      <h3>Para administradores: autorizar servidores e gerenciar pastas<\/h3>\n      <p>Só quem tem acesso de administrador vê o <b>Painel de Administração<\/b> (botão no alto da tela).<\/p>\n      <ol class=\"passos\">\n        <li><b>Autorizar novos servidores:<\/b> abra o painel e confira solicitações pendentes ou cadastros inativos para ativar o acesso do servidor.<\/li>\n        <li><b>Cadastrar e editar:<\/b> informe nome, matrícula, nível de acesso, secretaria(s) e departamento.<\/li>\n        <li><b>Esqueceu a senha?<\/b> Use <span class=\"chip\">Redefinir senha<\/span> e informe uma senha provisória para o servidor trocar no primeiro acesso.<\/li>\n        <li><b>Quando alguém sai ou muda de setor:<\/b> desative o acesso. O histórico documental permanece preservado.<\/li>\n      <\/ol>\n      <div class=\"nota atencao\"><b>Atenção<\/b>Nunca informe senhas em grupos públicos. Entregue pessoalmente ou pelo ramal interno.<\/div>\n    <\/article>\n  <\/section>\n\n  <section id=\"tela\">\n    <h2>Conheça os botões do topo<\/h2>\n    <p class=\"lead\">Eles ficam sempre no mesmo lugar, perto do seu nome.<\/p>\n    <div class=\"barra\" aria-hidden=\"true\"><em>Seu nome · sua secretaria<\/em><span>❓<\/span><span>🔑<\/span><span>🔄<\/span><span>🌙<\/span><span>🚪<\/span><\/div>\n    <ul class=\"legenda\">\n      <li><span>❓<\/span><div><b>Interrogação:<\/b> abre este guia, a qualquer momento (também na tela de entrada).<\/div><\/li>\n      <li><span>🔑<\/span><div><b>Chave:<\/b> troca a sua senha.<\/div><\/li>\n      <li><span>🔄<\/span><div><b>Setas:<\/b> atualiza modelos e números com as informações mais recentes da planilha.<\/div><\/li>\n      <li><span>🌙<\/span><div><b>Lua / Tema:<\/b> alterna entre visual claro e escuro para mais conforto visual.<\/div><\/li>\n      <li><span>🚪<\/span><div><b>Porta:<\/b> sai do sistema. Sempre use ao terminar em computador compartilhado.<\/div><\/li>\n    <\/ul>\n  <\/section>\n\n  <section id=\"palavras\">\n    <h2>Palavras que aparecem no sistema<\/h2>\n    <dl>\n      <dt>Modo Simples / Avançado<\/dt><dd>Permite esconder controles pouco usados no Redator Oficial ou exibi-los quando precisar de recursos normativos.<\/dd>\n      <dt>Rascunho Automático<\/dt><dd>Salvamento contínuo do que você digita no Redator para evitar perda de texto.<\/dd>\n      <dt>Pasta / Secretaria ativa<\/dt><dd>A secretaria em nome da qual você está trabalhando agora. Define a sequência dos números.<\/dd>\n      <dt>Livro de Numeração<\/dt><dd>O registro de todos os documentos numerados: quem emitiu, quando, para quem e botão para usar como base.<\/dd>\n      <dt>Folha timbrada<\/dt><dd>A página formatada com o brasão e o cabeçalho oficial da Prefeitura de Rio Claro – RJ.<\/dd>\n    <\/dl>\n  <\/section>\n\n  <section id=\"ajuda\">\n    <h2>Algo deu errado?<\/h2>\n    <p class=\"lead\">Quase tudo tem solução rápida. Toque na pergunta.<\/p>\n    <details><summary>Apareceu “Aguardando autorização”<\/summary><div>Seu cadastro está registrado e aguarda liberação do Administrador do DRH/SMA. Se precisar de urgência, ligue no Ramal 407.<\/div><\/details>\n    <details><summary>Fechei o navegador sem salvar meu memorando<\/summary><div>Abra o Redator Oficial novamente no mesmo tipo de documento: o aviso de Rascunho Automático permite restaurar seu texto em 1 clique.<\/div><\/details>\n    <details><summary>Esqueci minha senha<\/summary><div>Clique em “Primeiro acesso / Esqueci minha senha” na tela de entrada ou contate o DRH/SMA no Ramal 407.<\/div><\/details>\n    <details><summary>O número que preciso não aparece no Livro<\/summary><div>Clique em atualizar (🔄) no alto da tela e confira se os filtros (Hoje / Este mês / Meus Docs) não estão ocultando o registro.<\/div><\/details>\n    <details><summary>Gerei um número por engano<\/summary><div>Não gere outro para “compensar”. Avise o administrador do DRH/SMA (Ramal 407) para registrar o ocorrido.<\/div><\/details>\n    <details><summary>Aparecem balões de dica. Como desligo?<\/summary><div>No próprio balão, clique em “Parar dicas”. Para vê-las de novo, use o botão abaixo.<p><button class=\"btn alt\" id=\"rever-dicas\" type=\"button\" hidden>Mostrar as dicas de novo<\/button><\/p><\/div><\/details>\n  <\/section>\n\n  <section id=\"combinados\">\n    <h2>Combinados que ajudam todo mundo<\/h2>\n    <div class=\"combinados\">\n      <div><b>Senha é pessoal<\/b>Tudo o que é feito com ela fica registrado no seu nome.<\/div>\n      <div><b>Confira antes de gerar<\/b>Secretaria, tipo e destinatário certos evitam retrabalho.<\/div>\n      <div><b>Leia o que a IA escreveu<\/b>Ela ajuda, mas quem assina é você.<\/div>\n      <div><b>Saia ao terminar<\/b>Principalmente em computadores compartilhados.<\/div>\n    <\/div>\n  <\/section>\n<\/main>\n\n<footer>\n  <div class=\"wrap\">\n    <p><b>Precisa de ajuda?<\/b> Fale com o administrador da sua secretaria ou com o suporte oficial: <span class=\"chip\">DRH/SMA · Ramal 407 · rh@rioclaro.rj.gov.br<\/span><\/p>\n    <p>Guia de uso v1.6 · Banco Mestre Administrativo · Prefeitura Municipal de Rio Claro – RJ<\/p>\n  <\/div>\n<\/footer>\n\n<script>\n(function () {\n  var btns = Array.prototype.slice.call(document.querySelectorAll('[data-go]'));\n  var paineis = Array.prototype.slice.call(document.querySelectorAll('.painel'));\n  function abrir(id) {\n    btns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-go') === id)); });\n    paineis.forEach(function (p) { p.hidden = p.id !== id; });\n  }\n  btns.forEach(function (b) {\n    b.addEventListener('click', function () {\n      var id = b.getAttribute('data-go');\n      abrir(id);\n      try { history.replaceState(null, '', '#' + id); } catch (e) {}\n      document.getElementById(id).scrollIntoView({ block: 'nearest' });\n    });\n  });\n  var h = (location.hash || '').slice(1);\n  abrir(paineis.some(function (p) { return p.id === h; }) ? h : 'p-escrever');\n})();\n<\/script>\n<script>\n(function(){var b=document.getElementById('rever-dicas');try{if(parent!==window&&typeof parent.reiniciarDicas==='function'){b.hidden=false;b.addEventListener('click',function(){parent.reiniciarDicas();b.textContent='Pronto! As dicas voltarão a aparecer.';});}}catch(e){}})();\n<\/script>\n<\/body>\n<\/html>\n";
     let _guiaCarregado = false, _guiaFoco = null;
 
     function aplicarTemaGuia() {

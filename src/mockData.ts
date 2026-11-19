@@ -43,6 +43,12 @@ export interface RegistroLog {
   detalhes: string;
 }
 
+export interface FiltroAcessibilidadeDocs {
+  acessarSecretaria: boolean;
+  acessarDepartamento: boolean;
+  acessarProprios: boolean;
+}
+
 export interface UsuarioSistema {
   id?: string;
   matricula: string;
@@ -56,7 +62,41 @@ export interface UsuarioSistema {
   nivel: 'ADMIN' | 'EDITOR' | 'PADRAO';
   ativo: boolean;
   token?: string;
+  filtroAcessibilidade?: FiltroAcessibilidadeDocs;
 }
+
+export interface MembroComissao {
+  id: string;
+  nome: string;
+  funcao: string;
+  matricula: string;
+  cargoEfetivo: string;
+}
+
+export interface MargensDocumento {
+  superior: number; // cm
+  inferior: number; // cm
+  esquerda: number; // cm
+  direita: number; // cm
+}
+
+export interface PedidoRecuperacaoSenha {
+  id: string;
+  matricula: string;
+  nome: string;
+  cargo?: string;
+  secretaria: string;
+  departamento?: string;
+  contato?: string;
+  dataHora: string;
+  status: 'PENDENTE' | 'ATENDIDO' | 'CANCELADO';
+  tipo?: 'REDEFINICAO' | 'NOVO_CADASTRO';
+  resolvidoEm?: string;
+  resolvidoPor?: string;
+  senhaProvisoria?: string;
+}
+
+export const INITIAL_PEDIDOS_RECUPERACAO: PedidoRecuperacaoSenha[] = [];
 
 export interface SecretariaItem {
   sigla: string;
@@ -85,7 +125,7 @@ export const INITIAL_SECRETARIAS: SecretariaItem[] = [
   {
     sigla: 'SMA',
     nome: 'Secretaria Municipal de Administração',
-    titular: 'Carlos Eduardo Mendes',
+    titular: 'Secretário Municipal de Administração',
     departamentos: ['Departamento de Recursos Humanos (DRH)', 'Divisão de Treinamento e Desenvolvimento', 'Coordenação de Folha de Pagamento', 'Departamento de Patrimônio e Logística'],
     email: 'administracao@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1200'
@@ -93,7 +133,7 @@ export const INITIAL_SECRETARIAS: SecretariaItem[] = [
   {
     sigla: 'SMS',
     nome: 'Secretaria Municipal de Saúde',
-    titular: 'Dr. Fernando Vasconcelos',
+    titular: 'Secretário(a) Municipal de Saúde',
     departamentos: ['Vigilância Sanitária', 'Departamento de Atenção Básica', 'Divisão de Farmácia Municipal', 'Regulação e Transporte Sanitário'],
     email: 'saude@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1300'
@@ -101,7 +141,7 @@ export const INITIAL_SECRETARIAS: SecretariaItem[] = [
   {
     sigla: 'SME',
     nome: 'Secretaria Municipal de Educação',
-    titular: 'Profª Cláudia Guimarães',
+    titular: 'Secretário(a) Municipal de Educação',
     departamentos: ['Coordenação Pedagógica', 'Divisão de Nutrição e Merenda Escolar', 'Departamento de Transporte Escolar', 'Gestão de Unidades Escolares'],
     email: 'educacao@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1400'
@@ -109,7 +149,7 @@ export const INITIAL_SECRETARIAS: SecretariaItem[] = [
   {
     sigla: 'SMF',
     nome: 'Secretaria Municipal de Fazenda e Finanças',
-    titular: 'Rodrigo Antunes',
+    titular: 'Secretário(a) Municipal de Fazenda',
     departamentos: ['Departamento de Tributação e Fiscalização', 'Divisão de Tesouraria e Contabilidade', 'Dívida Ativa', 'Arrecadação Municipal'],
     email: 'fazenda@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1500'
@@ -117,7 +157,7 @@ export const INITIAL_SECRETARIAS: SecretariaItem[] = [
   {
     sigla: 'SMOSP',
     nome: 'Secretaria Municipal de Obras e Serviços Públicos',
-    titular: 'Eng. Marcelo Peixoto',
+    titular: 'Secretário(a) Municipal de Obras e Serviços Públicos',
     departamentos: ['Departamento de Vias Urbanas e Rurais', 'Divisão de Limpeza e Conservação', 'Setor de Projetos e Fiscalização de Obras'],
     email: 'obras@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1600'
@@ -125,7 +165,7 @@ export const INITIAL_SECRETARIAS: SecretariaItem[] = [
   {
     sigla: 'SMAS',
     nome: 'Secretaria Municipal de Ação Social e Cidadania',
-    titular: 'Beatriz Rezende',
+    titular: 'Secretário(a) Municipal de Ação Social',
     departamentos: ['CRAS - Centro de Referência', 'CREAS', 'Gestão do Cadastro Único e Bolsa Família', 'Conselho Tutelar'],
     email: 'social@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1700'
@@ -133,7 +173,7 @@ export const INITIAL_SECRETARIAS: SecretariaItem[] = [
   {
     sigla: 'PGM',
     nome: 'Procuradoria-Geral do Município',
-    titular: 'Dr. Roberto Mendes de Oliveira',
+    titular: 'Procurador(a)-Geral do Município',
     departamentos: ['Consultoria Jurídica', 'Contencioso Administrativo e Judicial', 'Execuções Fiscais'],
     email: 'procuradoria@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1800'
@@ -141,7 +181,7 @@ export const INITIAL_SECRETARIAS: SecretariaItem[] = [
   {
     sigla: 'SEGOV',
     nome: 'Secretaria de Governo e Gabinete do Prefeito',
-    titular: 'Gabinete do Executivo',
+    titular: 'Chefia de Gabinete do Prefeito',
     departamentos: ['Chefia de Gabinete', 'Assessoria de Comunicação e Imprensa', 'Defesa Civil Municipal'],
     email: 'gabinete@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1100'
@@ -158,148 +198,85 @@ export const INITIAL_USERS: UsuarioSistema[] = [
     secretaria: 'Secretaria Municipal de Administração (SMA)',
     secretarias: [
       'Secretaria Municipal de Administração (SMA)',
-      'Secretaria de Governo e Gabinete do Prefeito (SEGOV)',
-      'Secretaria Municipal de Saúde (SMS)'
+      'Secretaria de Governo e Gabinete do Prefeito (SEGOV)'
     ],
     nivel: 'ADMIN',
-    ativo: true
-  },
-  {
-    matricula: '1002',
-    senha: '123',
-    nome: 'Mariana Santos Silva',
-    cargo: 'Diretora do Departamento de Recursos Humanos',
-    departamento: 'Departamento de Recursos Humanos (DRH)',
-    secretaria: 'Secretaria Municipal de Administração (SMA)',
-    secretarias: ['Secretaria Municipal de Administração (SMA)'],
-    nivel: 'ADMIN',
-    ativo: true
-  },
-  {
-    matricula: '1003',
-    senha: '123',
-    nome: 'Carlos Eduardo Mendes',
-    cargo: 'Secretário Municipal de Administração',
-    departamento: 'Gabinete da Secretaria de Administração',
-    secretaria: 'Secretaria Municipal de Administração (SMA)',
-    secretarias: ['Secretaria Municipal de Administração (SMA)'],
-    nivel: 'ADMIN',
-    ativo: true
-  },
-  {
-    matricula: '1004',
-    senha: '123',
-    nome: 'Ana Paula Ferreira',
-    cargo: 'Coordenadora de Gestão de Pessoal e Folha',
-    departamento: 'Divisão de Recursos Humanos e Folha',
-    secretaria: 'Secretaria Municipal de Administração (SMA)',
-    secretarias: ['Secretaria Municipal de Administração (SMA)'],
-    nivel: 'PADRAO',
-    ativo: true
-  },
-  {
-    matricula: '1005',
-    senha: '123',
-    nome: 'Dr. Roberto Mendes de Oliveira',
-    cargo: 'Procurador-Geral do Município',
-    departamento: 'Gabinete da Procuradoria',
-    secretaria: 'Procuradoria-Geral do Município (PGM)',
-    secretarias: ['Procuradoria-Geral do Município (PGM)'],
-    nivel: 'PADRAO',
-    ativo: true
-  },
-  {
-    matricula: '1006',
-    senha: '123',
-    nome: 'Juliana Almeida Prado',
-    cargo: 'Controladora-Geral do Município',
-    departamento: 'Gabinete da Controladoria',
-    secretaria: 'Controladoria Geral do Município (CGM)',
-    secretarias: ['Controladoria Geral do Município (CGM)'],
-    nivel: 'PADRAO',
-    ativo: true
-  },
-  {
-    matricula: '1007',
-    senha: '123',
-    nome: 'Dra. Camila Nogueira Ramos',
-    cargo: 'Secretária Municipal de Saúde',
-    departamento: 'Gabinete da Saúde',
-    secretaria: 'Secretaria Municipal de Saúde (SMS)',
-    secretarias: ['Secretaria Municipal de Saúde (SMS)'],
-    nivel: 'PADRAO',
-    ativo: true
-  },
-  {
-    matricula: '1008',
-    senha: '123',
-    nome: 'Profª Tereza Cristina Viana',
-    cargo: 'Secretária Municipal de Educação',
-    departamento: 'Gabinete da Educação',
-    secretaria: 'Secretaria Municipal de Educação (SME)',
-    secretarias: ['Secretaria Municipal de Educação (SME)'],
-    nivel: 'PADRAO',
-    ativo: true
-  },
-  {
-    matricula: '1009',
-    senha: '123',
-    nome: 'Eng. Marcos Vinícius Rocha',
-    cargo: 'Secretário Municipal de Obras e Serviços Públicos',
-    departamento: 'Gabinete de Obras',
-    secretaria: 'Secretaria Municipal de Obras e Serviços Públicos (SMOSP)',
-    secretarias: ['Secretaria Municipal de Obras e Serviços Públicos (SMOSP)'],
-    nivel: 'PADRAO',
-    ativo: true
-  },
-  {
-    matricula: '2002',
-    senha: '123',
-    nome: 'Mariana Souza Silva',
-    cargo: 'Técnica de Gestão Pública',
-    departamento: 'Divisão de Treinamento e Desenvolvimento',
-    secretaria: 'Secretaria Municipal de Administração (SMA)',
-    secretarias: ['Secretaria Municipal de Administração (SMA)'],
-    nivel: 'PADRAO',
-    ativo: true
-  },
-  {
-    matricula: '3003',
-    senha: '123',
-    nome: 'Roberto Albuquerque',
-    cargo: 'Oficial Administrativo',
-    departamento: 'Setor de Protocolo e Arquivo Geral',
-    secretaria: 'Secretaria Municipal de Administração (SMA)',
-    secretarias: ['Secretaria Municipal de Administração (SMA)'],
-    nivel: 'PADRAO',
     ativo: true
   }
 ];
 
 /**
- * Normaliza e obtém a sigla oficial de uma Secretaria / Pasta Municipal
+ * Normaliza strings removendo acentos, pontuação lateral e espaços extras para comparação segura de escopo
+ */
+export function normalizeScopeText(value?: string): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripParenthesizedSigla(value?: string): string {
+  return normalizeScopeText(value).replace(/\s*\([a-z0-9_\-]+\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Normaliza e obtém a sigla oficial canônica de uma Secretaria / Pasta Municipal
+ * Evita colisões de substring (ex: SMA vs SMAS)
  */
 export function getSecretariaSigla(secretariaNomeOrSigla?: string, secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS): string {
   if (!secretariaNomeOrSigla) return 'SMA';
   const clean = String(secretariaNomeOrSigla).trim();
-  
-  // Se contiver sigla entre parênteses: "Secretaria Municipal de Administração (SMA)" -> "SMA"
+  if (!clean) return 'SMA';
+
+  // 1. Se contiver sigla entre parênteses: "Secretaria Municipal de Administração (SMA)" -> "SMA"
   const matchParen = clean.match(/\(([A-Z0-9_\-]+)\)/i);
-  if (matchParen) return matchParen[1].toUpperCase();
+  if (matchParen) {
+    const parenSigla = matchParen[1].toUpperCase();
+    if (parenSigla === 'SEAD') return 'SMA';
+    if (parenSigla === 'SMASC') return 'SMAS';
+    if (parenSigla === 'GP') return 'SEGOV';
+    return parenSigla;
+  }
 
-  // Busca na lista estruturada
-  const found = secretariasList.find(s => 
-    s.sigla.toUpperCase() === clean.toUpperCase() ||
-    s.nome.toLowerCase() === clean.toLowerCase() ||
-    clean.toLowerCase().includes(s.sigla.toLowerCase()) ||
-    clean.toLowerCase().includes(s.nome.toLowerCase())
+  const normClean = normalizeScopeText(clean);
+  const normBase = stripParenthesizedSigla(clean);
+
+  // 2. Correspondência exata na lista estruturada (sigla ou nome completo)
+  const exactFound = secretariasList.find(s =>
+    normalizeScopeText(s.sigla) === normClean ||
+    normalizeScopeText(s.nome) === normClean ||
+    normalizeScopeText(s.nome) === normBase
   );
-  if (found) return found.sigla;
+  if (exactFound) return exactFound.sigla.toUpperCase();
 
-  // Se já for sigla curta
-  if (clean.length <= 8 && clean === clean.toUpperCase()) return clean;
+  // 3. Aliases canônicos inequívocos
+  if (/\bsma\b|\bsead\b/.test(normClean) || normBase.includes('administracao') || normBase === 'departamento de recursos humanos') return 'SMA';
+  if (/\bsmas\b|\bsmasc\b/.test(normClean) || normBase.includes('acao social') || normBase.includes('assistencia social')) return 'SMAS';
+  if (/\bsms\b/.test(normClean) || normBase.includes('saude')) return 'SMS';
+  if (/\bsme\b/.test(normClean) || normBase.includes('educacao')) return 'SME';
+  if (/\bsmf\b/.test(normClean) || normBase.includes('fazenda') || normBase.includes('financas')) return 'SMF';
+  if (/\bsmosp\b/.test(normClean) || normBase.includes('obras')) return 'SMOSP';
+  if (/\bsmma\b/.test(normClean) || normBase.includes('meio ambiente')) return 'SMMA';
+  if (/\bpgm\b/.test(normClean) || normBase.includes('procuradoria')) return 'PGM';
+  if (/\bcgm\b/.test(normClean) || normBase.includes('controladoria')) return 'CGM';
+  if (/\biprc\b/.test(normClean) || normBase.includes('previdencia')) return 'IPRC';
+  if (/\bsegov\b|\bgp\b/.test(normClean) || normBase.includes('gabinete do prefeito') || normBase.includes('secretaria de governo')) return 'SEGOV';
 
-  // Deriva sigla por iniciais
+  // 4. Busca por palavra-chave exata na lista dinâmica de secretarias cadastradas no Admin
+  const dynamicFound = secretariasList.find(s => {
+    const sSigla = normalizeScopeText(s.sigla);
+    const sNome = normalizeScopeText(s.nome);
+    const regexSigla = new RegExp(`\\b${sSigla.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+    return regexSigla.test(normClean) || normBase === sNome;
+  });
+  if (dynamicFound) return dynamicFound.sigla.toUpperCase();
+
+  // 5. Se já for sigla curta em maiúsculas
+  if (clean.length <= 8 && clean === clean.toUpperCase() && /^[A-Z0-9_\-]+$/.test(clean)) return clean;
+
+  // 6. Deriva sigla por iniciais
   const words = clean
     .replace(/^(secretaria|departamento|divisão|divisao|coordenação|coordenacao)\s+(municipal\s+)?(de\s+|do\s+|da\s+)?/i, '')
     .split(/[\s\-]+/)
@@ -312,61 +289,294 @@ export function getSecretariaSigla(secretariaNomeOrSigla?: string, secretariasLi
 }
 
 /**
- * Regra de Negócio: Verifica se um registro documental pertence à Secretaria especificada.
- * NOTA: Registros sem secretaria explícita (como os 841 legados) pertencem à Secretaria de Administração (SEAD/SMA).
+ * Compara duas Secretarias de forma canônica sem falsos positivos (ex: SMA != SMAS)
  */
-export function isRecordFromSecretaria(recordSec: string | undefined, targetSec: string): boolean {
-  if (!targetSec) return true;
-  const targetNorm = targetSec.toLowerCase();
-  const isTargetSEAD = targetNorm.includes('administra') || targetNorm.includes('sma') || targetNorm.includes('sead');
+export function isSameSecretaria(secA?: string, secB?: string, secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS): boolean {
+  if (!secA || !secB) return false;
+  const normA = normalizeScopeText(secA);
+  const normB = normalizeScopeText(secB);
+  if (normA === normB) return true;
 
-  // Registros sem secretaria ou legados pertencem à SEAD
+  const baseA = stripParenthesizedSigla(secA);
+  const baseB = stripParenthesizedSigla(secB);
+  if (baseA && baseB && baseA === baseB) return true;
+
+  const siglaA = getSecretariaSigla(secA, secretariasList);
+  const siglaB = getSecretariaSigla(secB, secretariasList);
+  return siglaA === siglaB;
+}
+
+/**
+ * Resolve o nome padronizado de exibição de uma Secretaria a partir de sigla ou texto parcial
+ */
+export function resolveCanonicalSecretariaName(secInput?: string, secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS): string {
+  const raw = String(secInput || '').trim();
+  if (!raw) return 'Secretaria Municipal de Administração (SMA)';
+  const sigla = getSecretariaSigla(raw, secretariasList);
+  const found = secretariasList.find(s => s.sigla.toUpperCase() === sigla);
+  if (found) return `${found.nome} (${found.sigla})`;
+  const foundBase = SECRETARIAS_MUNICIPAIS_BASE.find(b => getSecretariaSigla(b, secretariasList) === sigla);
+  if (foundBase) return foundBase;
+  return raw;
+}
+
+/**
+ * Regra de Negócio: Verifica se um registro documental pertence à Secretaria especificada.
+ * NOTA: Registros sem secretaria explícita (como os 841 legados) pertencem exclusivamente à Secretaria de Administração (SEAD/SMA).
+ */
+export function isRecordFromSecretaria(
+  recordSec: string | undefined,
+  targetSec: string,
+  secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS
+): boolean {
+  if (!targetSec || targetSec === 'TODAS') return true;
+  const targetSigla = getSecretariaSigla(targetSec, secretariasList);
+  const isTargetSEAD = targetSigla === 'SMA';
+
+  // Registros sem secretaria ou legados pertencem exclusivamente à SEAD/SMA
   if (!recordSec || !recordSec.trim()) {
     return isTargetSEAD;
   }
 
-  const recNorm = recordSec.toLowerCase();
-  if (isTargetSEAD && (recNorm.includes('administra') || recNorm.includes('sma') || recNorm.includes('sead'))) {
-    return true;
-  }
-
-  return recNorm.includes(targetNorm) || targetNorm.includes(recNorm);
+  return isSameSecretaria(recordSec, targetSec, secretariasList);
 }
 
 /**
- * Regra de Negócio: Verifica se o servidor atual possui autorização de visualização para a secretaria.
- * ADMIN possui visão irrestrita. Servidores com vínculo à Secretaria de Administração têm acesso aos legados.
+ * Compara dois Departamentos internos normalizados (com suporte a siglas como DRH)
  */
-export function isUserAuthorizedForSecretaria(user: UsuarioSistema | null, targetSec?: string): boolean {
+export function isRecordFromDepartamento(
+  recordDepto: string | undefined,
+  targetDepto: string | undefined,
+  recordSec?: string,
+  secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS
+): boolean {
+  if (!targetDepto || targetDepto === 'TODOS' || targetDepto === 'TODAS') return true;
+
+  const recSecSigla = getSecretariaSigla(recordSec, secretariasList);
+  const rawRec = (recordDepto && recordDepto.trim())
+    ? recordDepto.trim()
+    : (recSecSigla === 'SMA' ? 'Departamento de Recursos Humanos (DRH)' : 'Gabinete');
+
+  const normRec = normalizeScopeText(rawRec);
+  const normTarget = normalizeScopeText(targetDepto);
+  if (normRec === normTarget) return true;
+
+  const baseRec = stripParenthesizedSigla(rawRec);
+  const baseTarget = stripParenthesizedSigla(targetDepto);
+  if (baseRec && baseTarget && baseRec === baseTarget) return true;
+
+  const parenRec = rawRec.match(/\(([A-Z0-9_\-]+)\)/i)?.[1]?.toUpperCase();
+  const parenTarget = targetDepto.match(/\(([A-Z0-9_\-]+)\)/i)?.[1]?.toUpperCase();
+  if (parenRec && parenTarget && parenRec === parenTarget) return true;
+
+  return false;
+}
+
+/**
+ * Faz parsing seguro do filtro de acessibilidade documental vindo da API, localStorage ou string serializada.
+ */
+export function parseFiltroAcessibilidade(raw: unknown): FiltroAcessibilidadeDocs | undefined {
+  if (!raw) return undefined;
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>;
+    if (
+      'acessarSecretaria' in obj ||
+      'acessarDepartamento' in obj ||
+      'acessarProprios' in obj
+    ) {
+      return {
+        acessarSecretaria: Boolean(obj.acessarSecretaria),
+        acessarDepartamento: Boolean(obj.acessarDepartamento),
+        acessarProprios: Boolean(obj.acessarProprios)
+      };
+    }
+    return undefined;
+  }
+  if (typeof raw === 'string') {
+    const clean = raw.trim();
+    if (!clean) return undefined;
+    try {
+      const parsed = JSON.parse(clean);
+      return parseFiltroAcessibilidade(parsed);
+    } catch {
+      const upper = clean.toUpperCase();
+      if (upper.includes('SEC:') || upper.includes('DEP:') || upper.includes('PROP:')) {
+        return {
+          acessarSecretaria: upper.includes('SEC:1') || upper.includes('SEC:TRUE'),
+          acessarDepartamento: upper.includes('DEP:1') || upper.includes('DEP:TRUE'),
+          acessarProprios: upper.includes('PROP:1') || upper.includes('PROP:TRUE')
+        };
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Verifica se o servidor possui um departamento específico configurado (não genérico).
+ */
+export function hasSpecificDepartamento(user: UsuarioSistema | null): boolean {
+  if (!user) return false;
+  const dep = normalizeScopeText(user.departamento);
+  if (!dep) return false;
+  return !['todos', 'todas', 'geral', 'nao informado'].includes(dep);
+}
+
+/**
+ * Retorna a política efetiva de acessibilidade documental de um servidor.
+ * Quando não customizada pelo Administrador, preserva o padrão por nível (ADMIN/EDITOR/PADRAO).
+ */
+export function getEffectiveAccessibilityFilter(user: UsuarioSistema | null): FiltroAcessibilidadeDocs {
+  if (!user) {
+    return { acessarSecretaria: false, acessarDepartamento: false, acessarProprios: false };
+  }
+  if (user.nivel === 'ADMIN') {
+    return { acessarSecretaria: true, acessarDepartamento: true, acessarProprios: true };
+  }
+  if (user.filtroAcessibilidade) {
+    return {
+      acessarSecretaria: Boolean(user.filtroAcessibilidade.acessarSecretaria),
+      acessarDepartamento: Boolean(user.filtroAcessibilidade.acessarDepartamento),
+      acessarProprios: Boolean(user.filtroAcessibilidade.acessarProprios)
+    };
+  }
+  if (user.nivel === 'EDITOR') {
+    return { acessarSecretaria: true, acessarDepartamento: true, acessarProprios: true };
+  }
+  // Padrão retrocompatível para PADRAO: se tiver departamento definido, restringe ao departamento + próprios
+  if (hasSpecificDepartamento(user)) {
+    return { acessarSecretaria: false, acessarDepartamento: true, acessarProprios: true };
+  }
+  return { acessarSecretaria: true, acessarDepartamento: true, acessarProprios: true };
+}
+
+/**
+ * Gera rótulo resumido da política de acesso documental para exibição no painel admin e drawer.
+ */
+export function formatAccessibilityFilterLabel(user: UsuarioSistema | null): string {
+  if (!user) return 'Sem acesso';
+  if (user.nivel === 'ADMIN') return 'Total (Admin)';
+  const eff = getEffectiveAccessibilityFilter(user);
+  if (eff.acessarSecretaria) return 'Toda a Secretaria';
+  const parts: string[] = [];
+  if (eff.acessarDepartamento) parts.push('Departamento');
+  if (eff.acessarProprios) parts.push('Próprios');
+  if (parts.length === 0) return 'Somente Emissão (Consulta bloqueada)';
+  return parts.join(' + ');
+}
+
+/**
+ * Verifica se o documento foi emitido pelo próprio servidor (por matrícula imutável ou nome).
+ */
+export function isOwnDocumentRecord(user: UsuarioSistema | null, record: RegistroNumeracao): boolean {
+  if (!user) return false;
+  const docUser = normalizeScopeText(`${record.servidor || ''} ${record.usuario || ''}`);
+  if (!docUser) return false;
+  const userMat = normalizeScopeText(user.matricula);
+  const userName = normalizeScopeText(user.nome);
+  if (userMat && docUser.includes(userMat)) return true;
+  if (userName && userName.length >= 3 && docUser.includes(userName)) return true;
+  return false;
+}
+
+/**
+ * Verifica se o servidor atual tem o escopo de departamento travado (não possui acesso irrestrito à Secretaria)
+ */
+export function isUserRestrictedToDepartamento(user: UsuarioSistema | null): boolean {
+  if (!user || user.nivel === 'ADMIN') return false;
+  if (!hasSpecificDepartamento(user)) return false;
+  const eff = getEffectiveAccessibilityFilter(user);
+  return !eff.acessarSecretaria;
+}
+
+/**
+ * Regra de Negócio: Verifica se o servidor atual possui autorização de visualização/emissão para a secretaria.
+ * ADMIN possui visão irrestrita.
+ */
+export function isUserAuthorizedForSecretaria(
+  user: UsuarioSistema | null,
+  targetSec?: string,
+  secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS
+): boolean {
   if (!user) return false;
   if (user.nivel === 'ADMIN') return true;
   if (!targetSec) return true;
-
-  const targetNorm = targetSec.toLowerCase();
-  const isTargetSEAD = targetNorm.includes('administra') || targetNorm.includes('sma') || targetNorm.includes('sead');
+  if (targetSec === 'TODAS') return false;
 
   const userSecs = [
     user.secretaria,
     ...(user.secretarias || [])
-  ].filter(Boolean).map(s => String(s).toLowerCase());
+  ].filter(Boolean) as string[];
 
-  return userSecs.some(s => {
-    if (isTargetSEAD && (s.includes('administra') || s.includes('sma') || s.includes('sead'))) return true;
-    return s.includes(targetNorm) || targetNorm.includes(s);
-  });
+  return userSecs.some(s => isSameSecretaria(s, targetSec, secretariasList));
 }
 
 /**
  * Verifica se o usuário tem permissão para acessar os 841 registros históricos legados da SEAD
  */
-export function canUserViewLegacyAdminRecords(user: UsuarioSistema | null): boolean {
+export function canUserViewLegacyAdminRecords(
+  user: UsuarioSistema | null,
+  secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS
+): boolean {
   if (!user) return false;
   if (user.nivel === 'ADMIN') return true;
   const userSecs = [
     user.secretaria,
     ...(user.secretarias || [])
-  ].filter(Boolean).map(s => String(s).toLowerCase());
-  return userSecs.some(s => s.includes('administra') || s.includes('sma') || s.includes('sead'));
+  ].filter(Boolean) as string[];
+  return userSecs.some(s => getSecretariaSigla(s, secretariasList) === 'SMA');
+}
+
+/**
+ * Portão único de confidencialidade: valida se o usuário logado pode visualizar um registro documental
+ * considerando Secretaria ativa, Departamento de lotação e Filtro de Acessibilidade configurado pelo Admin.
+ */
+export function canUserAccessRecord(
+  user: UsuarioSistema | null,
+  record: RegistroNumeracao,
+  activeSecretaria: string,
+  secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS
+): boolean {
+  if (!user) return false;
+
+  // 1. Isolamento de Secretaria (sempre obrigatório para não-ADMIN)
+  if (user.nivel === 'ADMIN') {
+    if (activeSecretaria !== 'TODAS' && !isRecordFromSecretaria(record.secretaria, activeSecretaria, secretariasList)) {
+      return false;
+    }
+    return true;
+  }
+
+  // Nunca permite visão global "TODAS" para não-ADMIN
+  if (!activeSecretaria || activeSecretaria === 'TODAS') return false;
+  if (!isUserAuthorizedForSecretaria(user, activeSecretaria, secretariasList)) return false;
+
+  const isLegacyBlank = !record.secretaria || !record.secretaria.trim();
+  if (isLegacyBlank) {
+    // Legados sem secretaria só pertencem à SMA/SEAD e só podem ser vistos se o usuário tiver vínculo com a SMA e estiver nela
+    if (!canUserViewLegacyAdminRecords(user, secretariasList)) return false;
+    if (getSecretariaSigla(activeSecretaria, secretariasList) !== 'SMA') return false;
+  } else {
+    if (!isRecordFromSecretaria(record.secretaria, activeSecretaria, secretariasList)) return false;
+  }
+
+  // 2. Filtro de Acessibilidade Documental (Secretaria / Departamento / Próprio Servidor)
+  const eff = getEffectiveAccessibilityFilter(user);
+
+  // Caso 2a: Acesso liberado a toda a Secretaria autorizada
+  if (eff.acessarSecretaria) {
+    return true;
+  }
+
+  // Caso 2b: Acesso ao Departamento do servidor (somente se o servidor possuir departamento específico)
+  const sameDepto = eff.acessarDepartamento &&
+    hasSpecificDepartamento(user) &&
+    isRecordFromDepartamento(record.departamento, user.departamento, record.secretaria, secretariasList);
+
+  // Caso 2c: Acesso a documentos emitidos pelo próprio servidor
+  const isOwnDoc = eff.acessarProprios && isOwnDocumentRecord(user, record);
+
+  return sameDepto || isOwnDoc;
 }
 
 /**
@@ -376,10 +586,12 @@ export function getNextSequentialForSecretaria(
   records: RegistroNumeracao[],
   tipoDoc: string,
   secretaria: string,
-  anoAtual: string = new Date().getFullYear().toString()
+  anoAtual: string = new Date().getFullYear().toString(),
+  secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS
 ): number {
   const normTipo = tipoDoc.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-  const isTargetSEAD = secretaria.toLowerCase().includes('administra') || secretaria.toLowerCase().includes('sma') || secretaria.toLowerCase().includes('sead');
+  const targetSigla = getSecretariaSigla(secretaria, secretariasList);
+  const isTargetSEAD = targetSigla === 'SMA';
 
   let maxSeq = 0;
   for (const r of records) {
@@ -387,9 +599,9 @@ export function getNextSequentialForSecretaria(
     if (rTipo !== normTipo) continue;
 
     const rSec = r.secretaria || '';
-    const isRecordSEAD = !rSec || rSec.toLowerCase().includes('administra') || rSec.toLowerCase().includes('sma') || rSec.toLowerCase().includes('sead');
-
-    const matches = isTargetSEAD ? isRecordSEAD : isRecordFromSecretaria(rSec, secretaria);
+    const matches = !rSec.trim()
+      ? isTargetSEAD
+      : isSameSecretaria(rSec, secretaria, secretariasList);
     if (!matches) continue;
 
     const numStr = String(r.numero || '').trim();
@@ -409,63 +621,7 @@ export function getNextSequentialForSecretaria(
   return maxSeq + 1;
 }
 
-export const INITIAL_NUMERACOES: RegistroNumeracao[] = [
-  {
-    dataHora: '2026-02-10T14:22:10.000Z',
-    tipoDocumento: 'MEMORANDO',
-    numero: '001/2026 - SMA',
-    assunto: 'Entrada de Ofício e Providências Funcionais',
-    usuario: 'Carlos Eduardo Mendes',
-    servidor: 'Carlos Eduardo Mendes (20851)',
-    destinatario: 'Secretaria Municipal de Educação (SME)',
-    secretaria: 'Secretaria Municipal de Administração (SMA)',
-    departamento: 'Departamento de Recursos Humanos'
-  },
-  {
-    dataHora: '2026-02-15T09:12:45.000Z',
-    tipoDocumento: 'OFICIO',
-    numero: '001/2026 - SMA',
-    assunto: 'Encaminhamento de Impacto Orçamentário da Folha de Pagamento',
-    usuario: 'Mariana Souza Silva',
-    servidor: 'Mariana Souza Silva (10442)',
-    destinatario: 'Secretaria Municipal de Finanças e Fazenda',
-    secretaria: 'Secretaria Municipal de Administração (SMA)',
-    departamento: 'Divisão de Folha de Pagamento'
-  },
-  {
-    dataHora: '2026-02-28T16:40:00.000Z',
-    tipoDocumento: 'DESPACHO',
-    numero: '001/2026 - SMA',
-    assunto: 'Concessão de Licença por Assiduidade',
-    usuario: 'Carlos Eduardo Mendes',
-    servidor: 'Carlos Eduardo Mendes (20851)',
-    destinatario: 'Divisão de Recursos Humanos e Folha',
-    secretaria: 'Secretaria Municipal de Administração (SMA)',
-    departamento: 'Departamento de Recursos Humanos'
-  },
-  {
-    dataHora: '2026-03-05T11:05:30.000Z',
-    tipoDocumento: 'MEMORANDO',
-    numero: '002/2026 - SMA',
-    assunto: 'Comunicação Interna sobre Recadastramento Previdenciário',
-    usuario: 'Mariana Souza Silva',
-    servidor: 'Mariana Souza Silva (10442)',
-    destinatario: 'Controladoria Geral do Município (CGM)',
-    secretaria: 'Secretaria Municipal de Administração (SMA)',
-    departamento: 'Gabinete'
-  },
-  {
-    dataHora: '2026-03-12T15:30:12.000Z',
-    tipoDocumento: 'OFICIO',
-    numero: '002/2026 - SMA',
-    assunto: 'Solicitação de Informações de Servidores Cedidos',
-    usuario: 'Carlos Eduardo Mendes',
-    servidor: 'Carlos Eduardo Mendes (20851)',
-    destinatario: 'Câmara Municipal de Rio Claro – RJ',
-    secretaria: 'Secretaria Municipal de Administração (SMA)',
-    departamento: 'Departamento de Recursos Humanos'
-  }
-];
+export const INITIAL_NUMERACOES: RegistroNumeracao[] = [];
 
 export const INITIAL_SUGESTOES = {
   destinatarios: [
@@ -518,40 +674,4 @@ export const INITIAL_MODELOS: ModeloDocumental[] = (realModelsRaw as any[]).map(
   Ativo: item.Ativo !== false
 }));
 
-export const INITIAL_LOGS: RegistroLog[] = [
-  {
-    dataHora: '2026-02-10T14:22:15.000Z',
-    usuario: 'Carlos Eduardo Mendes',
-    acao: 'GERAR_NUMERO',
-    docId: '1/2026',
-    detalhes: 'Emitiu MEMORANDO 1/2026 | Dest: Secretaria Municipal de Educação (SME) | Assunto: Entrada de Ofício e Providências Funcionais'
-  },
-  {
-    dataHora: '2026-02-15T09:12:50.000Z',
-    usuario: 'Mariana Souza Silva',
-    acao: 'GERAR_NUMERO',
-    docId: '1/2026',
-    detalhes: 'Emitiu OFICIO 1/2026 | Dest: Secretaria Municipal de Finanças e Fazenda | Assunto: Encaminhamento de Impacto Orçamentário da Folha de Pagamento'
-  },
-  {
-    dataHora: '2026-02-28T16:40:05.000Z',
-    usuario: 'Carlos Eduardo Mendes',
-    acao: 'GERAR_NUMERO',
-    docId: '1/2026',
-    detalhes: 'Emitiu DESPACHO 1/2026 | Dest: Divisão de Recursos Humanos e Folha | Assunto: Concessão de licença por assiduidade'
-  },
-  {
-    dataHora: '2026-03-05T11:05:35.000Z',
-    usuario: 'Mariana Souza Silva',
-    acao: 'GERAR_NUMERO',
-    docId: '2/2026',
-    detalhes: 'Emitiu MEMORANDO 2/2026 | Dest: Controladoria Geral do Município (CGM) | Assunto: Comunicação Interna sobre Recadastramento Previdenciário'
-  },
-  {
-    dataHora: '2026-03-12T15:30:18.000Z',
-    usuario: 'Carlos Eduardo Mendes',
-    acao: 'GERAR_NUMERO',
-    docId: '2/2026',
-    detalhes: 'Emitiu OFICIO 2/2026 | Dest: Câmara Municipal de Rio Claro – RJ | Assunto: Solicitação de Informações de Servidores Cedidos'
-  }
-];
+export const INITIAL_LOGS: RegistroLog[] = [];
