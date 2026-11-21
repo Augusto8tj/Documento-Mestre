@@ -339,10 +339,10 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
                 Cor do Sistema
               </h3>
               <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                Cabeçalho, destaques e foco
+                Todo o sistema, abas e botões
               </span>
             </div>
-            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 gap-2">
+            <div className="sgep-palette-swatch grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 gap-2">
               {THEME_PALETTES.map((pal) => {
                 const selected = themePalette === pal.id;
                 return (
@@ -460,46 +460,64 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
             </div>
           </section>
 
-          {/* 4. Prévia ao Vivo dos Formulários */}
+          {/* 4. Prévia ao Vivo do Sistema e Formulários */}
           <section
-            aria-label="Prévia de formulário"
-            className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950/60 space-y-2.5"
+            aria-label="Prévia do sistema e formulários"
+            className="sgep-themed-page rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" style={{ color: activePalette.swatch }} />
-                Prévia nos Formulários
+            {/* Mini-Cabeçalho + Abas Temáticas */}
+            <div className="sgep-themed-hero px-3 py-2 flex items-center justify-between gap-2 text-white">
+              <span className="text-[10px] font-bold flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3" />
+                <span>Prévia ao Vivo — {activePalette.label}</span>
               </span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                Documentos A4 permanecem oficiais
-              </span>
+              <div className="flex items-center gap-1 text-[9px] font-bold">
+                <span className="px-2 py-0.5 rounded bg-white text-slate-900">Início</span>
+                <span className="px-2 py-0.5 rounded bg-white/15 text-white/90">Modelos</span>
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                  Assunto / Campo
-                </label>
-                <input
-                  type="text"
-                  defaultValue="Ofício de Solicitação"
-                  readOnly
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none"
-                />
+
+            <div className="p-3 space-y-2.5">
+              <div className="sgep-themed-surface border rounded-lg p-2.5 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold sgep-accent-text">
+                    Cartão &amp; Botões na Paleta Ativa
+                  </span>
+                  <span className="sgep-btn-primary px-2 py-0.5 rounded text-[10px] font-bold">
+                    Ação Principal
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                      Assunto / Campo
+                    </label>
+                    <input
+                      type="text"
+                      defaultValue="Ofício de Solicitação"
+                      readOnly
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                      Secretaria
+                    </label>
+                    <select
+                      defaultValue="SMA"
+                      aria-label="Prévia de seleção de secretaria"
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none"
+                    >
+                      <option value="SMA">Administração (SMA)</option>
+                      <option value="SMS">Saúde (SMS)</option>
+                      <option value="SME">Educação (SME)</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                  Secretaria
-                </label>
-                <select
-                  defaultValue="SMA"
-                  aria-label="Prévia de seleção de secretaria"
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none"
-                >
-                  <option value="SMA">Administração (SMA)</option>
-                  <option value="SMS">Saúde (SMS)</option>
-                  <option value="SME">Educação (SME)</option>
-                </select>
-              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 text-right">
+                Papel timbrado oficial A4 permanece inalterado
+              </p>
             </div>
           </section>
         </div>

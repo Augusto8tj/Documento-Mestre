@@ -22,26 +22,53 @@ import {
   Scale,
   FileCheck2,
   ShieldCheck,
-  Upload
+  Upload,
+  Bot,
+  Palette,
+  Users,
+  Landmark
 } from 'lucide-react';
 import { BRASAO_RIO_CLARO } from '../brasaoBase64';
+import { AjudaAssistenteIA } from './AjudaAssistenteIA';
 
 interface GuiaAjudaModalProps {
   isOpen: boolean;
   onClose: () => void;
   onReiniciarDicas?: () => void;
   isLoggedIn?: boolean;
+  userRole?: string;
+  activeSecretaria?: string;
+  userName?: string;
 }
+
+type GuiaAbaId =
+  | 'ia'
+  | 'escrever'
+  | 'estilos'
+  | 'importar'
+  | 'numero'
+  | 'livro'
+  | 'senha'
+  | 'comissoes'
+  | 'app'
+  | 'admin'
+  | 'glossario'
+  | 'faq';
 
 export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
   isOpen,
   onClose,
   onReiniciarDicas,
-  isLoggedIn = false
+  isLoggedIn = false,
+  userRole = 'EDITOR',
+  activeSecretaria = '',
+  userName = '',
 }) => {
-  const [activeTab, setActiveTab] = useState<'escrever' | 'importar' | 'numero' | 'livro' | 'senha' | 'comissoes' | 'app' | 'admin' | 'glossario' | 'faq'>('escrever');
+  const [activeTab, setActiveTab] = useState<GuiaAbaId>('ia');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
   const [dicasReiniciadas, setDicasReiniciadas] = useState(false);
+  const [buscaGuia, setBuscaGuia] = useState('');
+  const [iaQuestionSeed, setIaQuestionSeed] = useState('');
 
   if (!isOpen) return null;
 
@@ -81,31 +108,64 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
       a: 'Clique no botão de sincronização (🔄) no topo da tela para atualizar a visualização em nuvem. Verifique também os filtros rápidos (Todos, Hoje, Este mês, Meus documentos) ou clique em "Todos" para limpar filtros ativos.'
     },
     {
-      q: 'Gerei um número de documento por engano. O que fazer?',
-      a: 'Por exigência legal da Administração Pública, a numeração sequencial é contínua e não pode ser excluída. Não gere outro número para "compensar". Avise o administrador do sistema (DRH/SMA • Ramal 407) para que registre formalmente a anulação/retificação do ato com a devida justificativa no Livro Oficial.'
+      q: 'Gerei um número de documento por engano ou fiz um teste. O que fazer?',
+      a: 'Se o documento já foi protocolado ou circulou, o Administrador deve usar a opção "Anular / Cancelar Número (Protocolo)" na planilha Numeração: o número permanece reservado na sequência e recebe a marcação [ANULADO - motivo] com auditoria em Logs. Já para lançamentos de teste ou duplicidades antes de uso oficial, o Administrador pode utilizar a ferramenta de "Higienização (Excluir)" individualmente ou em lote, com justificativa registrada nos Logs.'
+    },
+    {
+      q: 'A IA assistente do Redator é gratuita? Tem algum custo para os servidores? É segura pela LGPD?',
+      a: 'Sim, é 100% gratuita para todos os servidores e secretarias — ninguém precisa cadastrar cartão nem chave de API pessoal. O sistema utiliza um motor híbrido no servidor (NVIDIA NIM Nemotron 3.5 Bolt como motor principal, com contingência automática para Gemini e motor local). Antes de qualquer envio externo, um filtro de conformidade LGPD mascara automaticamente CPFs e e-mails detectados no texto.'
+    },
+    {
+      q: 'O que significam os asteriscos (*) e (**) nos cargos efetivos? E por que minha Função Gratificada/Comissão aparece na assinatura?',
+      a: 'Na relação oficial de cargos efetivos da Prefeitura de Rio Claro – RJ, "*" indica Cargo em Extinção (extinto na vacância) e "**" indica Cargo Extinto. Já os cargos de Subsídio (SS), Comissão (CC-01 a CC-08 — Anexo I) e Funções Gratificadas (FG — Anexo II) ficam no campo específico do cadastro e são priorizados automaticamente na linha de assinatura do Redator Oficial, preservando o cargo efetivo para portarias e comissões.'
     },
     {
       q: 'A tela ficou travada ou o layout parece desconfigurado?',
       a: 'Recarregue a página limpando o cache temporário do navegador pressionando simultaneamente as teclas Ctrl + F5 (ou Cmd + Shift + R no Mac). No celular, você também pode abrir o seletor de "Tema e Cores" e escolher o estilo de formulário "Celular / Toque Ampliado".'
     },
     {
-      q: 'Posso enviar PDF escaneado (imagem) ou vários arquivos DOCX/PDF de uma só vez?',
-      a: 'Sim! Clique em "Importar PDF / DOCX" na barra superior. O sistema aceita envio individual ou em lote (múltiplos arquivos simultâneos), lê PDFs digitais e PDFs escaneados via reconhecimento óptico (até 10 MB por PDF) além de DOCX/DOC/TXT (até 5 MB), identifica automaticamente tipo, assunto, categoria, base legal e [CAMPOS] reutilizáveis, permitindo revisar tudo antes de salvar no Banco de Modelos, abrir no Redator Oficial ou registrar no Livro de Numeração.'
+      q: 'Quais formatos de documento posso importar com OCR? E se o arquivo tiver assinatura digital?',
+      a: 'Clique em "Importar / OCR" na barra superior ou na Central de Início. O sistema aceita envio individual ou em lote de PDF (digital, escaneado ou apresentação até 10 MB), fotos (.jpg/.png/.webp até 10 MB), LibreOffice (.odt), Word atual e antigo (.docx e .doc binário), .rtf, planilhas .csv (Excel Brasil com ; ou ,) e .txt/.html (até 5 MB), incluindo OCR em imagens embutidas. Quando há assinatura digital (ICP-Brasil, Gov.br, PAdES, XMLDSig), o arquivo é lido em modo somente-leitura, o hash SHA-256 é calculado sem alterar o original e o sistema protege a validade jurídica orientando a indexação no Livro sem reexportar o arquivo assinado.'
+    },
+    {
+      q: 'Como clonar o estilo visual de um PDF, DOCX ou ODT do meu setor?',
+      a: 'Clique em "Clonar de PDF/DOCX" dentro do Redator Oficial (ou abra "Importar / OCR" no topo). Envie um documento modelo do seu setor (ex.: Gabinete do Prefeito, PGM, Controladoria ou Finanças). O sistema analisa automaticamente fonte, tamanho, margens, cabeçalho, cor, ementa, rodapé e assinatura e exibe o botão "Salvar Estilo p/ o Setor". Depois basta selecionar esse estilo no combo "Estilo do Setor" dentro do Redator.'
+    },
+    {
+      q: 'Como colocar assinatura dupla (Prefeito + Secretário / Procurador-Geral) em Decretos e Projetos de Lei?',
+      a: 'Na seção "Assinatura & Órgão Emissor" do Redator Oficial (disponível mesmo no Modo Simples), clique no botão "Dupla / Referendo". Preencha ou escolha no combo a 2ª autoridade (Secretário ou Procurador-Geral). As duas assinaturas aparecerão perfeitamente alinhadas lado a lado na prévia, na impressão timbrada, no PDF, no Word (.doc) e no arquivo .txt.'
+    },
+    {
+      q: 'Onde encontro modelos prontos da Procuradoria (PGM), Gabinete do Prefeito, Controladoria, Finanças e Licitações (Lei 14.133/21)?',
+      a: 'No Banco de Modelos (ou pelos botões de grupo no topo do Redator), você encontra categorias completas e prontas: 10 modelos do Gabinete do Prefeito (Decretos, Mensagens de Lei/Veto, Posse, Portarias), peças jurídicas e judiciais da PGM (Parecer, Nota Técnica, Petição, Contrato, Notificação, CDA, Procuração), Controladoria-Geral (Auditoria, Recomendação, Diligência), Fazenda/Finanças (LRF, CDO, Impacto Orçamentário) e Licitações Lei 14.133/2021 (DFD, ETP, TR, Dispensa/Inexigibilidade, Aditivo).'
+    },
+    {
+      q: 'Quando o sistema sincroniza em segundo plano, eu perco a tela ou o documento em que estou trabalhando?',
+      a: 'Não! A sincronização automática em nuvem atualiza os dados silenciosamente em segundo plano sem recarregar a página nem voltar para a tela inicial. Além disso, o Redator mantém auto-save constante do rascunho no seu navegador.'
+    },
+    {
+      q: 'Como aprovar ou recusar cadastros pendentes / servidores inativos na fila de liberação?',
+      a: 'Administradores podem acessar "Gestão" > aba "Autorizações & Senhas". Na seção "Servidores Inativos / Aguardando Liberação na Planilha", cada linha possui botões dedicados para "Aprovar / Liberar Acesso" ou "Recusar" (removendo o pedido indevido com confirmação segura e registro em auditoria).'
     },
     {
       q: 'Como desativo ou mostro novamente os balões de dicas flutuantes?',
-      a: 'Em qualquer balão de dica que aparecer, você pode clicar em "Parar dicas" para ocultá-las. Para reativar todas as orientações flutuantes a qualquer momento, clique no botão logo abaixo nesta aba de ajuda.'
+      a: 'Em qualquer balão de dica que aparecer, você pode clicar em "Parar dicas" para ocultá-las. Além disso, os ícones de interrogação (?) ao lado dos campos podem ser clicados ou sobrepostos com o mouse a qualquer momento. Para reativar todas as dicas flutuantes automáticas, clique no botão "Mostrar as dicas de novo" logo abaixo.'
     }
   ];
 
+  const buscaNormalizada = buscaGuia.trim().toLowerCase();
+  const faqsFiltradas = buscaNormalizada
+    ? faqs.filter(f => f.q.toLowerCase().includes(buscaNormalizada) || f.a.toLowerCase().includes(buscaNormalizada))
+    : faqs;
+
   return (
     <div 
-      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
         id="modal-guia-ajuda"
-        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white dark:bg-slate-900 border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-2xl sm:rounded-2xl w-full sm:w-[95vw] sm:max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[95dvh] sm:max-h-[92dvh] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
       >
         {/* Top Header */}
         <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 flex-shrink-0">
@@ -119,11 +179,11 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                   Guia de Orientações & Ajuda ao Servidor
                 </h3>
                 <span className="px-2 py-0.5 text-[10px] font-black bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 rounded border border-emerald-300 dark:border-emerald-700">
-                  v1.6 Oficial
+                  v2.1 Oficial
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Prefeitura Municipal de Rio Claro – RJ • Passo a passo ilustrado e respostas rápidas
+                Prefeitura Municipal de Rio Claro – RJ • Assistente IA de dúvidas, passo a passo ilustrado e respostas rápidas
               </p>
             </div>
           </div>
@@ -149,8 +209,53 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
           </div>
         </div>
 
+        {/* Barra de Busca Rápida no Guia / Encaminhamento para IA */}
+        <div className="px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0">
+          <div className="relative flex-1">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={buscaGuia}
+              onChange={e => {
+                setBuscaGuia(e.target.value);
+                if (e.target.value.trim() && activeTab !== 'faq' && activeTab !== 'ia') {
+                  setActiveTab('faq');
+                }
+              }}
+              placeholder="Buscar no Guia (ex.: clonar PDF, assinatura dupla, Marco Zero, PGM, senha)..."
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+          </div>
+          {buscaGuia.trim() && (
+            <button
+              type="button"
+              onClick={() => {
+                setIaQuestionSeed(buscaGuia.trim());
+                setActiveTab('ia');
+              }}
+              className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Perguntar à IA</span>
+            </button>
+          )}
+        </div>
+
         {/* Tab Navigation */}
         <div className="flex items-center gap-1 overflow-x-auto px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-900/50 flex-shrink-0 scrollbar-none text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setActiveTab('ia')}
+            className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'ia'
+                ? 'bg-violet-600 text-white shadow-xs font-bold'
+                : 'text-violet-700 dark:text-violet-300 bg-violet-50/80 dark:bg-violet-950/50 hover:bg-violet-100 dark:hover:bg-violet-900/60 border border-violet-200 dark:border-violet-800'
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>Perguntar à IA</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('escrever')}
@@ -166,6 +271,19 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
 
           <button
             type="button"
+            onClick={() => setActiveTab('estilos')}
+            className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'estilos'
+                ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                : 'text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-950/60'
+            }`}
+          >
+            <Palette className="w-3.5 h-3.5" />
+            <span>Estilos, Setores &amp; PGM</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('importar')}
             className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'importar'
@@ -174,7 +292,7 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
             }`}
           >
             <Upload className="w-3.5 h-3.5" />
-            <span>Importar PDF / DOCX</span>
+            <span>Importar &amp; OCR</span>
           </button>
 
           <button
@@ -307,6 +425,19 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
             </div>
           </div>
 
+          {/* TAB: PERGUNTAR À IA */}
+          {activeTab === 'ia' && (
+            <AjudaAssistenteIA
+              key={iaQuestionSeed || 'guia-ia'}
+              variant="guia"
+              userRole={userRole}
+              activeSecretaria={activeSecretaria}
+              userName={userName}
+              initialQuestion={iaQuestionSeed}
+              onIrParaAbaGuia={aba => setActiveTab(aba)}
+            />
+          )}
+
           {/* TAB: ESCREVER DOCUMENTO */}
           {activeTab === 'escrever' && (
             <div className="space-y-4 animate-in fade-in duration-150">
@@ -326,7 +457,7 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                   <div>
                     <h5 className="font-semibold text-slate-800 dark:text-slate-200">Modo Simples vs. Modo Avançado</h5>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
-                      O Redator abre por padrão no <b>Modo Simples</b>, exibindo apenas os campos essenciais do dia a dia (Tipo, Destinatário, Assunto, Texto, Formatação básica e Numeração). Precisa de mais controles? Clique em <b>"Avançado"</b> no topo do Redator para liberar <b>Régua de Parágrafos, Margens A4, Importação de Arquivos (.pdf/.docx/.doc/.txt), Referência a Documento Anterior, Fontes/Tamanhos e Comissões de PAD/TAC</b>.
+                      O Redator abre por padrão no <b>Modo Simples</b>, exibindo apenas os campos essenciais do dia a dia (Tipo, Destinatário, Assunto, Texto, Formatação básica e Numeração). Precisa de mais controles? Clique em <b>"Avançado"</b> no topo do Redator para liberar <b>Local e Data personalizados (além do automático), Régua de Parágrafos, Margens A4, Importação de Arquivos, Referência a Documento Anterior, Fontes/Tamanhos e Comissões de PAD/TAC</b>.
                     </p>
                   </div>
                 </div>
@@ -344,19 +475,19 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                 <div className="flex gap-3 items-start">
                   <div className="w-6 h-6 rounded-full bg-sky-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">3</div>
                   <div>
-                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Formatação Limpa, Margens e Régua Oficial</h5>
+                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Editor Visual em Tempo Real (WYSIWYG), Margens e Régua Oficial</h5>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
-                      Ao colar textos externos ou importar arquivos (<code>.pdf</code>, <code>.docx</code>, <code>.doc</code> ou <code>.txt</code>), o sistema reconhece os metadados, remove espaços e tabulações residuais e mantém apenas os recuos controlados pelo editor. No <b>Modo Avançado</b>, ajuste as 4 margens da página A4 (padrão PMRC: <b>Esq. 3,0 cm</b>, <b>Dir. 2,0 cm</b>, <b>Sup. 2,5 cm</b>, <b>Inf. 2,0 cm</b>) e controle na Régua a <b>1ª Linha</b> (1,50 cm) e a <b>2ª Linha</b> (0,00 cm) ou use <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border text-[10px] font-mono">Tab</kbd> / <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border text-[10px] font-mono">Shift+Tab</kbd>.
+                      O Redator conta com <b>Editor Visual em Tempo Real</b>: ao aplicar <b>Negrito</b>, <i>Itálico</i>, sublinhado, listas ou recuos, você já enxerga o resultado formatado na hora (sem códigos ou asteriscos). Ao colar textos externos ou importar arquivos (<code>.pdf</code>, <code>.docx</code>, <code>.doc</code> ou <code>.txt</code>), o sistema limpa espaços residuais automaticamente. No <b>Modo Avançado</b>, ajuste as 4 margens da página A4 (padrão PMRC: <b>Esq. 3,0 cm</b>, <b>Dir. 2,0 cm</b>, <b>Sup. 2,5 cm</b>, <b>Inf. 2,0 cm</b>) e controle na Régua a <b>1ª Linha</b> (1,50 cm) e a <b>2ª Linha</b> (0,00 cm) ou use <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border text-[10px] font-mono">Tab</kbd> / <kbd className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border text-[10px] font-mono">Shift+Tab</kbd>.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-3 items-start">
-                  <div className="w-6 h-6 rounded-full bg-sky-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">4</div>
+                  <div className="w-6 h-6 rounded-full bg-violet-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">4</div>
                   <div>
-                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Tela Toda, Bordas Redimensionáveis e Prévia Flutuante Livre</h5>
+                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Assistente de IA Híbrido (Gratuito + Proteção LGPD)</h5>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
-                      A janela do Redator pode ser expandida com o botão <b>"Tela Toda"</b>, movida pelo cabeçalho ou redimensionada arrastando qualquer borda/canto com o mouse. Ative a <b>"Prévia Flutuante"</b> para acompanhar o papel timbrado em tempo real: ela também pode ser movida para qualquer ponto da tela, redimensionada pelas bordas e exibe a folha ocupando toda a área interna.
+                      Clique em <b>"Assistente IA"</b> dentro do Redator para redigir minutas do zero, revisar gramática, formalizar a linguagem administrativa ou resumir ofícios. O motor híbrido (<b>NVIDIA NIM Nemotron 3.5 Bolt</b> + contingência automática <b>Gemini</b> e motor local) é <b>100% gratuito para os servidores</b> e aplica <b>mascaramento automático de CPFs e e-mails (LGPD)</b> antes do envio externo.
                     </p>
                   </div>
                 </div>
@@ -364,9 +495,19 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                 <div className="flex gap-3 items-start">
                   <div className="w-6 h-6 rounded-full bg-sky-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">5</div>
                   <div>
+                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Tela Toda, Prévia Flutuante e Assinatura Inteligente</h5>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                      A janela do Redator pode ser expandida com <b>"Tela Toda"</b> ou redimensionada pelas bordas. Ative a <b>"Prévia Flutuante"</b> para acompanhar o papel timbrado A4 enquanto escreve. Se o seu cadastro tiver <b>Cargo em Comissão (Anexo I)</b> ou <b>Função Gratificada (Anexo II)</b>, ele já vem selecionado automaticamente na assinatura do documento.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 items-start">
+                  <div className="w-6 h-6 rounded-full bg-sky-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">6</div>
+                  <div>
                     <h5 className="font-semibold text-slate-800 dark:text-slate-200">Numeração Automática e Exportação em PDF A4 ou Word</h5>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
-                      Clique em <b>"Gerar e Reservar Número Agora"</b> e depois exporte em <b>PDF A4 Timbrado</b> (pronto para impressão/assinatura) ou <b>Word (.doc)</b>.
+                      Confira o <b>Próximo Nº Previsto</b>, clique em <b>"Gerar e Reservar Número Agora"</b> e exporte em <b>PDF A4 Timbrado</b> (pronto para impressão/assinatura) ou <b>Word (.doc)</b>.
                     </p>
                   </div>
                 </div>
@@ -381,16 +522,86 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
             </div>
           )}
 
-          {/* TAB: IMPORTAR E CATALOGAR PDF / DOCX */}
+          {/* TAB: ESTILOS VISUAIS, SETORES & PROCURADORIA (PGM) */}
+          {activeTab === 'estilos' && (
+            <div className="space-y-4 animate-in fade-in duration-150">
+              <div className="border-b border-slate-200 dark:border-slate-800 pb-2">
+                <h4 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <Palette className="w-5 h-5 text-indigo-500" />
+                  Perfis Visuais por Setor, Clonador de PDF, Assinatura Dupla &amp; Modelos Setoriais
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Padronize o timbrado de cada órgão da Prefeitura, clone estilos de arquivos existentes e use minutas prontas para todos os setores.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/60 space-y-1.5">
+                  <h5 className="font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                    <Palette className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    1. 6 Perfis Oficiais + Clonador de PDF/DOCX/ODT
+                  </h5>
+                  <p className="text-indigo-900 dark:text-indigo-300 leading-relaxed">
+                    No topo do Redator, escolha o <b>Estilo do Setor</b> (<i>PMRC/SMA</i>, <i>Gabinete Solene</i>, <i>PGM Jurídico</i>, <i>Controladoria CGM</i>, <i>Finanças SMF</i> ou <i>Secretarias</i>). Quer copiar exatamente o padrão de um arquivo real do setor? Clique em <b>"Clonar de PDF/DOCX"</b>, suba o modelo e salve o estilo para reutilizar em 1 clique.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 space-y-1.5">
+                  <h5 className="font-bold text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    2. Assinatura Dupla / Referendo (Prefeito + Secretário)
+                  </h5>
+                  <p className="text-purple-900 dark:text-purple-300 leading-relaxed">
+                    Na área de assinaturas do Redator (mesmo no Modo Simples), alterne para <b>"Dupla / Referendo"</b> e escolha a 2ª autoridade no combo. As assinaturas saem lado a lado na prévia, impressão timbrada, PDF, Word (<code>.doc</code>) e <code>.txt</code> — ativada automaticamente em Decretos, Projetos de Lei e Termos de Posse.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5 text-xs">
+                <h5 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <Landmark className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                  3. Biblioteca Ampliada por Setor Municipal (Pronta para Uso)
+                </h5>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <b className="text-slate-900 dark:text-slate-100 block mb-0.5">Gabinete do Prefeito (GP)</b>
+                    <span className="text-slate-600 dark:text-slate-400">Decretos (Normativo, Ponto Facultativo, Crédito Suplementar, Nomeação/Exoneração), Projetos de Lei, Veto, Portarias, Ofício de Gabinete, Despacho Decisório e Termo de Posse.</span>
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <b className="text-slate-900 dark:text-slate-100 block mb-0.5">Procuradoria-Geral (PGM)</b>
+                    <span className="text-slate-600 dark:text-slate-400">Parecer Jurídico, Nota Técnica/Cota, Petição Judicial (CPC/Fazenda Pública), Notificação Extrajudicial, Recomendação, Contrato/Aditivo, Decisão, CDA, Procuração e Checklist.</span>
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <b className="text-slate-900 dark:text-slate-100 block mb-0.5">Controladoria-Geral (CGM)</b>
+                    <span className="text-slate-600 dark:text-slate-400">Relatório de Auditoria Interna, Recomendação de Controle Interno, Nota Técnica Preventiva e Diligência/Prestação de Contas.</span>
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <b className="text-slate-900 dark:text-slate-100 block mb-0.5">Fazenda e Finanças (SMF)</b>
+                    <span className="text-slate-600 dark:text-slate-400">Declaração de Adequação Orçamentária (LRF arts. 16 e 17), Certidão de Disponibilidade (CDO), Parecer de Impacto e Notificação Fiscal.</span>
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <b className="text-slate-900 dark:text-slate-100 block mb-0.5">Licitações — Lei 14.133/21</b>
+                    <span className="text-slate-600 dark:text-slate-400">DFD, Estudo Técnico Preliminar (ETP), Termo de Referência (TR), Justificativa de Dispensa/Inexigibilidade e Termo de Aditivo/Apostilamento.</span>
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900/70 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <b className="text-slate-900 dark:text-slate-100 block mb-0.5">Secretarias Finalísticas</b>
+                    <span className="text-slate-600 dark:text-slate-400">Saúde (SMS), Educação (SME), Obras/Medição (SMOSP), Assistência Social (SMAS), Posturas/Meio Ambiente e Previdência (IPRC).</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: IMPORTAR E CATALOGAR DOCUMENTOS & OCR */}
           {activeTab === 'importar' && (
             <div className="space-y-4 animate-in fade-in duration-150">
               <div className="border-b border-slate-200 dark:border-slate-800 pb-2">
                 <h4 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                   <Upload className="w-5 h-5 text-emerald-500" />
-                  Importar e Catalogar Documentos PDF / DOCX (Individual ou em Lote)
+                  Importar, OCR Multi-Formato &amp; Proteção de Assinatura Digital
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Envie ofícios, memorandos, portarias, despachos ou minutas prontas para reconhecimento automático e catalogação organizada.
+                  Envie ofícios, memorandos, portarias, planilhas ou documentos digitalizados em diversos formatos para reconhecimento automático e catalogação segura.
                 </p>
               </div>
 
@@ -398,9 +609,11 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                 <div className="flex gap-3 items-start">
                   <div className="w-6 h-6 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">1</div>
                   <div>
-                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Abra a Central "Importar PDF / DOCX"</h5>
+                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Formatos Aceitos (Individual ou em Lote)</h5>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
-                      Clique no botão <b>"Importar PDF / DOCX"</b> no topo da tela. Arraste e solte <b>um ou vários arquivos de uma vez</b> (suporte a <code>.pdf</code> digital ou escaneado/OCR até <b>10 MB</b> e <code>.docx</code>, <code>.doc</code>, <code>.txt</code>, <code>.html</code> até <b>5 MB</b>).
+                      Clique em <b>"Importar / OCR"</b> no topo ou na barra inferior do celular e envie <b>1 ou vários arquivos</b>:
+                      {' '}<code>.pdf</code> (pesquisável, escaneado ou apresentação) e fotos <code>.jpg / .png / .webp</code> até <b>10 MB</b>;
+                      {' '}<code>.odt</code> (LibreOffice Writer), <code>.docx</code> e <code>.doc</code> (Word atual e legado 97–2003), <code>.rtf</code>, <code>.csv</code> (com detecção automática de <code>;</code> ou <code>,</code> e acentos do Excel Brasil), <code>.txt</code> e <code>.html</code> até <b>5 MB</b>.
                     </p>
                   </div>
                 </div>
@@ -408,19 +621,19 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                 <div className="flex gap-3 items-start">
                   <div className="w-6 h-6 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">2</div>
                   <div>
-                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Reconhecimento Inteligente e Classificação Automática</h5>
+                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Extração Híbrida + OCR em Imagens Embutidas</h5>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
-                      Para cada documento na fila, o sistema lê o conteúdo (inclusive PDFs digitalizados), limpa cabeçalhos/rodapés repetitivos e identifica automaticamente: <b>Tipo de Documento</b>, <b>Categoria</b>, <b>Título</b>, <b>Assunto</b>, <b>Destinatário</b>, <b>Secretaria de Origem</b>, <b>Número/Data original</b>, <b>Base Legal</b> e <b>Palavras-Chave</b>.
+                      Textos digitais são extraídos instantaneamente; já PDFs escaneados, fotos ou arquivos <code>.docx/.odt/.rtf</code> que contenham imagens coladas de documentos passam automaticamente por <b>OCR</b>. O sistema identifica <b>Tipo</b>, <b>Categoria</b>, <b>Título</b>, <b>Assunto</b>, <b>Destinatário</b>, <b>Secretaria</b>, <b>Número/Data</b>, <b>Base Legal</b> e <b>Palavras-Chave</b> sem gravar arquivos pesados no Drive.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-3 items-start">
-                  <div className="w-6 h-6 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">3</div>
+                  <div className="w-6 h-6 rounded-full bg-amber-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">3</div>
                   <div>
-                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Alterne entre Versão Modelo [CAMPOS] ou Texto Original Fiel</h5>
+                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Preservação de Documentos com Assinatura Digital (ICP-Brasil / Gov.br / XMLDSig)</h5>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
-                      Na tela de revisão, você pode editar qualquer campo e alternar com 1 clique entre a <b>Versão Modelo [CAMPOS]</b> (onde nomes, matrículas, datas e protocolos viram marcadores reutilizáveis como <code>[NOME DO SERVIDOR]</code>) ou o <b>Texto Original Fiel</b> do arquivo enviado.
+                      Ao detectar assinatura criptográfica em <b>PDF (PAdES/ByteRange)</b>, <b>ODT (META-INF XMLDSig)</b>, <b>DOCX (_xmlsignatures)</b>, <b>DOC</b> ou carimbos <b>Gov.br / ICP-Brasil / SEI</b>, o sistema ativa o <b>Modo Preservação</b>: lê o arquivo apenas em modo leitura, calcula o <b>hash SHA-256 original</b>, protege o texto contra edição acidental e permite indexar o ato no Livro com o hash e o link do arquivo original intacto — evitando que a validade jurídica da assinatura seja perdida.
                     </p>
                   </div>
                 </div>
@@ -430,19 +643,29 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                   <div>
                     <h5 className="font-semibold text-slate-800 dark:text-slate-200">Escolha o Destino (Individual ou em Lote)</h5>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1.5 text-xs">
+                      <div className="p-2.5 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60">
+                        <b className="text-emerald-900 dark:text-emerald-200 block mb-0.5">Livro de Numeração</b>
+                        <span className="text-emerald-800 dark:text-emerald-300">Cataloga no histórico mantendo o número original, registrando o hash SHA-256 e o link do arquivo assinado intacto.</span>
+                      </div>
                       <div className="p-2.5 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60">
                         <b className="text-indigo-900 dark:text-indigo-200 block mb-0.5">Banco de Modelos</b>
-                        <span className="text-indigo-800 dark:text-indigo-300">Salva o documento catalogado na biblioteca oficial (perfis Editor e Admin) para toda a Prefeitura reutilizar.</span>
+                        <span className="text-indigo-800 dark:text-indigo-300">Deriva minutas parametrizadas com <code>[CAMPOS]</code> (sem dados pessoais ou assinaturas) para reutilização pela equipe.</span>
                       </div>
                       <div className="p-2.5 rounded-lg bg-sky-50/70 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/60">
                         <b className="text-sky-900 dark:text-sky-200 block mb-0.5">Redator Oficial</b>
-                        <span className="text-sky-800 dark:text-sky-300">Abre o texto limpo e os metadados já preenchidos no Redator para ajustar, numerar e gerar PDF/Word timbrado.</span>
-                      </div>
-                      <div className="p-2.5 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60">
-                        <b className="text-emerald-900 dark:text-emerald-200 block mb-0.5">Livro de Numeração</b>
-                        <span className="text-emerald-800 dark:text-emerald-300">Cataloga no histórico oficial mantendo o número original detectado (acervo) ou gerando novo sequencial.</span>
+                        <span className="text-sky-800 dark:text-sky-300">Abre o texto (ou uma cópia derivada editável, mantendo o original assinado à parte) no Timbrado A4 oficial.</span>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 items-start">
+                  <div className="w-6 h-6 rounded-full bg-violet-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">5</div>
+                  <div>
+                    <h5 className="font-semibold text-slate-800 dark:text-slate-200">Abastecimento Inteligente do Sistema via OCR (com Validação Humana)</h5>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                      Ao importar Portarias de Nomeação/Exoneração, Designações de FG/CC, Ofícios ou Memorandos, o OCR também extrai <b>Servidores e Matrículas</b>, <b>Departamentos/Divisões</b>, <b>Cargos novos</b>, <b>Destinatários frequentes</b> e <b>Numeração mais recente (Marco Zero)</b>. Nada é alterado automaticamente: um painel dedicado exibe cada achado para o servidor ou <b>ADMIN</b> confirmar com 1 clique e abastecer os combos e cadastros oficiais com registro em auditoria.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -450,7 +673,7 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
               <div className="bg-sky-50 dark:bg-sky-950/40 p-3 rounded-lg border border-sky-200 dark:border-sky-800/50 text-xs text-sky-900 dark:text-sky-300 flex items-start gap-2.5">
                 <Sparkles className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
                 <div>
-                  <b>Atalho Rápido no Redator e em Novo Modelo:</b> Você também pode importar um único arquivo <code>.pdf</code> ou <code>.docx</code> diretamente pelo botão de upload dentro do <b>Redator Oficial</b> (Modo Avançado) ou do formulário de <b>Novo Modelo</b> — os campos são preenchidos automaticamente.
+                  <b>Atalho Rápido no Redator e em Novo Modelo:</b> Todos esses formatos (<code>.pdf</code>, <code>.odt</code>, <code>.docx</code>, <code>.doc</code>, <code>.rtf</code>, <code>.csv</code>, <code>.txt</code> e fotos) também podem ser enviados diretamente pelo botão de upload dentro do <b>Redator Oficial</b> (Modo Avançado) ou do formulário de <b>Novo Modelo</b>.
                 </div>
               </div>
             </div>
@@ -480,7 +703,12 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                     <li><b>Gere o número somente quando o documento for definitivo:</b> Não gere números para simples testes ou rascunhos descartáveis.</li>
                     <li><b>Identificação permanente:</b> Cada número gerado armazena o nome e a matrícula do servidor emissor, a data, hora exata e o destinatário.</li>
                     <li><b>Numeração sem saltos:</b> O sistema calcula o próximo número consultando a base mestre no Google Apps Script / Nuvem, evitando duplicações mesmo com múltiplos servidores emitindo simultaneamente.</li>
+                    <li><b>Sequência Global Municipal (Decretos e Portarias):</b> Atos normativos municipais (como <code>DECRETO</code> e <code>PORTARIA</code>) seguem uma sequência única para toda a Prefeitura, independentemente da secretaria emissora.</li>
                   </ul>
+                </div>
+
+                <div className="bg-indigo-50 dark:bg-indigo-950/40 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800/50 text-indigo-900 dark:text-indigo-200">
+                  <b>Marco Zero de Implantação:</b> Secretarias que passam a usar o sistema no meio do ano (com numeração já em andamento em livro físico ou planilha anterior) podem registrar o <b>Marco Zero</b> no Painel Administrativo (aba <i>Numeração &amp; Marco Zero</i>). A partir daí, o sistema continua automaticamente do número seguinte (ex: Marco Zero em <code>412/2026</code> → próximo gerado será <code>413/2026</code>).
                 </div>
 
                 <div className="bg-emerald-50 dark:bg-emerald-950/40 p-3 rounded-lg border border-emerald-200 dark:border-emerald-800/50 text-emerald-800 dark:text-emerald-300">
@@ -759,13 +987,29 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                   O Banco Mestre é um <b>PWA (Progressive Web App)</b> de última geração. Ele pode ser instalado diretamente no seu computador (Windows, Linux, Mac) ou no celular institucional sem precisar passar pela loja de aplicativos.
                 </p>
 
+                <div className="flex items-center gap-3.5 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                  <img
+                    src="/pwa-192x192.png"
+                    alt="Ícone oficial DOCS PMRC Rio Claro"
+                    className="w-14 h-14 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xs shrink-0 object-cover"
+                  />
+                  <div>
+                    <p className="font-bold text-slate-900 dark:text-slate-100">
+                      Ícone Oficial na Tela Inicial: DOCS PMRC
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Ao instalar no computador (Windows, Mac, Linux) ou celular (Android e iPhone), este ícone oficial aparece diretamente na Área de Trabalho e na Tela de Início.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
                     <h5 className="font-bold text-slate-800 dark:text-slate-200 mb-1">No Computador (Chrome / Edge):</h5>
                     <ol className="list-decimal list-inside space-y-1 text-slate-600 dark:text-slate-400">
                       <li>Clique no botão <b>"Instalar Aplicativo"</b> no topo ou lateral da tela.</li>
                       <li>Ou clique no ícone de monitor com setinha na barra de endereços do navegador.</li>
-                      <li>Confirme em <b>"Instalar"</b>. Um atalho com o brasão oficial será criado na sua Área de Trabalho.</li>
+                      <li>Confirme em <b>"Instalar"</b>. Um atalho com o ícone oficial <b>DOCS PMRC</b> será criado na sua Área de Trabalho.</li>
                     </ol>
                   </div>
 
@@ -800,7 +1044,7 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
               <div className="border-b border-slate-200 dark:border-slate-800 pb-2">
                   <h4 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                     <Shield className="w-5 h-5 text-indigo-500" />
-                    Painel de Gestão & Administração Municipal (v1.6)
+                    Painel de Gestão & Administração Municipal (v2.0)
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     Instruções exclusivas para chefias de departamento e administradores credenciados.
@@ -810,19 +1054,29 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                 <div className="space-y-3 text-xs leading-relaxed">
                   <div className="bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5">
                     <h5 className="font-bold text-slate-800 dark:text-slate-200">Principais Rotinas Administrativas:</h5>
-                    <ul className="space-y-2 text-slate-600 dark:text-slate-400">
+                    <ul className="space-y-2.5 text-slate-600 dark:text-slate-400">
                       <li>
-                        <b>Autorizações de Novos Servidores & Pedidos de Senha:</b> Quando houver solicitações pendentes, um <b>indicador vermelho pulsante</b> aparece no botão <b>"Gestão"</b> do cabeçalho. Abra a aba <b>"Autorizações & Senhas"</b> para:
+                        <b>Autorizações de Novos Servidores & Pedidos de Senha:</b> Quando houver solicitações pendentes, um <b>indicador vermelho pulsante</b> aparece no botão <b>"Gestão"</b> do cabeçalho. Abra a aba <b>"Autorizações & Senhas"</b> para aprovar cadastros, redefinir senhas ou rejeitar solicitações.
+                      </li>
+                      <li>
+                        <b>Cadastro Inteligente de Servidores (Combo de Departamentos + Anexos I e II):</b> O campo <b>Departamento / Divisão</b> oferece lista combo filtrada pelas secretarias marcadas (com opção <i>"Outro departamento"</i> para novos setores), além de seleção separada de <b>Cargo Efetivo</b> e <b>Cargo em Comissão / Função Gratificada</b>.
+                      </li>
+                      <li>
+                        <b>Quadro Oficial de Cargos e Funções Editável (Aba "Quadro de Vagas"):</b> Acompanhe vagas previstas em Lei × ocupadas × disponíveis para <b>Anexo I (SS / CC-01..CC-08)</b>, <b>Anexo II (FG)</b> e <b>Quadro Efetivo (* Em Extinção / ** Extintos)</b>. Utilize o botão <b>"Editar"</b> em qualquer linha para corrigir grafia, simbologia, vagas ou situação legal, clique em <b>"+ Novo Cargo / FG"</b> para novas leis municipais ou <b>"Exportar CSV"</b> para relatórios do DRH.
+                      </li>
+                      <li>
+                        <b>Higienização &amp; Anulação na Planilha <code>Numeração</code>:</b> Na aba <b>Numeração</b> da Planilha Google Sheets, administradores contam com seleção múltipla e botões dedicados para:
                         <div className="mt-1 pl-2 text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
-                          <p>• <b>Autorizar Acesso:</b> ativa novos servidores mantendo a senha que eles cadastraram e sincroniza com a planilha.</p>
-                          <p>• <b>Ativar / Redefinir (123456):</b> libera a conta ou redefine a senha para a provisória padrão com 1 clique.</p>
-                          <p>• <b>Recusar / Cancelar:</b> rejeita solicitações indevidas mantendo o cadastro bloqueado.</p>
-                          <p>• <b>Servidores Inativos na Planilha:</b> lista separada para localizar e ativar contas pendentes sincronizadas diretamente do Google Sheets.</p>
+                          <p>• <b>Excluir Definitivamente (Higienização):</b> remove linhas de teste ou duplicidades (individualmente ou em lote) na tela e no Google Sheets, registrando a justificativa nos Logs.</p>
+                          <p>• <b>Anular / Cancelar Número (Protocolo):</b> preserva o número na sequência oficial e marca o assunto com <code>[ANULADO - motivo]</code>, mantendo plena rastreabilidade legal.</p>
                         </div>
                       </li>
-                      <li><b>Filtro de Acessibilidade Documental por Servidor:</b> Ao cadastrar ou editar um servidor, defina exatamente quais documentos ele pode consultar no Livro (<i>Toda a Secretaria</i>, <i>Apenas o Departamento</i>, <i>Apenas Próprios</i> ou combinação).</li>
-                      <li><b>Gestão de Secretarias & Departamentos:</b> Mantenha a estrutura de secretarias e departamentos atualizada para garantir que o fluxo de numeração reflita o organograma oficial.</li>
-                      <li><b>Logs de Auditoria e Exportação CSV:</b> O sistema mantém trilha com registro de todas as emissões, acessos e alterações de senhas para controle interno, permitindo exportar em planilha compatível com Excel.</li>
+                      <li>
+                        <b>Numeração &amp; Marco Zero (Implantação em Novas Secretarias):</b> Configure o último número do livro físico/planilha anterior de cada pasta (ex: Gabinete do Prefeito, PGM, Finanças) e defina quais espécies seguem <b>Sequência Global Municipal</b> (ex: <code>DECRETO</code> e <code>PORTARIA</code>).
+                      </li>
+                      <li>
+                        <b>Filtro de Acessibilidade Documental &amp; Auditoria:</b> Defina por servidor o escopo de leitura no Livro (<i>Toda a Secretaria</i>, <i>Apenas o Departamento</i>, <i>Apenas Próprios</i>) e exporte os relatórios cadastrais em CSV compatível com Excel.
+                      </li>
                     </ul>
                   </div>
                 </div>
@@ -852,20 +1106,28 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
                   <dd className="text-slate-600 dark:text-slate-400">A pasta municipal em nome da qual o servidor está operando no momento. Ela define o livro e o prefixo sequencial.</dd>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
-                  <dt className="font-bold text-slate-900 dark:text-slate-100 mb-1">Numeração Sequencial</dt>
-                  <dd className="text-slate-600 dark:text-slate-400">Código oficial do ato (ex: 045/2026), único e irrevogável, atribuído de forma contínua pelo sistema.</dd>
+                  <dt className="font-bold text-slate-900 dark:text-slate-100 mb-1">Marco Zero &amp; Sequência Global</dt>
+                  <dd className="text-slate-600 dark:text-slate-400"><b>Marco Zero</b> registra o último número do livro anterior ao implantar uma secretaria. <b>Sequência Global</b> unifica a numeração de Decretos e Portarias em toda a Prefeitura.</dd>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
-                  <dt className="font-bold text-slate-900 dark:text-slate-100 mb-1">Folha Timbrada Oficial</dt>
-                  <dd className="text-slate-600 dark:text-slate-400">Página formatada com o brasão vetorizado do Município de Rio Claro, cabeçalho e rodapé padronizados da PMRC.</dd>
+                  <dt className="font-bold text-slate-900 dark:text-slate-100 mb-1">Higienização vs. Anulação</dt>
+                  <dd className="text-slate-600 dark:text-slate-400"><b>Higienização (Excluir)</b> limpa registros de teste ou duplicidades. <b>Anulação</b> mantém o número ocupado no protocolo com a justificativa <code>[ANULADO]</code>.</dd>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <dt className="font-bold text-slate-900 dark:text-slate-100 mb-1">Anexo I (SS / CC) e Anexo II (FG)</dt>
+                  <dd className="text-slate-600 dark:text-slate-400">Cargos em <b>Subsídio (SS)</b>, <b>Comissão (CC-01 a CC-08)</b> e <b>Funções Gratificadas (FG)</b> previstos na estrutura legal de Rio Claro – RJ.</dd>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <dt className="font-bold text-slate-900 dark:text-slate-100 mb-1">Cargos Efetivos: * e **</dt>
+                  <dd className="text-slate-600 dark:text-slate-400">Marcações legais do quadro permanente: <b>*</b> indica <b>Cargo em Extinção</b> (extinto na vacância) e <b>**</b> indica <b>Cargo Extinto</b>.</dd>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
                   <dt className="font-bold text-slate-900 dark:text-slate-100 mb-1">Memorando vs. Ofício</dt>
                   <dd className="text-slate-600 dark:text-slate-400"><b>Memorando</b> tramita internamente entre órgãos da própria Prefeitura. <b>Ofício</b> é destinado a órgãos externos, entidades ou cidadãos.</dd>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
-                  <dt className="font-bold text-slate-900 dark:text-slate-100 mb-1">Despacho Administrativo</dt>
-                  <dd className="text-slate-600 dark:text-slate-400">Ato decisório ou de mero encaminhamento exarado por autoridade em processo ou expediente em tramitação.</dd>
+                  <dt className="font-bold text-slate-900 dark:text-slate-100 mb-1">Folha Timbrada Oficial &amp; PII Masking</dt>
+                  <dd className="text-slate-600 dark:text-slate-400"><b>Timbrado</b> traz o brasão oficial de Rio Claro em A4. <b>PII Masking</b> mascara CPFs e e-mails antes de consultar a IA (conformidade LGPD).</dd>
                 </div>
               </dl>
             </div>
@@ -887,26 +1149,45 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
               </div>
 
               <div className="space-y-2">
-                {faqs.map((faq, idx) => (
-                  <div 
-                    key={idx}
-                    className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-800/40"
-                  >
+                {faqsFiltradas.length === 0 ? (
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 text-center space-y-2">
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                      Nenhuma pergunta fixa encontrada para <b>"{buscaGuia}"</b>.
+                    </p>
                     <button
                       type="button"
-                      onClick={() => setOpenFaqIndex(openFaqIndex === idx ? null : idx)}
-                      className="w-full text-left p-3.5 flex items-center justify-between font-semibold text-xs text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors cursor-pointer"
+                      onClick={() => {
+                        setIaQuestionSeed(buscaGuia.trim());
+                        setActiveTab('ia');
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold cursor-pointer"
                     >
-                      <span>{faq.q}</span>
-                      <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${openFaqIndex === idx ? 'rotate-180 text-sky-500' : ''}`} />
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Perguntar isso à IA agora</span>
                     </button>
-                    {openFaqIndex === idx && (
-                      <div className="p-3.5 pt-0 text-xs text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/30 leading-relaxed">
-                        {faq.a}
-                      </div>
-                    )}
                   </div>
-                ))}
+                ) : (
+                  faqsFiltradas.map((faq, idx) => (
+                    <div 
+                      key={idx}
+                      className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-800/40"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setOpenFaqIndex(openFaqIndex === idx ? null : idx)}
+                        className="w-full text-left p-3.5 flex items-center justify-between font-semibold text-xs text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors cursor-pointer"
+                      >
+                        <span>{faq.q}</span>
+                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${openFaqIndex === idx ? 'rotate-180 text-sky-500' : ''}`} />
+                      </button>
+                      {openFaqIndex === idx && (
+                        <div className="p-3.5 pt-0 text-xs text-slate-600 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/30 leading-relaxed">
+                          {faq.a}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Botão de Restaurar Dicas Flutuantes */}
@@ -970,7 +1251,7 @@ export const GuiaAjudaModal: React.FC<GuiaAjudaModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3.5 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between flex-shrink-0">
+        <div className="p-3.5 sm:p-4 pb-safe border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between gap-2 flex-shrink-0">
           <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
             <span>Banco Mestre de Atos & Documentos • Prefeitura de Rio Claro – RJ</span>

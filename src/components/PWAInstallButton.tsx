@@ -69,22 +69,21 @@ export const PWAInstallButton: React.FC = () => {
             </button>
 
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl bg-[#002b82] flex items-center justify-center shadow-md shrink-0">
+              <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 dark:border-slate-700 overflow-hidden flex items-center justify-center shadow-md shrink-0">
                 <img
-                  src={BRASAO_RIO_CLARO}
-                  alt="Brasão Rio Claro"
-                  width={28}
-                  height={32}
-                  style={{
-                    width: '28px',
-                    height: '32px',
-                    aspectRatio: '86 / 100',
-                    objectFit: 'contain',
-                    display: 'block'
-                  }}
-                  className="brasao-oficial-img object-contain"
+                  src="/pwa-192x192.png"
+                  alt="Ícone Oficial DOCS PMRC Rio Claro"
+                  width={48}
+                  height={48}
+                  className="w-full h-full object-cover block"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO;
+                    const img = e.target as HTMLImageElement;
+                    if (!img.dataset.fallback) {
+                      img.dataset.fallback = '1';
+                      img.src = '/assets/aistudio/image_ca37aa85.png';
+                    } else {
+                      img.src = BRASAO_RIO_CLARO;
+                    }
                   }}
                 />
               </div>
@@ -93,7 +92,7 @@ export const PWAInstallButton: React.FC = () => {
                   Instalar no iPhone / iPad
                 </h3>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
-                  Banco Mestre Administrativo PMRC
+                  DOCS PMRC • Rio Claro – RJ
                 </p>
               </div>
             </div>

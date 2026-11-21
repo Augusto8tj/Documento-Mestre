@@ -435,17 +435,27 @@
 /* =========================================================================
    SISTEMA DINÂMICO DE TEMAS, CORES E FORMULÁRIOS RESPONSIVOS (SGEP)
    Suporte completo a Claro, Escuro, Automático, 5 Paletas e 3 Estilos de Form.
-   Não altera o documento timbrado oficial A4 (#print-area-content).
+   Não altera o documento timbrado oficial A4 (#print-area-content / .sgep-rich-doc).
    ========================================================================= */
 :root {
   color-scheme: light;
   --sgep-accent: #2563eb;
   --sgep-accent-hover: #1d4ed8;
+  --sgep-accent-deep: #1e3a8a;
   --sgep-accent-ring: rgba(37, 99, 235, 0.28);
   --sgep-accent-soft: #eff6ff;
+  --sgep-accent-soft-hover: #dbeafe;
+  --sgep-accent-border: #bfdbfe;
+  --sgep-accent-text: #1d4ed8;
   --sgep-header-bg: #0c1b3a;
   --sgep-header-border: #1e335c;
-  --sgep-page-bg: #f1f5f9;
+  --sgep-hero-from: #0c1b3a;
+  --sgep-hero-via: #162f66;
+  --sgep-hero-to: #1d4ed8;
+  --sgep-page-bg: #eef3f9;
+  --sgep-surface-bg: #ffffff;
+  --sgep-surface-subtle: #f5f8fc;
+  --sgep-surface-border: #d7e2f0;
   --sgep-form-bg: #ffffff;
   --sgep-form-border: #cbd5e1;
   --sgep-form-text: #0f172a;
@@ -455,12 +465,22 @@
 :root.dark {
   color-scheme: dark;
   --sgep-accent: #3b82f6;
-  --sgep-accent-hover: #60a5fa;
+  --sgep-accent-hover: #2563eb;
+  --sgep-accent-deep: #1d4ed8;
   --sgep-accent-ring: rgba(96, 165, 250, 0.35);
-  --sgep-accent-soft: rgba(37, 99, 235, 0.16);
+  --sgep-accent-soft: rgba(37, 99, 235, 0.18);
+  --sgep-accent-soft-hover: rgba(37, 99, 235, 0.28);
+  --sgep-accent-border: rgba(59, 130, 246, 0.38);
+  --sgep-accent-text: #93c5fd;
   --sgep-header-bg: #071024;
   --sgep-header-border: #172546;
-  --sgep-page-bg: #020617;
+  --sgep-hero-from: #071024;
+  --sgep-hero-via: #0e2046;
+  --sgep-hero-to: #17356e;
+  --sgep-page-bg: #030917;
+  --sgep-surface-bg: #0c1528;
+  --sgep-surface-subtle: #111c33;
+  --sgep-surface-border: #1f2e4d;
   --sgep-form-bg: #0f172a;
   --sgep-form-border: #334155;
   --sgep-form-text: #f1f5f9;
@@ -471,83 +491,234 @@
 :root[data-theme-palette="esmeralda"] {
   --sgep-accent: #059669;
   --sgep-accent-hover: #047857;
+  --sgep-accent-deep: #065f46;
   --sgep-accent-ring: rgba(5, 150, 105, 0.28);
   --sgep-accent-soft: #ecfdf5;
+  --sgep-accent-soft-hover: #d1fae5;
+  --sgep-accent-border: #a7f3d0;
+  --sgep-accent-text: #047857;
   --sgep-header-bg: #062c22;
   --sgep-header-border: #0e4a3a;
-  --sgep-page-bg: #f0f7f4;
+  --sgep-hero-from: #05261d;
+  --sgep-hero-via: #094535;
+  --sgep-hero-to: #057a55;
+  --sgep-page-bg: #edf7f2;
+  --sgep-surface-bg: #ffffff;
+  --sgep-surface-subtle: #f2faf6;
+  --sgep-surface-border: #cce8dc;
+
+  --color-blue-50: #ecfdf5;
+  --color-blue-100: #d1fae5;
+  --color-blue-200: #a7f3d0;
+  --color-blue-300: #6ee7b7;
+  --color-blue-400: #34d399;
+  --color-blue-500: #10b981;
+  --color-blue-600: #059669;
+  --color-blue-700: #047857;
+  --color-blue-800: #065f46;
+  --color-blue-900: #064e3b;
+  --color-blue-950: #022c22;
 }
 :root.dark[data-theme-palette="esmeralda"] {
   --sgep-accent: #10b981;
-  --sgep-accent-hover: #34d399;
+  --sgep-accent-hover: #059669;
+  --sgep-accent-deep: #047857;
   --sgep-accent-ring: rgba(52, 211, 153, 0.35);
-  --sgep-accent-soft: rgba(16, 185, 129, 0.16);
+  --sgep-accent-soft: rgba(16, 185, 129, 0.18);
+  --sgep-accent-soft-hover: rgba(16, 185, 129, 0.28);
+  --sgep-accent-border: rgba(52, 211, 153, 0.38);
+  --sgep-accent-text: #6ee7b7;
   --sgep-header-bg: #041d16;
   --sgep-header-border: #0b3b2d;
+  --sgep-hero-from: #031913;
+  --sgep-hero-via: #073327;
+  --sgep-hero-to: #0a523e;
   --sgep-page-bg: #03110d;
+  --sgep-surface-bg: #081c16;
+  --sgep-surface-subtle: #0d261e;
+  --sgep-surface-border: #173d31;
 }
 
 /* Paleta: Índigo Executivo */
 :root[data-theme-palette="indigo"] {
   --sgep-accent: #4f46e5;
   --sgep-accent-hover: #4338ca;
+  --sgep-accent-deep: #3730a3;
   --sgep-accent-ring: rgba(79, 70, 229, 0.28);
   --sgep-accent-soft: #eef2ff;
+  --sgep-accent-soft-hover: #e0e7ff;
+  --sgep-accent-border: #c7d2fe;
+  --sgep-accent-text: #4338ca;
   --sgep-header-bg: #181842;
   --sgep-header-border: #2c2c6b;
-  --sgep-page-bg: #f3f4fa;
+  --sgep-hero-from: #15153b;
+  --sgep-hero-via: #292970;
+  --sgep-hero-to: #4338ca;
+  --sgep-page-bg: #f1f2fb;
+  --sgep-surface-bg: #ffffff;
+  --sgep-surface-subtle: #f6f7fd;
+  --sgep-surface-border: #d8dcf4;
+
+  --color-blue-50: #eef2ff;
+  --color-blue-100: #e0e7ff;
+  --color-blue-200: #c7d2fe;
+  --color-blue-300: #a5b4fc;
+  --color-blue-400: #818cf8;
+  --color-blue-500: #6366f1;
+  --color-blue-600: #4f46e5;
+  --color-blue-700: #4338ca;
+  --color-blue-800: #3730a3;
+  --color-blue-900: #312e81;
+  --color-blue-950: #1e1b4b;
 }
 :root.dark[data-theme-palette="indigo"] {
   --sgep-accent: #6366f1;
-  --sgep-accent-hover: #818cf8;
+  --sgep-accent-hover: #4f46e5;
+  --sgep-accent-deep: #4338ca;
   --sgep-accent-ring: rgba(129, 140, 248, 0.35);
-  --sgep-accent-soft: rgba(99, 102, 241, 0.16);
+  --sgep-accent-soft: rgba(99, 102, 241, 0.18);
+  --sgep-accent-soft-hover: rgba(99, 102, 241, 0.28);
+  --sgep-accent-border: rgba(129, 140, 248, 0.38);
+  --sgep-accent-text: #a5b4fc;
   --sgep-header-bg: #0f0f2b;
   --sgep-header-border: #222255;
-  --sgep-page-bg: #080818;
+  --sgep-hero-from: #0d0d26;
+  --sgep-hero-via: #1c1c4d;
+  --sgep-hero-to: #312e81;
+  --sgep-page-bg: #070716;
+  --sgep-surface-bg: #101028;
+  --sgep-surface-subtle: #161636;
+  --sgep-surface-border: #262657;
 }
 
 /* Paleta: Grafite Neutro */
 :root[data-theme-palette="grafite"] {
-  --sgep-accent: #475569;
-  --sgep-accent-hover: #334155;
+  --sgep-accent: #3f3f46;
+  --sgep-accent-hover: #27272a;
+  --sgep-accent-deep: #18181b;
   --sgep-accent-ring: rgba(71, 85, 105, 0.3);
   --sgep-accent-soft: #f4f4f5;
+  --sgep-accent-soft-hover: #e4e4e7;
+  --sgep-accent-border: #d4d4d8;
+  --sgep-accent-text: #27272a;
   --sgep-header-bg: #18181b;
   --sgep-header-border: #323238;
-  --sgep-page-bg: #f4f4f5;
+  --sgep-hero-from: #18181b;
+  --sgep-hero-via: #27272a;
+  --sgep-hero-to: #3f3f46;
+  --sgep-page-bg: #f1f2f4;
+  --sgep-surface-bg: #ffffff;
+  --sgep-surface-subtle: #f7f7f8;
+  --sgep-surface-border: #dcdce0;
+
+  --color-blue-50: #f4f4f5;
+  --color-blue-100: #e4e4e7;
+  --color-blue-200: #d4d4d8;
+  --color-blue-300: #a1a1aa;
+  --color-blue-400: #71717a;
+  --color-blue-500: #52525b;
+  --color-blue-600: #3f3f46;
+  --color-blue-700: #27272a;
+  --color-blue-800: #18181b;
+  --color-blue-900: #18181b;
+  --color-blue-950: #09090b;
 }
 :root.dark[data-theme-palette="grafite"] {
-  --sgep-accent: #94a3b8;
-  --sgep-accent-hover: #cbd5e1;
-  --sgep-accent-ring: rgba(148, 163, 184, 0.35);
-  --sgep-accent-soft: rgba(148, 163, 184, 0.15);
+  --sgep-accent: #71717a;
+  --sgep-accent-hover: #52525b;
+  --sgep-accent-deep: #3f3f46;
+  --sgep-accent-ring: rgba(161, 161, 170, 0.35);
+  --sgep-accent-soft: rgba(161, 161, 170, 0.16);
+  --sgep-accent-soft-hover: rgba(161, 161, 170, 0.25);
+  --sgep-accent-border: rgba(161, 161, 170, 0.35);
+  --sgep-accent-text: #e4e4e7;
   --sgep-header-bg: #0c0c0e;
   --sgep-header-border: #27272a;
+  --sgep-hero-from: #0c0c0e;
+  --sgep-hero-via: #1c1c21;
+  --sgep-hero-to: #2e2e36;
   --sgep-page-bg: #09090b;
+  --sgep-surface-bg: #141417;
+  --sgep-surface-subtle: #1c1c21;
+  --sgep-surface-border: #2c2c33;
+
+  --color-blue-300: #d4d4d8;
+  --color-blue-400: #a1a1aa;
+  --color-blue-500: #71717a;
+  --color-blue-600: #52525b;
+  --color-blue-700: #3f3f46;
 }
 
 /* Paleta: Âmbar Clássico */
 :root[data-theme-palette="ambar"] {
   --sgep-accent: #d97706;
   --sgep-accent-hover: #b45309;
+  --sgep-accent-deep: #92400e;
   --sgep-accent-ring: rgba(217, 119, 6, 0.3);
   --sgep-accent-soft: #fffbeb;
+  --sgep-accent-soft-hover: #fef3c7;
+  --sgep-accent-border: #fde68a;
+  --sgep-accent-text: #b45309;
   --sgep-header-bg: #2b1908;
   --sgep-header-border: #4d2f12;
-  --sgep-page-bg: #faf7f2;
+  --sgep-hero-from: #2b1908;
+  --sgep-hero-via: #5c330c;
+  --sgep-hero-to: #b45309;
+  --sgep-page-bg: #faf5ec;
+  --sgep-surface-bg: #ffffff;
+  --sgep-surface-subtle: #fcf8f0;
+  --sgep-surface-border: #ebd9bd;
+
+  --color-blue-50: #fffbeb;
+  --color-blue-100: #fef3c7;
+  --color-blue-200: #fde68a;
+  --color-blue-300: #fcd34d;
+  --color-blue-400: #fbbf24;
+  --color-blue-500: #f59e0b;
+  --color-blue-600: #d97706;
+  --color-blue-700: #b45309;
+  --color-blue-800: #92400e;
+  --color-blue-900: #78350f;
+  --color-blue-950: #451a03;
 }
 :root.dark[data-theme-palette="ambar"] {
-  --sgep-accent: #f59e0b;
-  --sgep-accent-hover: #fbbf24;
+  --sgep-accent: #d97706;
+  --sgep-accent-hover: #b45309;
+  --sgep-accent-deep: #92400e;
   --sgep-accent-ring: rgba(251, 191, 36, 0.35);
-  --sgep-accent-soft: rgba(245, 158, 11, 0.16);
+  --sgep-accent-soft: rgba(245, 158, 11, 0.18);
+  --sgep-accent-soft-hover: rgba(245, 158, 11, 0.28);
+  --sgep-accent-border: rgba(251, 191, 36, 0.38);
+  --sgep-accent-text: #fcd34d;
   --sgep-header-bg: #1c1005;
   --sgep-header-border: #3b230c;
-  --sgep-page-bg: #110b05;
+  --sgep-hero-from: #1a0f04;
+  --sgep-hero-via: #3b2109;
+  --sgep-hero-to: #78350f;
+  --sgep-page-bg: #120b05;
+  --sgep-surface-bg: #1c130a;
+  --sgep-surface-subtle: #261a0e;
+  --sgep-surface-border: #422c16;
 }
 
-/* Cabeçalho, barra superior e fundo geral harmonizados com a paleta ativa */
+/* Proteção absoluta das cores institucionais oficiais no Papel Timbrado A4 e nos Swatches do Seletor */
+#print-area-content,
+.sgep-rich-doc,
+.sgep-palette-swatch {
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
+}
+
+/* Cabeçalho, barra superior, fundo geral, superfícies, hero e botões primários harmonizados */
 .sgep-themed-header {
   background-color: var(--sgep-header-bg) !important;
   border-color: var(--sgep-header-border) !important;
@@ -555,8 +726,63 @@
 }
 
 .sgep-themed-page {
-  background-color: var(--sgep-page-bg);
+  background-color: var(--sgep-page-bg) !important;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sgep-themed-hero {
+  background-image: linear-gradient(135deg, var(--sgep-hero-from) 0%, var(--sgep-hero-via) 55%, var(--sgep-hero-to) 100%) !important;
+  border-color: var(--sgep-header-border) !important;
+  transition: background-image 0.2s ease, border-color 0.2s ease;
+}
+
+.sgep-themed-surface {
+  background-color: var(--sgep-surface-bg) !important;
+  border-color: var(--sgep-surface-border) !important;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.sgep-themed-subtle {
+  background-color: var(--sgep-surface-subtle) !important;
+  border-color: var(--sgep-surface-border) !important;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.sgep-btn-primary {
+  background-color: var(--sgep-accent) !important;
+  border-color: var(--sgep-accent-hover) !important;
+  color: #ffffff !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.sgep-btn-primary:hover {
+  background-color: var(--sgep-accent-hover) !important;
+}
+
+.sgep-accent-soft {
+  background-color: var(--sgep-accent-soft) !important;
+  border-color: var(--sgep-accent-border) !important;
+  color: var(--sgep-accent-text) !important;
+}
+.sgep-accent-soft:hover {
+  background-color: var(--sgep-accent-soft-hover) !important;
+}
+
+.sgep-accent-text {
+  color: var(--sgep-accent-text) !important;
+}
+
+.sgep-accent-active-nav {
+  color: var(--sgep-accent-text) !important;
+  font-weight: 700 !important;
+}
+.sgep-accent-active-nav::after {
+  content: '';
+  display: block;
+  width: 22px;
+  height: 3px;
+  border-radius: 9999px;
+  background-color: var(--sgep-accent);
+  margin-top: 2px;
 }
 
 /* Formulários e controles interativos sensíveis à paleta e ao tema Claro/Escuro */
@@ -587,7 +813,76 @@
   color: #f1f5f9;
 }
 
-/* Estilo de Formulário: Celular / Toque (confortavel) */
+/* Prevenção global de overflow horizontal e ajustes de safe-area para celulares */
+html,
+body {
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+}
+
+.pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Contraste seguro padrão em campos de formulário fora do papel timbrado */
+:root input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *)::placeholder,
+:root textarea:not(#print-area-content *):not(.sgep-rich-doc *)::placeholder {
+  color: var(--sgep-form-placeholder);
+  opacity: 0.9;
+}
+
+/* Ergonomia automática para telas pequenas e celulares (<= 767px) */
+@media (max-width: 767px) {
+  /* Fonte 16px evita zoom automático indesejado no Safari iOS/Android e melhora a leitura */
+  :root input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *),
+  :root select:not(#print-area-content *):not(.sgep-rich-doc *),
+  :root textarea:not(#print-area-content *):not(.sgep-rich-doc *) {
+    font-size: 16px !important;
+    touch-action: manipulation;
+  }
+
+  /* Alvo de toque mínimo de 44px nos campos de entrada e seletores */
+  :root input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *),
+  :root select:not(#print-area-content *):not(.sgep-rich-doc *) {
+    min-height: 44px;
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+  }
+
+  :root textarea:not(#print-area-content *):not(.sgep-rich-doc *) {
+    min-height: 112px;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    line-height: 1.5;
+  }
+
+  :root input[type="checkbox"],
+  :root input[type="radio"] {
+    min-width: 20px;
+    min-height: 20px;
+  }
+
+  :root form button[type="submit"]:not(#print-area-content *),
+  :root form button[type="reset"]:not(#print-area-content *) {
+    min-height: 44px;
+    font-size: 0.875rem;
+  }
+
+  :root form label:not(#print-area-content *):not(.sgep-rich-doc *) {
+    font-size: 0.8125rem;
+    line-height: 1.35;
+  }
+}
+
+/* Estilo de Formulário: Celular / Toque (confortavel) — aplica também em desktop quando escolhido */
 :root[data-form-style="confortavel"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *),
 :root[data-form-style="confortavel"] select:not(#print-area-content *):not(.sgep-rich-doc *) {
   min-height: 44px;
@@ -605,17 +900,8 @@
 
 :root[data-form-style="confortavel"] input[type="checkbox"],
 :root[data-form-style="confortavel"] input[type="radio"] {
-  width: 1.15rem;
-  height: 1.15rem;
-}
-
-@media (max-width: 639px) {
-  /* Evita zoom automático em iOS/Safari e facilita digitação no celular */
-  :root[data-form-style="confortavel"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#print-area-content *):not(.sgep-rich-doc *),
-  :root[data-form-style="confortavel"] select:not(#print-area-content *):not(.sgep-rich-doc *),
-  :root[data-form-style="confortavel"] textarea:not(#print-area-content *):not(.sgep-rich-doc *) {
-    font-size: 16px !important;
-  }
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 /* Estilo de Formulário: Alto Contraste (contraste) */
@@ -688,6 +974,96 @@
   margin: 0.5rem 0 0.5rem 1.5rem !important;
   font-style: italic !important;
   color: #334155 !important;
+}
+
+/* Editor Visual WYSIWYG em Tempo Real do Redator Oficial */
+.sgep-rich-editor {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.sgep-rich-editor p,
+.sgep-rich-editor > div {
+  margin: 0 0 0.65rem 0;
+  padding-left: var(--redator-indent-2, 0cm);
+  text-indent: var(--redator-indent-1, 0cm);
+  line-height: 1.55;
+}
+.sgep-rich-editor p:last-child,
+.sgep-rich-editor > div:last-child {
+  margin-bottom: 0;
+}
+.sgep-rich-editor strong,
+.sgep-rich-editor b {
+  font-weight: 700;
+}
+.sgep-rich-editor em,
+.sgep-rich-editor i {
+  font-style: italic;
+}
+.sgep-rich-editor u {
+  text-decoration: underline !important;
+}
+.sgep-rich-editor del,
+.sgep-rich-editor s {
+  text-decoration: line-through !important;
+  opacity: 0.85;
+}
+.sgep-rich-editor mark {
+  background-color: #fef08a !important;
+  color: #713f12 !important;
+  padding: 0 3px;
+  border-radius: 2px;
+}
+.sgep-rich-editor ul {
+  list-style-type: disc !important;
+  padding-left: 2rem !important;
+  margin: 0.45rem 0 0.65rem 0 !important;
+  text-indent: 0 !important;
+}
+.sgep-rich-editor ol {
+  list-style-type: decimal !important;
+  padding-left: 2rem !important;
+  margin: 0.45rem 0 0.65rem 0 !important;
+  text-indent: 0 !important;
+}
+.sgep-rich-editor li {
+  margin-bottom: 0.25rem !important;
+  text-indent: 0 !important;
+}
+.sgep-rich-editor blockquote {
+  border-left: 3px solid #002b82 !important;
+  padding-left: 0.75rem !important;
+  margin: 0.5rem 0 0.65rem 1.25rem !important;
+  font-style: italic !important;
+  color: #334155;
+  text-indent: 0 !important;
+}
+:root.dark .sgep-rich-editor blockquote {
+  border-left-color: #60a5fa !important;
+  color: #cbd5e1;
+}
+.sgep-rich-editor hr {
+  border: 0;
+  border-top: 1px solid #cbd5e1;
+  margin: 0.75rem 0;
+}
+:root.dark .sgep-rich-editor hr {
+  border-top-color: #475569;
+}
+.sgep-rich-editor .sgep-campo-badge {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+  font-weight: 700;
+}
+:root.dark .sgep-rich-editor .sgep-campo-badge {
+  background-color: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.6);
 }
 
 /* Proteção estrita de proporção oficial para o Brasão Municipal de Rio Claro RJ */

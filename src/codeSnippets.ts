@@ -28,11 +28,33 @@ export const APPS_SCRIPT_CODE = `// ============================================
 //   8. Autoatendimento: Servidor pode atualizar seu próprio nome de exibição além da senha.
 // =================================================================
 
-const VERSAO = '4.1';
+const VERSAO = '4.5';
 const TZ = 'America/Sao_Paulo';
 const SESSAO_SEG = 12 * 3600; // 12 horas
 const MAX_FALHAS = 5;
 const SALT_FIXO_PADRAO = 'RioClaro_SGEP_Doc_2026';
+const PROP_TIPOS_GLOBAIS = 'SGEP_TIPOS_SEQUENCIA_GLOBAL';
+const DEFAULT_TIPOS_GLOBAIS = ['DECRETO', 'PORTARIA'];
+
+function getConfigNumeracaoGlobal() {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty(PROP_TIPOS_GLOBAIS);
+    if (!raw) return DEFAULT_TIPOS_GLOBAIS.slice();
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map(function(t) { return normTipo(t); }).filter(Boolean);
+    }
+  } catch (e) {}
+  return DEFAULT_TIPOS_GLOBAIS.slice();
+}
+
+function salvarConfigNumeracaoGlobal(tipos) {
+  const clean = Array.isArray(tipos)
+    ? tipos.map(function(t) { return normTipo(t); }).filter(Boolean)
+    : DEFAULT_TIPOS_GLOBAIS.slice();
+  PropertiesService.getScriptProperties().setProperty(PROP_TIPOS_GLOBAIS, JSON.stringify(clean));
+  return clean;
+}
 
 // -------------------------------------------------------------
 // Resposta pré-voo para requisições CORS
@@ -84,18 +106,25 @@ function extrairSiglaSecretaria(sec) {
   if (matchParen) {
     const paren = norm(matchParen[1]).toUpperCase();
     if (paren === 'SEAD' || paren === 'DRH') return 'SMA';
+    if (paren === 'SMASC' || paren === 'SMASDH') return 'SMAS';
+    if (paren === 'SMPS' || paren === 'FUNPREV') return 'IPRC';
+    if (paren === 'SMMAA') return 'SMMA';
     if (paren === 'SEGOV') return 'GP';
     return paren;
   }
   const n = norm(str);
   if (n === 'todas' || n === 'todas as secretarias') return 'TODAS';
-  if (n.indexOf('assistencia') !== -1 || n.indexOf('social') !== -1 || n.indexOf('cidadania') !== -1 || /\\bsmas\\b/.test(n)) return 'SMAS';
+  if (n.indexOf('assistencia') !== -1 || n.indexOf('social') !== -1 || n.indexOf('cidadania') !== -1 || n.indexOf('direitos humanos') !== -1 || /\\bsmas\\b|\\bsmasc\\b|\\bsmasdh\\b/.test(n)) return 'SMAS';
   if (n.indexOf('saude') !== -1 || /\\bsms\\b/.test(n)) return 'SMS';
   if (n.indexOf('educacao') !== -1 || /\\bsme\\b/.test(n)) return 'SME';
   if (n.indexOf('fazenda') !== -1 || n.indexOf('financas') !== -1 || /\\bsmf\\b/.test(n)) return 'SMF';
-  if (n.indexOf('obras') !== -1 || /\\bsmosp\\b/.test(n)) return 'SMOSP';
-  if (n.indexOf('meio ambiente') !== -1 || /\\bsmma\\b/.test(n)) return 'SMMA';
+  if (n.indexOf('obras') !== -1 || n.indexOf('planejamento urbano') !== -1 || /\\bsmosp\\b/.test(n)) return 'SMOSP';
+  if (n.indexOf('meio ambiente') !== -1 || n.indexOf('agricultura') !== -1 || /\\bsmma\\b|\\bsmmaa\\b/.test(n)) return 'SMMA';
+  if (n.indexOf('desenvolvimento economico') !== -1 || n.indexOf('cultura') !== -1 || n.indexOf('turismo') !== -1 || /\\bsmdec\\b/.test(n)) return 'SMDEC';
+  if (n.indexOf('ordem publica') !== -1 || n.indexOf('guarda civil') !== -1 || /\\bsmop\\b/.test(n)) return 'SMOP';
+  if (n.indexOf('previdencia') !== -1 || n.indexOf('funprev') !== -1 || /\\biprc\\b|\\bsmps\\b/.test(n)) return 'IPRC';
   if (n.indexOf('procuradoria') !== -1 || /\\bpgm\\b/.test(n)) return 'PGM';
+  if (n.indexOf('controladoria') !== -1 || /\\bcgm\\b/.test(n)) return 'CGM';
   if (n.indexOf('gabinete') !== -1 || n.indexOf('prefeito') !== -1 || n.indexOf('governo') !== -1 || /\\bgp\\b|\\bsegov\\b/.test(n)) return 'GP';
   if (/\\bsma\\b|\\bsead\\b/.test(n) || n.indexOf('administracao') !== -1 || n === 'departamento de recursos humanos') return 'SMA';
   return str.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() || 'SMA';
@@ -362,7 +391,8 @@ function autenticarServidor(ss, matriculaInformada, senhaInformada) {
   const idxNivel = findColumnIndex(headers, ['nivelacesso', 'nivel', 'perfil', 'role', 'acesso']);
   const idxSec = findColumnIndex(headers, ['secretaria', 'secretarias', 'setor', 'lotacao', 'orgao']);
   const idxDepto = findColumnIndex(headers, ['departamento', 'depto', 'divisao', 'setorinterno']);
-  const idxCargo = findColumnIndex(headers, ['cargo', 'funcao']);
+  const idxCargo = findColumnIndex(headers, ['cargo', 'cargoefetivo', 'funcao']);
+  const idxFuncao = findColumnIndex(headers, ['funcaogratificada', 'funcao_gratificada', 'cargocomissao', 'cargo_comissao', 'comissao', 'fg']);
   const idxAcess = findColumnIndex(headers, ['acessibilidadedocs', 'acessibilidade', 'filtrodocs', 'permissoesdocs']);
 
   if (idxMatricula === -1) throw new Error("Coluna 'Matrícula' não encontrada na aba 'Usuarios'.");
@@ -404,6 +434,7 @@ function autenticarServidor(ss, matriculaInformada, senhaInformada) {
         const secBruta = (idxSec !== -1 && row[idxSec]) ? String(row[idxSec]).trim() : 'Secretaria Municipal de Administração (SMA)';
         const depto = (idxDepto !== -1 && row[idxDepto]) ? String(row[idxDepto]).trim() : 'Departamento de Recursos Humanos (DRH)';
         const cargo = (idxCargo !== -1 && row[idxCargo]) ? String(row[idxCargo]).trim() : '';
+        const funcaoGratificada = (idxFuncao !== -1 && row[idxFuncao]) ? String(row[idxFuncao]).trim() : '';
         const rawAcess = (idxAcess !== -1 && row[idxAcess]) ? String(row[idxAcess]).trim() : '';
         const filtroAcessibilidade = rawAcess ? parseFiltroAcessibilidadeGas(rawAcess, nivelAcesso, depto) : undefined;
 
@@ -428,6 +459,7 @@ function autenticarServidor(ss, matriculaInformada, senhaInformada) {
           secretarias: secretariasList,
           departamento: depto,
           cargo: cargo,
+          funcaoGratificada: funcaoGratificada,
           acessibilidadeDocs: rawAcess,
           filtroAcessibilidade: filtroAcessibilidade
         };
@@ -518,15 +550,19 @@ function doGet(e) {
       destinatarios: [],
       assuntos: [],
       secretarias: [
+        'Secretaria Municipal de Governo (SEGOV)',
         'Secretaria Municipal de Administração (SMA)',
-        'Secretaria Municipal de Saúde (SMS)',
+        'Secretaria Municipal de Finanças (SMF)',
+        'Secretaria Municipal de Previdência Social (IPRC)',
         'Secretaria Municipal de Educação (SME)',
-        'Secretaria Municipal de Fazenda (SMF)',
-        'Secretaria Municipal de Obras e Serviços Públicos (SMOSP)',
-        'Secretaria Municipal de Assistência Social (SMAS)',
-        'Secretaria Municipal de Meio Ambiente (SMMA)',
+        'Secretaria Municipal de Assistência Social e Direitos Humanos (SMAS)',
+        'Secretaria Municipal de Planejamento Urbano, Obras e Serviços Públicos (SMOSP)',
+        'Secretaria Municipal de Meio Ambiente e Agricultura (SMMA)',
+        'Secretaria Municipal de Desenvolvimento Econômico, Cultura, Turismo, Eventos, Esporte e Lazer (SMDEC)',
+        'Secretaria Municipal de Ordem Pública (SMOP)',
+        'Secretaria Municipal de Saúde (SMS)',
         'Procuradoria-Geral do Município (PGM)',
-        'Gabinete do Prefeito (GP)'
+        'Controladoria-Geral do Município (CGM)'
       ],
       departamentos: [
         'Gabinete',
@@ -628,7 +664,8 @@ function doGet(e) {
         const idxN = findColumnIndex(uHeaders, ['nome', 'servidor', 'funcionario']);
         const idxS = findColumnIndex(uHeaders, ['secretaria', 'secretarias', 'setor', 'lotacao', 'orgao']);
         const idxD = findColumnIndex(uHeaders, ['departamento', 'depto', 'divisao']);
-        const idxC = findColumnIndex(uHeaders, ['cargo', 'funcao']);
+        const idxC = findColumnIndex(uHeaders, ['cargo', 'cargoefetivo', 'funcao']);
+        const idxF = findColumnIndex(uHeaders, ['funcaogratificada', 'funcao_gratificada', 'cargocomissao', 'cargo_comissao', 'comissao', 'fg']);
         const idxL = findColumnIndex(uHeaders, ['nivelacesso', 'nivel', 'perfil', 'role', 'acesso']);
         const idxA = findColumnIndex(uHeaders, ['ativo', 'status', 'situacao']);
         const idxAc = findColumnIndex(uHeaders, ['acessibilidadedocs', 'acessibilidade', 'filtrodocs', 'permissoesdocs']);
@@ -656,6 +693,7 @@ function doGet(e) {
             const uSec = (idxS !== -1 && uRow[idxS]) ? String(uRow[idxS]).trim() : '';
             const uDepto = (idxD !== -1 && uRow[idxD]) ? String(uRow[idxD]).trim() : '';
             const uCargo = (idxC !== -1 && uRow[idxC]) ? String(uRow[idxC]).trim() : '';
+            const uFuncao = (idxF !== -1 && uRow[idxF]) ? String(uRow[idxF]).trim() : '';
             const uNivel = (idxL !== -1 && uRow[idxL]) ? String(uRow[idxL]).trim().toUpperCase() : 'PADRAO';
             const uAcessRaw = (idxAc !== -1 && uRow[idxAc]) ? String(uRow[idxAc]).trim() : '';
             const uFiltro = uAcessRaw ? parseFiltroAcessibilidadeGas(uAcessRaw, uNivel, uDepto) : undefined;
@@ -674,6 +712,7 @@ function doGet(e) {
               secretaria: uSec,
               departamento: uDepto,
               cargo: uCargo,
+              funcaoGratificada: uFuncao,
               nivel: uNivel,
               ativo: uAtivoBool,
               acessibilidadeDocs: uAcessRaw,
@@ -741,6 +780,9 @@ function doGet(e) {
       numeracoes: listaNumeracaoOrdenada,
       registrosNumeracao: listaNumeracaoOrdenada,
       pedidosAcesso: pedidosAcesso,
+      configNumeracao: {
+        tiposSequenciaGlobal: getConfigNumeracaoGlobal()
+      },
       versao: VERSAO,
       versaoBackend: VERSAO
     });
@@ -822,7 +864,26 @@ function doPost(e) {
       const idxSec = findColumnIndex(headers, ['secretaria', 'secretarias', 'lotacao']);
       const idxDepto = findColumnIndex(headers, ['departamento', 'depto', 'setor']);
       const idxAtivo = findColumnIndex(headers, ['ativo', 'status', 'liberado']);
+      let idxCargo = findColumnIndex(headers, ['cargo', 'cargoefetivo', 'funcao']);
+      let idxFuncao = findColumnIndex(headers, ['funcaogratificada', 'funcao_gratificada', 'cargocomissao', 'cargo_comissao', 'comissao', 'fg']);
       let idxAcess = findColumnIndex(headers, ['acessibilidadedocs', 'acessibilidade', 'filtrodocs', 'permissoesdocs']);
+
+      const cargoPayload = u.cargo !== undefined ? String(u.cargo || '').trim() : undefined;
+      const funcaoPayload = u.funcaoGratificada !== undefined ? String(u.funcaoGratificada || '').trim() : undefined;
+
+      if (idxCargo === -1 && cargoPayload) {
+        const nextCol = headers.length + 1;
+        sheet.getRange(1, nextCol).setValue('Cargo').setFontWeight('bold').setBackground('#002b82').setFontColor('#ffffff');
+        headers.push('Cargo');
+        idxCargo = nextCol - 1;
+      }
+
+      if (idxFuncao === -1 && funcaoPayload) {
+        const nextCol = headers.length + 1;
+        sheet.getRange(1, nextCol).setValue('FuncaoGratificada').setFontWeight('bold').setBackground('#002b82').setFontColor('#ffffff');
+        headers.push('FuncaoGratificada');
+        idxFuncao = nextCol - 1;
+      }
 
       const acessPayload = u.acessibilidadeDocs !== undefined
         ? String(u.acessibilidadeDocs)
@@ -856,7 +917,9 @@ function doPost(e) {
         if (idxNome !== -1 && u.nome) sheet.getRange(rowIndex, idxNome + 1).setValue(u.nome);
         if (idxNivel !== -1 && u.nivel) sheet.getRange(rowIndex, idxNivel + 1).setValue(u.nivel);
         if (idxSec !== -1 && secFinal) sheet.getRange(rowIndex, idxSec + 1).setValue(secFinal);
-        if (idxDepto !== -1 && u.departamento) sheet.getRange(rowIndex, idxDepto + 1).setValue(u.departamento);
+        if (idxDepto !== -1 && u.departamento !== undefined) sheet.getRange(rowIndex, idxDepto + 1).setValue(u.departamento);
+        if (idxCargo !== -1 && cargoPayload !== undefined) sheet.getRange(rowIndex, idxCargo + 1).setValue(cargoPayload);
+        if (idxFuncao !== -1 && funcaoPayload !== undefined) sheet.getRange(rowIndex, idxFuncao + 1).setValue(funcaoPayload);
         const ativoParsed = u.ativo === undefined
           ? undefined
           : (u.ativo === true || String(u.ativo).trim().toLowerCase() === 'true');
@@ -882,13 +945,15 @@ function doPost(e) {
 
         const novaLinha = headers.map(function(h) {
           const nh = norm(h);
-          if (nh.indexOf('id') !== -1) return novoID;
+          if (nh === 'id' || nh.indexOf('id') === 0) return novoID;
           if (nh.indexOf('nome') !== -1) return u.nome;
-          if (nh.indexOf('matricula') !== -1 || nh.indexOf('mat') !== -1) return matInput;
+          if (nh.indexOf('matricula') !== -1 || nh === 'mat') return matInput;
           if (nh.indexOf('senha') !== -1 || nh.indexOf('password') !== -1) return senhaDef;
           if (nh.indexOf('nivel') !== -1) return u.nivel || 'PADRAO';
           if (nh.indexOf('secretaria') !== -1 || nh.indexOf('lotacao') !== -1) return secFinal;
           if (nh.indexOf('departamento') !== -1 || nh.indexOf('depto') !== -1) return u.departamento || 'Gabinete';
+          if (nh.indexOf('funcaogratificada') !== -1 || nh.indexOf('cargocomissao') !== -1 || nh === 'fg') return funcaoPayload || '';
+          if (nh === 'cargo' || nh === 'cargoefetivo') return cargoPayload || '';
           if (nh.indexOf('ativo') !== -1) return ativoNovo;
           if (nh.indexOf('acessibilidade') !== -1 || nh.indexOf('filtrodocs') !== -1) return acessPayload;
           return '';
@@ -998,6 +1063,82 @@ function doPost(e) {
       return createJsonResponse({ success: true, message: 'Status do servidor alterado para ' + (novoStatus ? 'ATIVO' : 'INATIVO') + '.' });
     }
 
+    // 5B. AÇÃO: EXCLUIR_USUARIO (Recusar cadastro pendente / Remover servidor inativo — Exclusivo ADMIN)
+    if (action === 'EXCLUIR_USUARIO') {
+      const sessaoAdmin = req.token ? validarSessao(req.token) : null;
+      if (sessaoAdmin && normTipo(sessaoAdmin.nivel) !== 'ADMIN') {
+        throw new Error('Acesso negado: apenas Administradores podem recusar ou excluir cadastros de servidores.');
+      }
+
+      const matInput = String(req.matricula || '').trim();
+      if (!matInput) throw new Error('Informe a matrícula do servidor para recusa/exclusão.');
+      if (norm(matInput) === '1001') {
+        throw new Error('O administrador mestre (matrícula 1001) é protegido e não pode ser removido.');
+      }
+
+      const sheet = ss.getSheetByName('Usuarios');
+      if (!sheet) throw new Error("Aba 'Usuarios' não configurada.");
+
+      const motivo = String(req.motivo || 'Cadastro recusado pelo administrador').trim();
+      const autor = req.usuarioAdmin || (sessaoAdmin ? sessaoAdmin.nome : 'Administrador');
+
+      const lock = LockService.getScriptLock();
+      lock.waitLock(15000);
+      try {
+        const data = sheet.getDataRange().getValues();
+        const idxMat = findColumnIndex(data[0], ['matricula', 'mat']);
+        const idxNome = findColumnIndex(data[0], ['nome', 'servidor', 'usuario']);
+        if (idxMat === -1) throw new Error("Coluna 'Matricula' não encontrada na aba Usuarios.");
+
+        let rowIndex = -1;
+        let nomeRemovido = '';
+        for (let i = data.length - 1; i >= 1; i--) {
+          let cellMat = String(data[i][idxMat] == null ? '' : data[i][idxMat]).trim();
+          if (cellMat.endsWith('.0')) cellMat = cellMat.slice(0, -2);
+          if (norm(cellMat) === norm(matInput)) {
+            rowIndex = i + 1;
+            if (idxNome !== -1) nomeRemovido = String(data[i][idxNome] || '').trim();
+            sheet.deleteRow(rowIndex);
+            break;
+          }
+        }
+
+        // Também marca eventual pedido pendente dessa matrícula como CANCELADO na aba PedidosAcesso
+        const sheetPed = ss.getSheetByName('PedidosAcesso');
+        if (sheetPed) {
+          const dataPed = sheetPed.getDataRange().getValues();
+          const dataHoraAtual = Utilities.formatDate(new Date(), TZ, 'dd/MM/yyyy HH:mm');
+          for (let j = 1; j < dataPed.length; j++) {
+            let rowMatPed = String(dataPed[j][2] || '').trim();
+            if (rowMatPed.endsWith('.0')) rowMatPed = rowMatPed.slice(0, -2);
+            const rowStatusPed = String(dataPed[j][9] || '').trim().toUpperCase();
+            if (norm(rowMatPed) === norm(matInput) && rowStatusPed === 'PENDENTE') {
+              sheetPed.getRange(j + 1, 10).setValue('CANCELADO');
+              sheetPed.getRange(j + 1, 11).setValue(dataHoraAtual);
+              sheetPed.getRange(j + 1, 12).setValue(autor);
+            }
+          }
+        }
+
+        registrarLog(
+          autor,
+          'RECUSAR_SERVIDOR',
+          matInput,
+          'Cadastro ' + (nomeRemovido ? 'de ' + nomeRemovido + ' ' : '') + '(Matrícula ' + matInput + ') recusado/removido. Motivo: ' + motivo
+        );
+
+        return createJsonResponse({
+          success: true,
+          removido: rowIndex !== -1,
+          message: rowIndex !== -1
+            ? 'Cadastro do servidor matrícula ' + matInput + ' recusado e removido da planilha.'
+            : 'Matrícula ' + matInput + ' já não constava na aba Usuarios.'
+        });
+      } finally {
+        lock.releaseLock();
+      }
+    }
+
     // 6. AÇÃO: SALVAR_MODELO
     if (action === 'SALVAR_MODELO') {
       const sheet = ss.getSheetByName('Modelos');
@@ -1081,7 +1222,12 @@ function doPost(e) {
       }
 
       const reqSigla = extrairSiglaSecretaria(reqSecretaria);
-      const incluirSigla = req.incluirSigla === true || req.incluirSigla === 'true';
+      const tiposGlobaisAtivos = getConfigNumeracaoGlobal();
+      const usarSequenciaGlobal =
+        req.sequenciaGlobal === true ||
+        req.sequenciaGlobal === 'true' ||
+        tiposGlobaisAtivos.indexOf(tipoNormalizado) !== -1;
+      const incluirSigla = !usarSequenciaGlobal && (req.incluirSigla === true || req.incluirSigla === 'true');
 
       const isTargetSEAD = reqSigla === 'SMA';
 
@@ -1132,9 +1278,11 @@ function doPost(e) {
           const sRow = secsRange ? String(secsRange[i][0] || '').trim() : '';
           if (!tRow || !nRow) continue;
 
-          const rowIsSEAD = !sRow || mesmaSecretaria(sRow, 'SMA');
-          const matchSec = isTargetSEAD ? rowIsSEAD : mesmaSecretaria(sRow, reqSecretaria);
-          if (!matchSec) continue;
+          if (!usarSequenciaGlobal) {
+            const rowIsSEAD = !sRow || mesmaSecretaria(sRow, 'SMA');
+            const matchSec = isTargetSEAD ? rowIsSEAD : mesmaSecretaria(sRow, reqSecretaria);
+            if (!matchSec) continue;
+          }
 
           if (normTipo(tRow) === tipoNormalizado) {
             let seq = 0;
@@ -1189,7 +1337,7 @@ function doPost(e) {
       const ultimaLinha = sheetNum.getLastRow();
       sheetNum.getRange(ultimaLinha, (idxNumero !== -1 ? idxNumero + 1 : 3)).setNumberFormat('@').setValue(novoNumero);
 
-      const detalhesLog = 'Emitiu ' + tipoDoc + ' nº ' + novoNumero + ' | Pasta: ' + reqSecretaria + ' (' + reqDepartamento + ') | Dest: ' + destinatarioFinal + ' | Assunto: ' + assuntoFinal;
+      const detalhesLog = 'Emitiu ' + tipoDoc + ' nº ' + novoNumero + (usarSequenciaGlobal ? ' [Global Municipal]' : '') + ' | Pasta: ' + reqSecretaria + ' (' + reqDepartamento + ') | Dest: ' + destinatarioFinal + ' | Assunto: ' + assuntoFinal;
       registrarLog(reqServidor, 'GERAR_NUMERO', novoNumero, detalhesLog);
 
       return createJsonResponse({
@@ -1204,8 +1352,357 @@ function doPost(e) {
         departamento: reqDepartamento,
         servidor: reqServidor,
         dataHora: dataHoraIso,
-        incluirSigla: incluirSigla
+        incluirSigla: incluirSigla,
+        sequenciaGlobal: usarSequenciaGlobal
       });
+    }
+
+    // 7B. AÇÃO: DEFINIR_MARCO_ZERO (Carga Inicial de Numeração em Implantação — Exclusivo ADMIN)
+    if (action === 'DEFINIR_MARCO_ZERO') {
+      const sessaoAdmin = req.token ? validarSessao(req.token) : null;
+      if (sessaoAdmin && normTipo(sessaoAdmin.nivel) !== 'ADMIN') {
+        throw new Error('Acesso negado: apenas Administradores podem registrar Marco Zero de numeração.');
+      }
+
+      let sheetNum = ss.getSheetByName('Numeração') || ss.getSheetByName('Numeracao');
+      if (!sheetNum) {
+        sheetNum = ss.insertSheet('Numeração');
+        sheetNum.appendRow(['DataHora', 'TipoDocumento', 'Numero', 'Assunto', 'Servidor', 'Destinatario', 'Secretaria', 'Departamento']);
+        sheetNum.getRange('A1:H1').setFontWeight('bold').setBackground('#002b82').setFontColor('#ffffff');
+      }
+
+      const rawTipo = req.tipoDocumento ? String(req.tipoDocumento).trim() : 'OFICIO';
+      const tipoDoc = rawTipo.toUpperCase();
+      const tipoNormalizado = normTipo(rawTipo);
+      const ultimoNum = parseInt(req.ultimoNumero, 10);
+      if (isNaN(ultimoNum) || ultimoNum < 1) {
+        throw new Error('Informe um número inteiro maior ou igual a 1 para o Marco Zero.');
+      }
+
+      const anoRef = (req.ano && /^\\d{4}$/.test(String(req.ano).trim()))
+        ? String(req.ano).trim()
+        : Utilities.formatDate(new Date(), TZ, 'yyyy');
+
+      const reqSecretaria = req.secretaria ? String(req.secretaria).trim() : 'Gabinete do Prefeito';
+      const reqDepartamento = req.departamento ? String(req.departamento).trim() : 'Gabinete';
+      const reqServidor = req.servidor || req.usuarioLogado || (sessaoAdmin ? sessaoAdmin.nome : 'Administrador');
+      const reqSigla = extrairSiglaSecretaria(reqSecretaria);
+
+      const tiposGlobaisAtivos = getConfigNumeracaoGlobal();
+      const usarSequenciaGlobal =
+        req.sequenciaGlobal === true ||
+        req.sequenciaGlobal === 'true' ||
+        tiposGlobaisAtivos.indexOf(tipoNormalizado) !== -1;
+      const incluirSigla = !usarSequenciaGlobal && (req.incluirSigla === true || req.incluirSigla === 'true');
+      const isTargetSEAD = reqSigla === 'SMA';
+
+      const numRows = sheetNum.getLastRow();
+      const numCols = Math.max(sheetNum.getLastColumn(), 8);
+      let headers = sheetNum.getRange(1, 1, 1, numCols).getValues()[0].map(function(h) { return String(h).trim(); });
+
+      const idxDataHora = findColumnIndex(headers, ['datahora', 'data_hora', 'data', 'hora']);
+      const idxTipo = findColumnIndex(headers, ['tipodocumento', 'tipo_documento', 'tipo', 'documento']);
+      const idxNumero = findColumnIndex(headers, ['numero', 'num', 'numeracao']);
+      const idxAssunto = findColumnIndex(headers, ['assunto', 'ementa', 'titulo']);
+      const idxServidor = findColumnIndex(headers, ['servidor', 'usuario', 'autor', 'responsavel']);
+      const idxDestinatario = findColumnIndex(headers, ['destinatario', 'destino', 'orgao', 'para']);
+      let idxSecretaria = findColumnIndex(headers, ['secretaria', 'secretariaorigem', 'lotacao', 'orgao']);
+      let idxDepartamento = findColumnIndex(headers, ['departamento', 'depto', 'divisao', 'setorinterno', 'setor']);
+
+      if (idxSecretaria === -1) {
+        const colNovaSec = sheetNum.getLastColumn() + 1;
+        sheetNum.getRange(1, colNovaSec).setValue('Secretaria').setFontWeight('bold').setBackground('#002b82').setFontColor('#ffffff');
+        idxSecretaria = colNovaSec - 1;
+      }
+      if (idxDepartamento === -1) {
+        const colNovaDep = sheetNum.getLastColumn() + 1;
+        sheetNum.getRange(1, colNovaDep).setValue('Departamento').setFontWeight('bold').setBackground('#002b82').setFontColor('#ffffff');
+        idxDepartamento = colNovaDep - 1;
+      }
+      headers = sheetNum.getRange(1, 1, 1, sheetNum.getLastColumn()).getValues()[0].map(function(h) { return String(h).trim(); });
+
+      const colTipo = idxTipo !== -1 ? idxTipo + 1 : 2;
+      const colNum = idxNumero !== -1 ? idxNumero + 1 : 3;
+      const colSec = idxSecretaria + 1;
+
+      let maiorSequencial = 0;
+      if (numRows > 1) {
+        const tiposRange = sheetNum.getRange(2, colTipo, numRows - 1, 1).getValues();
+        const numerosRange = sheetNum.getRange(2, colNum, numRows - 1, 1).getValues();
+        const secsRange = sheetNum.getLastColumn() >= colSec
+          ? sheetNum.getRange(2, colSec, numRows - 1, 1).getValues()
+          : null;
+
+        for (let i = 0; i < tiposRange.length; i++) {
+          const tRow = tiposRange[i][0];
+          const nRow = numerosRange[i][0];
+          const sRow = secsRange ? String(secsRange[i][0] || '').trim() : '';
+          if (!tRow || !nRow) continue;
+
+          if (!usarSequenciaGlobal) {
+            const rowIsSEAD = !sRow || mesmaSecretaria(sRow, 'SMA');
+            const matchSec = isTargetSEAD ? rowIsSEAD : mesmaSecretaria(sRow, reqSecretaria);
+            if (!matchSec) continue;
+          }
+
+          if (normTipo(tRow) === tipoNormalizado) {
+            let seq = 0;
+            let anoDoc = anoRef;
+            if (nRow instanceof Date) {
+              seq = nRow.getDate() === 1 ? nRow.getMonth() + 1 : nRow.getDate();
+              anoDoc = String(nRow.getFullYear());
+            } else {
+              const strNum = String(nRow).trim();
+              const match = strNum.match(/^(\\d+)[\\/-](\\d{4})/);
+              if (match && match[1]) {
+                seq = parseInt(match[1], 10);
+                anoDoc = match[2];
+              }
+            }
+            if (anoDoc === anoRef && seq > maiorSequencial) maiorSequencial = seq;
+          }
+        }
+      }
+
+      if (ultimoNum <= maiorSequencial) {
+        throw new Error('O número informado (' + pad3(ultimoNum) + '/' + anoRef + ') não pode ser menor ou igual ao maior número já registrado (' + pad3(maiorSequencial) + '/' + anoRef + ').');
+      }
+
+      const numeroMarcoZero = incluirSigla
+        ? pad3(ultimoNum) + '/' + anoRef + ' - ' + reqSigla
+        : pad3(ultimoNum) + '/' + anoRef;
+      const proximoNumero = incluirSigla
+        ? pad3(ultimoNum + 1) + '/' + anoRef + ' - ' + reqSigla
+        : pad3(ultimoNum + 1) + '/' + anoRef;
+
+      const obs = req.observacao ? String(req.observacao).trim() : 'Último número emitido no livro anterior';
+      const assuntoFinal = '[MARCO ZERO DE IMPLANTAÇÃO] ' + obs;
+      const dataHoraIso = Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'HH:mm:ss");
+
+      const totalColunas = Math.max(headers.length, 8);
+      const rowToAppend = new Array(totalColunas).fill('');
+      rowToAppend[idxDataHora !== -1 ? idxDataHora : 0] = dataHoraIso;
+      rowToAppend[idxTipo !== -1 ? idxTipo : 1] = tipoDoc;
+      rowToAppend[idxNumero !== -1 ? idxNumero : 2] = numeroMarcoZero;
+      rowToAppend[idxAssunto !== -1 ? idxAssunto : 3] = assuntoFinal;
+      rowToAppend[idxServidor !== -1 ? idxServidor : 4] = reqServidor;
+      rowToAppend[idxDestinatario !== -1 ? idxDestinatario : 5] = 'Livro Anterior / Carga Inicial';
+      rowToAppend[idxSecretaria !== -1 ? idxSecretaria : 6] = reqSecretaria;
+      rowToAppend[idxDepartamento !== -1 ? idxDepartamento : 7] = reqDepartamento;
+
+      sheetNum.appendRow(rowToAppend);
+      const ultimaLinha = sheetNum.getLastRow();
+      sheetNum.getRange(ultimaLinha, (idxNumero !== -1 ? idxNumero + 1 : 3)).setNumberFormat('@').setValue(numeroMarcoZero);
+
+      registrarLog(
+        reqServidor,
+        'DEFINIR_MARCO_ZERO',
+        numeroMarcoZero,
+        'Marco Zero definido para ' + tipoDoc + ' em ' + reqSecretaria + (usarSequenciaGlobal ? ' [Global Municipal]' : '') + '. Próximo nº oficial: ' + proximoNumero
+      );
+
+      return createJsonResponse({
+        success: true,
+        numeroMarcoZero: numeroMarcoZero,
+        proximoNumero: proximoNumero,
+        tipoDocumento: tipoDoc,
+        secretaria: reqSecretaria,
+        departamento: reqDepartamento,
+        assunto: assuntoFinal,
+        dataHora: dataHoraIso,
+        sequenciaGlobal: usarSequenciaGlobal
+      });
+    }
+
+    // 7C. AÇÃO: SALVAR_CONFIG_NUMERACAO (Regras de Sequência Global Municipal — Exclusivo ADMIN)
+    if (action === 'SALVAR_CONFIG_NUMERACAO') {
+      const sessaoAdmin = req.token ? validarSessao(req.token) : null;
+      if (sessaoAdmin && normTipo(sessaoAdmin.nivel) !== 'ADMIN') {
+        throw new Error('Acesso negado: apenas Administradores podem alterar regras globais de numeração.');
+      }
+
+      const tiposSalvos = salvarConfigNumeracaoGlobal(req.tiposSequenciaGlobal);
+      const autor = req.usuarioLogado || (sessaoAdmin ? sessaoAdmin.nome : 'Administrador');
+      registrarLog(autor, 'CONFIG_NUMERACAO', 'GLOBAL', 'Tipos em sequência global municipal: ' + (tiposSalvos.length ? tiposSalvos.join(', ') : 'Nenhum (todos por Secretaria)'));
+
+      return createJsonResponse({
+        success: true,
+        configNumeracao: {
+          tiposSequenciaGlobal: tiposSalvos
+        }
+      });
+    }
+
+    // 7D. AÇÃO: EXCLUIR_NUMERACAO (Higienização / Exclusão definitiva unitária ou em lote — Exclusivo ADMIN)
+    if (action === 'EXCLUIR_NUMERACAO') {
+      const sessaoAdmin = req.token ? validarSessao(req.token) : null;
+      if (sessaoAdmin && normTipo(sessaoAdmin.nivel) !== 'ADMIN') {
+        throw new Error('Acesso negado: apenas Administradores podem excluir registros da aba Numeração.');
+      }
+
+      const sheetNum = ss.getSheetByName('Numeração') || ss.getSheetByName('Numeracao');
+      if (!sheetNum) throw new Error("Aba 'Numeração' não encontrada na planilha.");
+
+      const listaAlvos = Array.isArray(req.registros) && req.registros.length > 0
+        ? req.registros
+        : (req.numero ? [{
+            numero: req.numero,
+            tipoDocumento: req.tipoDocumento || '',
+            secretaria: req.secretaria || '',
+            dataHora: req.dataHora || ''
+          }] : []);
+
+      if (listaAlvos.length === 0) {
+        throw new Error('Informe ao menos um registro de numeração para exclusão.');
+      }
+
+      const motivo = String(req.motivo || 'Higienização administrativa (teste/duplicidade)').trim();
+      const autor = req.usuarioLogado || (sessaoAdmin ? sessaoAdmin.nome : 'Administrador');
+
+      const lock = LockService.getScriptLock();
+      lock.waitLock(15000);
+      try {
+        const data = sheetNum.getDataRange().getValues();
+        const headers = data[0] ? data[0].map(function(h) { return String(h).trim(); }) : [];
+        const idxData = findColumnIndex(headers, ['datahora', 'data']);
+        const idxTipo = findColumnIndex(headers, ['tipodocumento', 'tipodoc', 'tipo']);
+        const idxNum = findColumnIndex(headers, ['numero', 'num', 'nº']);
+        const idxSec = findColumnIndex(headers, ['secretaria', 'orgao', 'pasta']);
+
+        const colData = idxData !== -1 ? idxData : 0;
+        const colTipo = idxTipo !== -1 ? idxTipo : 1;
+        const colNum = idxNum !== -1 ? idxNum : 2;
+        const colSec = idxSec !== -1 ? idxSec : 6;
+
+        let removidos = 0;
+        const numerosRemovidos = [];
+        const alvosPendentes = listaAlvos.slice();
+
+        for (let r = data.length - 1; r >= 1; r--) {
+          if (alvosPendentes.length === 0) break;
+          const rowNum = String(data[r][colNum] || '').trim();
+          const rowTipo = normTipo(data[r][colTipo] || '');
+          const rowSec = canonicalSigla(data[r][colSec] || '');
+          const rowDataRaw = data[r][colData];
+          const rowDataStr = rowDataRaw instanceof Date
+            ? Utilities.formatDate(rowDataRaw, TZ, 'dd/MM/yyyy HH:mm')
+            : String(rowDataRaw || '').trim();
+
+          let matchedIdx = -1;
+          for (let k = 0; k < alvosPendentes.length; k++) {
+            const alvo = alvosPendentes[k];
+            const alvoNum = String(alvo.numero || '').trim();
+            const alvoTipo = normTipo(alvo.tipoDocumento || '');
+            const alvoSec = alvo.secretaria ? canonicalSigla(alvo.secretaria) : '';
+            const alvoData = String(alvo.dataHora || '').trim();
+
+            if (rowNum !== alvoNum) continue;
+            if (alvoTipo && rowTipo && rowTipo !== alvoTipo) continue;
+            if (alvoSec && rowSec && rowSec !== alvoSec) continue;
+            // Se houver múltiplos com mesmo número, prioriza bater dataHora quando informada
+            if (alvoData && rowDataStr && alvoData !== rowDataStr && alvosPendentes.length === 1) {
+              // tolera diferença de formato ISO vs dd/MM/yyyy HH:mm
+            }
+            matchedIdx = k;
+            break;
+          }
+
+          if (matchedIdx !== -1) {
+            sheetNum.deleteRow(r + 1);
+            removidos++;
+            numerosRemovidos.push((rowTipo ? rowTipo + ' ' : '') + rowNum);
+            alvosPendentes.splice(matchedIdx, 1);
+          }
+        }
+
+        registrarLog(
+          autor,
+          'EXCLUIR_NUMERACAO',
+          numerosRemovidos.slice(0, 5).join(', ') + (numerosRemovidos.length > 5 ? ' (+' + (numerosRemovidos.length - 5) + ')' : ''),
+          'Higienização: ' + removidos + ' registro(s) excluído(s). Motivo: ' + motivo
+        );
+
+        return createJsonResponse({
+          success: true,
+          removidos: removidos,
+          numerosRemovidos: numerosRemovidos
+        });
+      } finally {
+        lock.releaseLock();
+      }
+    }
+
+    // 7E. AÇÃO: ANULAR_NUMERACAO (Mantém número reservado no protocolo com marcação [ANULADO] — Exclusivo ADMIN)
+    if (action === 'ANULAR_NUMERACAO') {
+      const sessaoAdmin = req.token ? validarSessao(req.token) : null;
+      if (sessaoAdmin && normTipo(sessaoAdmin.nivel) !== 'ADMIN') {
+        throw new Error('Acesso negado: apenas Administradores podem anular números oficiais.');
+      }
+
+      const sheetNum = ss.getSheetByName('Numeração') || ss.getSheetByName('Numeracao');
+      if (!sheetNum) throw new Error("Aba 'Numeração' não encontrada na planilha.");
+
+      const alvoNum = String(req.numero || '').trim();
+      const alvoTipo = normTipo(req.tipoDocumento || '');
+      const alvoSec = req.secretaria ? canonicalSigla(req.secretaria) : '';
+      const motivo = String(req.motivo || 'Cancelado administrativamente').trim();
+      const autor = req.usuarioLogado || (sessaoAdmin ? sessaoAdmin.nome : 'Administrador');
+
+      if (!alvoNum) throw new Error('Número do documento é obrigatório para anulação.');
+
+      const lock = LockService.getScriptLock();
+      lock.waitLock(15000);
+      try {
+        const data = sheetNum.getDataRange().getValues();
+        const headers = data[0] ? data[0].map(function(h) { return String(h).trim(); }) : [];
+        const idxTipo = findColumnIndex(headers, ['tipodocumento', 'tipodoc', 'tipo']);
+        const idxNum = findColumnIndex(headers, ['numero', 'num', 'nº']);
+        const idxAssunto = findColumnIndex(headers, ['assunto', 'objeto', 'descricao']);
+        const idxSec = findColumnIndex(headers, ['secretaria', 'orgao', 'pasta']);
+
+        const colTipo = idxTipo !== -1 ? idxTipo : 1;
+        const colNum = idxNum !== -1 ? idxNum : 2;
+        const colAssunto = idxAssunto !== -1 ? idxAssunto : 3;
+        const colSec = idxSec !== -1 ? idxSec : 6;
+
+        let atualizado = false;
+        let novoAssunto = '';
+        for (let r = data.length - 1; r >= 1; r--) {
+          const rowNum = String(data[r][colNum] || '').trim();
+          const rowTipo = normTipo(data[r][colTipo] || '');
+          const rowSec = canonicalSigla(data[r][colSec] || '');
+
+          if (rowNum !== alvoNum) continue;
+          if (alvoTipo && rowTipo && rowTipo !== alvoTipo) continue;
+          if (alvoSec && rowSec && rowSec !== alvoSec) continue;
+
+          const assuntoAtual = String(data[r][colAssunto] || '').trim();
+          const assuntoSemPrefixo = assuntoAtual.replace(/^\[ANULADO[^\]]*\]\s*/i, '');
+          novoAssunto = '[ANULADO - ' + motivo + '] ' + assuntoSemPrefixo;
+          sheetNum.getRange(r + 1, colAssunto + 1).setValue(novoAssunto);
+          atualizado = true;
+          break;
+        }
+
+        if (!atualizado) {
+          throw new Error('Registro não encontrado na aba Numeração para anulação.');
+        }
+
+        registrarLog(
+          autor,
+          'ANULAR_NUMERACAO',
+          (alvoTipo ? alvoTipo + ' ' : '') + alvoNum,
+          'Número anulado (mantido no protocolo). Motivo: ' + motivo
+        );
+
+        return createJsonResponse({
+          success: true,
+          numero: alvoNum,
+          novoAssunto: novoAssunto
+        });
+      } finally {
+        lock.releaseLock();
+      }
     }
 
     // 8. AÇÃO: ALTERAR_SENHA (com suporte opcional a novoNome)

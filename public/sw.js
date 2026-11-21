@@ -1,5 +1,5 @@
 // Service Worker para o Banco Mestre Administrativo - Rio Claro RJ
-const CACHE_NAME = 'bancomestre-v3.2';
+const CACHE_NAME = 'bancomestre-v3.4';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -8,6 +8,7 @@ const ASSETS_TO_CACHE = [
   '/pwa-512x512.png',
   '/pwa-maskable-512x512.png',
   '/apple-touch-icon.png',
+  '/favicon-64.png',
   '/favicon.ico',
   '/icon.svg',
   '/assets/aistudio/bras_o_3e96cfe6.png'
@@ -17,8 +18,14 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS_TO_CACHE);
-    }).then(() => self.skipWaiting())
+    })
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {

@@ -20,8 +20,17 @@ import {
   PedidoRecuperacaoSenha,
   getSecretariaSigla,
   isSameSecretaria,
-  resolveCanonicalSecretariaName
+  resolveCanonicalSecretariaName,
+  getCargosSugeridosUnificados
 } from '../mockData';
+import {
+  CargoComissionadoOuFG,
+  TODAS_FUNCOES_ANEXOS_I_II,
+  getStatusCargoEfetivo,
+  agruparFuncoesPorSecretaria,
+  formatCargoComSimbologia,
+  inferirDepartamentoDaFuncao
+} from '../cargosOficiais';
 
 interface RecuperarSenhaModalProps {
   isOpen: boolean;
@@ -39,6 +48,8 @@ interface RecuperarSenhaModalProps {
   onCadastrarServidor: (novoServidor: Partial<UsuarioSistema>, senhaInicial?: string) => Promise<boolean>;
   onShowToast: (msg: string, title?: string, isError?: boolean) => void;
   onSuccessCadastro?: (matricula: string) => void;
+  funcoesOficiais?: CargoComissionadoOuFG[];
+  cargosEfetivos?: string[];
 }
 
 export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
@@ -51,7 +62,9 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
   onCriarPedidoRecuperacao,
   onCadastrarServidor,
   onShowToast,
-  onSuccessCadastro
+  onSuccessCadastro,
+  funcoesOficiais,
+  cargosEfetivos
 }) => {
   const [matriculaInput, setMatriculaInput] = useState('');
   const [contatoInput, setContatoInput] = useState('');
@@ -59,6 +72,7 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
   // Campos do formulário de cadastro de novo servidor
   const [nomeInput, setNomeInput] = useState('');
   const [cargoInput, setCargoInput] = useState('');
+  const [funcaoGratificadaInput, setFuncaoGratificadaInput] = useState('');
   const [secretariaInput, setSecretariaInput] = useState('');
   const [departamentoInput, setDepartamentoInput] = useState('');
   const [senhaInput, setSenhaInput] = useState('123456');
@@ -136,34 +150,19 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [secretariasParaCombo, secretariaInput, usuarios, secretarias]);
 
-  // Cargos / Funções dinâmicos vindos da aba Usuarios da planilha + cargos municipais padrão
+  // Cargos efetivos dinâmicos vindos do quadro oficial da Prefeitura + aba Usuarios da planilha
   const cargosParaCombo = useMemo(() => {
-    const padroes = [
-      'Agente Administrativo',
-      'Assessor Técnico',
-      'Assistente Administrativo',
-      'Auxiliar Administrativo',
-      'Chefe de Divisão',
-      'Contador',
-      'Coordenador',
-      'Diretor de Departamento',
-      'Enfermeiro(a)',
-      'Fiscal Municipal',
-      'Procurador Municipal',
-      'Professor(a)',
-      'Secretário(a) Municipal',
-      'Técnico Administrativo',
-      'Técnico em Enfermagem'
-    ];
-    const set = new Set<string>(padroes);
-    (usuarios || []).forEach(u => {
-      const c = (u.cargo || '').trim();
-      if (c && c.toLowerCase() !== 'servidor municipal') {
-        set.add(c);
-      }
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [usuarios]);
+    return getCargosSugeridosUnificados(usuarios, cargosEfetivos);
+  }, [usuarios, cargosEfetivos]);
+
+  // Funções do Anexo I (SS/CC) e Anexo II (FG) agrupadas priorizando a secretaria selecionada
+  const funcoesAgrupadasCadastro = useMemo(() => {
+    const sigla = getSecretariaSigla(secretariaInput, secretarias);
+    return {
+      sigla,
+      ...agruparFuncoesPorSecretaria(sigla, funcoesOficiais || TODAS_FUNCOES_ANEXOS_I_II)
+    };
+  }, [secretariaInput, secretarias, funcoesOficiais]);
 
   // Inicializa quando o modal abre
   useEffect(() => {
@@ -173,6 +172,7 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
       setContatoInput('');
       setNomeInput('');
       setCargoInput('');
+      setFuncaoGratificadaInput('');
       setSenhaInput('123456');
       setPedidoEnviado(false);
       setCadastroRealizado(false);
@@ -239,7 +239,8 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
       const novoUsuario: Partial<UsuarioSistema> = {
         matricula: cleanMatricula,
         nome: nomeInput.trim(),
-        cargo: cargoInput.trim() || 'Servidor Municipal',
+        cargo: cargoInput.trim() || (funcaoGratificadaInput.trim() ? '' : 'Servidor Municipal'),
+        funcaoGratificada: funcaoGratificadaInput.trim() || undefined,
         secretaria: secretariaInput || 'SMA',
         departamento: departamentoInput.trim() || 'Geral',
         nivel: 'PADRAO',
@@ -269,6 +270,7 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
     setContatoInput('');
     setNomeInput('');
     setCargoInput('');
+    setFuncaoGratificadaInput('');
     setDepartamentoInput('');
     setPedidoEnviado(false);
     setCadastroRealizado(false);
@@ -287,13 +289,13 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-8">
+      <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-2xl sm:rounded-2xl max-w-lg w-full max-h-[94dvh] sm:max-h-[90dvh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         
         {/* Top Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60">
+        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 shrink-0">
           <div className="flex items-center space-x-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center border shrink-0 ${
               isModoCadastro
@@ -321,7 +323,7 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="p-5 space-y-4 text-xs">
+        <div className="p-4 sm:p-5 space-y-4 text-xs flex-1 overflow-y-auto overscroll-contain">
 
           {/* SUCESSO: SOLICITAÇÃO DE NOVO CADASTRO ENVIADA PARA AUTORIZAÇÃO */}
           {cadastroRealizado ? (
@@ -620,7 +622,7 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
                             value={departamentoInput}
                             onChange={(e) => setDepartamentoInput(e.target.value)}
                             placeholder="Digite o nome do departamento..."
-                            className="mt-1.5 w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-emerald-400 dark:border-emerald-700 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500"
+                            className="mt-1.5 w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-emerald-400 dark:border-emerald-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500"
                           />
                         )}
                       </div>
@@ -628,9 +630,29 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          Cargo / Função
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            Cargo Efetivo (Quadro Permanente)
+                          </label>
+                          {cargoInput && (() => {
+                            const st = getStatusCargoEfetivo(cargoInput);
+                            if (st.status === 'EM_EXTINCAO') {
+                              return (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                  * Em Extinção
+                                </span>
+                              );
+                            }
+                            if (st.status === 'EXTINTO') {
+                              return (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                                  ** Extinto
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
                         <select
                           value={isOutroCargo ? '__OUTRO__' : (cargosParaCombo.includes(cargoInput) ? cargoInput : (cargoInput ? '__OUTRO__' : ''))}
                           onChange={(e) => {
@@ -645,7 +667,7 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
                           }}
                           className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500"
                         >
-                          <option value="">Selecione o cargo / função...</option>
+                          <option value="">Sem vínculo efetivo / Selecione...</option>
                           {cargosParaCombo.map((cargo) => (
                             <option key={cargo} value={cargo}>
                               {cargo}
@@ -653,13 +675,16 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
                           ))}
                           <option value="__OUTRO__">➕ Outro cargo (digitar manualmente)...</option>
                         </select>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Legenda: <strong>*</strong> Cargo em Extinção • <strong>**</strong> Cargo Extinto
+                        </p>
                         {isOutroCargo && (
                           <input
                             type="text"
                             value={cargoInput}
                             onChange={(e) => setCargoInput(e.target.value)}
-                            placeholder="Digite o cargo / função..."
-                            className="mt-1.5 w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-emerald-400 dark:border-emerald-700 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500"
+                            placeholder="Digite o cargo efetivo..."
+                            className="mt-1.5 w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-emerald-400 dark:border-emerald-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500"
                           />
                         )}
                       </div>
@@ -673,9 +698,80 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
                           value={contatoInput}
                           onChange={(e) => setContatoInput(e.target.value)}
                           placeholder="Ex: (24) 99881-2233"
-                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500"
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500"
                         />
                       </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          Cargo em Comissão (Anexo I) / Função Gratificada (Anexo II) — Opcional
+                        </label>
+                        <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400">
+                          Pasta: {funcoesAgrupadasCadastro.sigla}
+                        </span>
+                      </div>
+                      <select
+                        value={funcaoGratificadaInput}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFuncaoGratificadaInput(val);
+                          const deptoSugerido = inferirDepartamentoDaFuncao(val);
+                          if (deptoSugerido && (!departamentoInput || departamentoInput === 'Gabinete')) {
+                            setIsOutroDepto(false);
+                            setDepartamentoInput(deptoSugerido);
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="">Nenhum (somente cargo efetivo)</option>
+                        {funcoesAgrupadasCadastro.comissaoDaPasta.length > 0 && (
+                          <optgroup label={`⭐ Cargos em Comissão / Subsídio — ${funcoesAgrupadasCadastro.sigla}`}>
+                            {funcoesAgrupadasCadastro.comissaoDaPasta.map(item => (
+                              <option key={item.id} value={formatCargoComSimbologia(item)}>
+                                {item.nome} ({item.simbologia})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {funcoesAgrupadasCadastro.fgDaPasta.length > 0 && (
+                          <optgroup label={`⭐ Funções Gratificadas (FG) — ${funcoesAgrupadasCadastro.sigla}`}>
+                            {funcoesAgrupadasCadastro.fgDaPasta.map(item => (
+                              <option key={item.id} value={formatCargoComSimbologia(item)}>
+                                {item.nome} ({item.simbologia})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {funcoesAgrupadasCadastro.altaAdministracao.length > 0 && (
+                          <optgroup label="🏛️ Alta Administração (Subsídio - SS)">
+                            {funcoesAgrupadasCadastro.altaAdministracao.map(item => (
+                              <option key={item.id} value={formatCargoComSimbologia(item)}>
+                                {item.nome} ({item.simbologia})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {funcoesAgrupadasCadastro.outrasComissao.length > 0 && (
+                          <optgroup label="📋 Demais Cargos em Comissão (Outras Pastas)">
+                            {funcoesAgrupadasCadastro.outrasComissao.map(item => (
+                              <option key={item.id} value={formatCargoComSimbologia(item)}>
+                                [{item.secretariaSigla}] {item.nome} ({item.simbologia})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {funcoesAgrupadasCadastro.outrasFG.length > 0 && (
+                          <optgroup label="📋 Demais Funções Gratificadas (Outras Pastas)">
+                            {funcoesAgrupadasCadastro.outrasFG.map(item => (
+                              <option key={item.id} value={formatCargoComSimbologia(item)}>
+                                [{item.secretariaSigla}] {item.nome} ({item.simbologia})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
                     </div>
 
                     <div>
@@ -688,7 +784,7 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
                           value={senhaInput}
                           onChange={(e) => setSenhaInput(e.target.value)}
                           placeholder="123456"
-                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono focus:ring-2 focus:ring-emerald-500"
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-emerald-500"
                         />
                       </div>
                       <p className="text-[10px] text-slate-400 mt-0.5">
@@ -722,7 +818,7 @@ export const RecuperarSenhaModal: React.FC<RecuperarSenhaModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between">
+        <div className="p-3.5 sm:p-4 pb-safe border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 flex items-center justify-between gap-2 shrink-0">
           <div className="text-[11px] text-slate-400">
             {foundUser && cleanMatricula && (
               <button

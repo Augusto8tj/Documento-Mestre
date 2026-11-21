@@ -1,4 +1,9 @@
 import realModelsRaw from './importedRealModels.json';
+import {
+  TIPOS_DOCUMENTO_NUMERADOS_OFICIAIS,
+  MODELOS_PGM_E_ADMINISTRATIVOS_OFICIAIS
+} from './documentTypes';
+import { MODELOS_SETORES_MUNICIPAIS_OFICIAIS } from './sectorModels';
 
 export interface ModeloDocumental {
   ID: string;
@@ -20,6 +25,7 @@ export interface ModeloDocumental {
   UsoFrequente?: number;
   Versao?: string;
   Ativo?: boolean;
+  EstiloId?: string;
 }
 
 export interface RegistroNumeracao {
@@ -54,7 +60,8 @@ export interface UsuarioSistema {
   matricula: string;
   senha?: string;
   nome: string;
-  cargo?: string;
+  cargo?: string; // Cargo Efetivo (Quadro Permanente, * Em Extinção, ** Extinto)
+  funcaoGratificada?: string; // Cargo em Subsídio (SS), Cargo em Comissão (CC) ou Função Gratificada (FG) — Anexos I e II
   departamento?: string;
   secretaria?: string; // Secretaria principal ou ativa
   secretarias?: string[]; // Múltiplas secretarias acumuladas
@@ -85,6 +92,7 @@ export interface PedidoRecuperacaoSenha {
   matricula: string;
   nome: string;
   cargo?: string;
+  funcaoGratificada?: string;
   secretaria: string;
   departamento?: string;
   contato?: string;
@@ -108,83 +116,538 @@ export interface SecretariaItem {
 }
 
 export const SECRETARIAS_MUNICIPAIS_BASE = [
+  'Secretaria Municipal de Governo (SEGOV)',
   'Secretaria Municipal de Administração (SMA)',
-  'Secretaria Municipal de Saúde (SMS)',
+  'Secretaria Municipal de Finanças (SMF)',
+  'Secretaria Municipal de Previdência Social (IPRC)',
   'Secretaria Municipal de Educação (SME)',
-  'Secretaria Municipal de Fazenda e Finanças (SMF)',
-  'Secretaria Municipal de Obras e Serviços Públicos (SMOSP)',
-  'Secretaria Municipal de Ação Social e Cidadania (SMASC)',
-  'Secretaria Municipal de Meio Ambiente e Defesa Civil',
-  'Gabinete do Prefeito',
+  'Secretaria Municipal de Assistência Social e Direitos Humanos (SMAS)',
+  'Secretaria Municipal de Planejamento Urbano, Obras e Serviços Públicos (SMOSP)',
+  'Secretaria Municipal de Meio Ambiente e Agricultura (SMMA)',
+  'Secretaria Municipal de Desenvolvimento Econômico, Cultura, Turismo, Eventos, Esporte e Lazer (SMDEC)',
+  'Secretaria Municipal de Ordem Pública (SMOP)',
+  'Secretaria Municipal de Saúde (SMS)',
   'Procuradoria-Geral do Município (PGM)',
-  'Controladoria Geral do Município (CGM)',
-  'Instituto de Previdência Municipal (IPRC)'
+  'Controladoria-Geral do Município (CGM)'
 ];
 
+export const CARGOS_PREFEITURA_BASE: string[] = [
+  'ACS - RIO CLARO/RJ – MÓDULO 1',
+  'ADMINISTRADOR',
+  'AGENTE AUX. DE SERVIÇOS. MUN. GERAIS *',
+  'AGENTE DE APOIO EDUCACIONAL',
+  'AGENTE DE CONTROLE DE ENDEMIAS',
+  'AGENTE DE CONTROLE DE ZOONOSES (*)',
+  'AGENTE DE DEFESA CIVIL (*)',
+  'AJUDANTE DE MECÂNICO (*)',
+  'ALMOXARIFE',
+  'ANIMADOR CULTURAL (*)',
+  'ARQUITETO',
+  'ARQUIVISTA (*)',
+  'ARTESÃO',
+  'ASSESSOR TÉCNICO',
+  'ASSISTENTE DE CADASTRO (**)',
+  'ASSISTENTE DE CONTABILIDADE',
+  'ASSISTENTE DE CPD',
+  'ASSISTENTE DE PESSOAL',
+  'ASSISTENTE DE TESOURARIA',
+  'ASSISTENTE SOCIAL',
+  'AUDITOR FISCAL TRIBUTÁRIO',
+  'AUDITOR GERAL',
+  'AUXILIAR ADMINISTRATIVO',
+  'AUXILIAR ADMINISTRATIVO EM BIBLIOTECONOMIA (*)',
+  'AUXILIAR DE AUDITORIA (**)',
+  'AUXILIAR DE CADASTRO',
+  'AUXILIAR DE CPD (*)',
+  'AUXILIAR DE CRECHE (*)',
+  'AUXILIAR DE DIVIDA ATIVA (**)',
+  'AUXILIAR DE ELETRICISTA CIVIL (**)',
+  'AUXILIAR DE ENFERMAGEM (*)',
+  'AUXILIAR DE FISCALIZAÇÃO (**)',
+  'AUXILIAR DE SAUDE BUCAL',
+  'AUXILIAR DE SERVIÇOS EXTERNOS (*)',
+  'AUXILIAR DE SERVIÇOS GERAIS (*)',
+  'AUXILIAR DE TESOURARIA (*)',
+  'BIÓLOGO (SAÚDE)',
+  'BIÓLOGO AMBIENTAL',
+  'BOMBEIRO HIDRÁULICO (*)',
+  'BORRACHEIRO ESPECIALIZADO (**)',
+  'CANTONEIRO (*)',
+  'CARPINTEIRO (*)',
+  'CHEFE DE DIVISÃO',
+  'CHEFE DE GABINETE',
+  'CIRURGIÃO-DENTISTA',
+  'CONTADOR',
+  'CONTROLADOR GERAL DO MUNICÍPIO',
+  'COORDENADOR',
+  'COVEIRO (*)',
+  'COZINHEIRA (*)',
+  'CUIDADOR/EDUCADOR (*)',
+  'DIRETOR DE DEPARTAMENTO',
+  'DOCENTE I',
+  'DOCENTE I - AEE',
+  'DOCENTE I – LIBRAS',
+  'DOCENTE II',
+  'DOCENTE II - ARTE (*)',
+  'DOCENTE II – ARTE (ARTES VISUAIS)',
+  'DOCENTE II – ARTE (MÚSICA)',
+  'DOCENTE II – CIÊNCIAS',
+  'DOCENTE II – EDUCAÇÃO FÍSICA',
+  'DOCENTE II – EMPREENDEDORISMO',
+  'DOCENTE II – GEOGRAFIA',
+  'DOCENTE II – HISTÓRIA',
+  'DOCENTE II – INGLÊS',
+  'DOCENTE II – MATEMÁTICA',
+  'DOCENTE II – PORTUGUÊS',
+  'DOCENTE II - TÉCNICAS AGRÍCOLAS',
+  'EDUCADOR FISICO (**)',
+  'ELETRICISTA CIVIL',
+  'ELETRICISTA DE AUTOS (*)',
+  'ENCARREGADO DE TURMA (**)',
+  'ENFERMEIRO',
+  'ENFERMEIRO - ESF',
+  'ENGENHEIRO AGRONOMO',
+  'ENGENHEIRO AMBIENTAL',
+  'ENGENHEIRO CIVIL',
+  'ENGENHEIRO FLORESTAL',
+  'FARMACÊUTICO',
+  'FEITOR (*)',
+  'FISCAL AMBIENTAL',
+  'FISCAL DE INSPEÇÃO SANITÁRIA',
+  'FISCAL DE OBRAS',
+  'FISCAL DE POSTURAS',
+  'FISCAL DE TRIBUTOS',
+  'FISCAL DE TRIBUTOS E POSTURA (*)',
+  'FISIOTERAPEUTA',
+  'FISIOTERAPEUTA ACUPUNTURISTA',
+  'FONOAUDIÓLOGO',
+  'FONOAUDIOLOGO (*)',
+  'GARI (*)',
+  'GUARDA CIVIL MUNICIPAL',
+  'GUARDA MUNICIPAL (**)',
+  'GUARDA MUNICIPAL AMBIENTAL',
+  'INSTRUTOR DE BRAILLE',
+  'INSTRUTOR DE LIBRAS',
+  'INTERPRETE DE LIBRAS',
+  'JARDINEIRO (**)',
+  'JORNALISTA',
+  'LAVADEIRA (*)',
+  'LUBRIFICADOR (**)',
+  'MAESTRO (**)',
+  'MECÂNICO',
+  'MÉDICO - ESF',
+  'MÉDICO (*)',
+  'MÉDICO ANESTESIOLOGISTA PLANTONISTA (**)',
+  'MÉDICO ANGIOLOGISTA (**)',
+  'MÉDICO CARDIOLOGISTA (**)',
+  'MÉDICO CIRURGIÃO GERAL',
+  'MÉDICO CLINICO GERAL',
+  'MÉDICO DERMATOLOGISTA',
+  'MÉDICO DO TRABALHO (**)',
+  'MÉDICO GASTROENTEROLOGISTA (**)',
+  'MÉDICO GERIATRA (**)',
+  'MÉDICO GINECOLOGISTA/OBSTETRA',
+  'MÉDICO INFECTOLOGISTA (**)',
+  'MÉDICO NEUROLOGISTA',
+  'MÉDICO NEUROPEDIATRIA',
+  'MÉDICO OFTALMOLOGISTA',
+  'MÉDICO ORTOPEDISTA (**)',
+  'MÉDICO OTORRINOLARINGOLOGISTA',
+  'MÉDICO PEDIATRA',
+  'MÉDICO PLANT–GINECOLOGISTA/OBSTETRA',
+  'MÉDICO PLANTONISTA',
+  'MÉDICO PLANTONISTA PEDIATRA',
+  'MÉDICO PNEUMOLOGISTA (**)',
+  'MÉDICO PSIQUIATRA',
+  'MÉDICO RADIOLOGISTA',
+  'MÉDICO SANITARISTA',
+  'MÉDICO ULTRASSONOGRAFISTA (**)',
+  'MÉDICO UROLOGISTA',
+  'MÉDICO VETERINÁRIO',
+  'MÉDICO VISITADOR',
+  'MONITOR DE EDUCAÇÃO ESPECIAL (*)',
+  'MONITOR DE INFORMÁTICA',
+  'MONITOR ESCOLAR (*)',
+  'MOTORISTA (*)',
+  'MOTORISTA DE CARGA (*)',
+  'MOTORISTA ESPECIAL (*)',
+  'MÚSICO (*)',
+  'NUTRICIONISTA',
+  'OPERADOR DE MÁQUINAS PESADAS (*)',
+  'PEDAGOGO',
+  'PEDREIRO (*)',
+  'PEDREIRO ESPECIALIZADO (*)',
+  'PINTOR (*)',
+  'PREFEITO MUNICIPAL',
+  'PROCURADOR DO MUNICÍPIO',
+  'PROCURADOR-GERAL DO MUNICÍPIO',
+  'PROFESSOR LEIGO (*)',
+  'PROGRAMADOR DE CPD',
+  'PSICÓLOGO',
+  'PSICÓLOGO - CAPS',
+  'PSICÓLOGO - PPB',
+  'PSICOLOGO (*)',
+  'PSICOPEDAGOGO',
+  'RECEPCIONISTA',
+  'SECRETÁRIA EXECUTIVA (**)',
+  'SECRETÁRIA JUNIOR',
+  'SECRETÁRIA(O) ESCOLAR',
+  'SECRETÁRIO(A) MUNICIPAL',
+  'SERVENTE (*)',
+  'SERVENTE ESCOLAR (*)',
+  'SOLDADOR (*)',
+  'SUBSECRETÁRIO(A) MUNICIPAL',
+  'TÉCNICO AGRICOLA',
+  'TÉCNICO DE CONTABILIDADE',
+  'TÉCNICO DE ENFERMAGEM',
+  'TÉCNICO DE ENFERMAGEM - ESF',
+  'TECNICO DE IMOBILIZAÇÃO ORTOPEDICA',
+  'TÉCNICO DE LABORATÓRIO',
+  'TECNICO DE MEIO AMBIENTE',
+  'TÉCNICO DE RADIOLOGIA',
+  'TELEFONISTA',
+  'TERAPEUTA OCUPACIONAL',
+  'TERAPEUTA OCUPACIONAL (**)',
+  'TURISMOLOGO',
+  'VICE-PREFEITO',
+  'VIGIA (*)'
+];
+
+export function getCargosSugeridosUnificados(
+  usuarios?: UsuarioSistema[],
+  baseCargos: string[] = CARGOS_PREFEITURA_BASE
+): string[] {
+  const map = new Map<string, string>();
+  const addCargo = (raw?: string) => {
+    const clean = String(raw || '').replace(/\s+/g, ' ').trim();
+    if (!clean || clean.toLowerCase() === 'servidor municipal' || clean.toLowerCase() === 'servidor público municipal') {
+      return;
+    }
+    const key = clean.toUpperCase();
+    if (!map.has(key)) {
+      map.set(key, clean);
+    }
+  };
+
+  baseCargos.forEach(addCargo);
+  (usuarios || []).forEach(u => addCargo(u.cargo));
+
+  return Array.from(map.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
 export const INITIAL_SECRETARIAS: SecretariaItem[] = [
+  {
+    sigla: 'SEGOV',
+    nome: 'Secretaria Municipal de Governo',
+    titular: 'Secretário Municipal de Governo / Gabinete do Prefeito',
+    departamentos: [
+      'Gabinete do Prefeito',
+      'Assessoria de Gabinete',
+      'Assessoria de Comunicação Social',
+      'Assessoria Distrital',
+      'Divisão de Junta de Serviço Militar',
+      'Divisão de Identificação Civil',
+      'Divisão de Protocolo Geral'
+    ],
+    email: 'gabinete@rioclaro.rj.gov.br',
+    telefone: '(24) 3332-1100'
+  },
   {
     sigla: 'SMA',
     nome: 'Secretaria Municipal de Administração',
     titular: 'Secretário Municipal de Administração',
-    departamentos: ['Departamento de Recursos Humanos (DRH)', 'Divisão de Treinamento e Desenvolvimento', 'Coordenação de Folha de Pagamento', 'Departamento de Patrimônio e Logística'],
+    departamentos: [
+      'Departamento de Pessoal',
+      'Departamento de Recursos Humanos (DRH)',
+      'Departamento de Treinamento e Desenvolvimento de RH',
+      'Divisão de Treinamento e Desenvolvimento de RH',
+      'Departamento de Tecnologia da Informação',
+      'Departamento de Licitação',
+      'Departamento de Compras',
+      'Departamento de Contratos',
+      'Departamento de Convênios',
+      'Departamento de Arquivo',
+      'Departamento de Patrimônio',
+      'Departamento de Almoxarifado',
+      'Divisão de Benefícios',
+      'Divisão de Folha de Pagamento',
+      'Divisão de Segurança do Trabalho',
+      'Divisão de Apoio aos Órgãos Estaduais e Federais'
+    ],
     email: 'administracao@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1200'
   },
   {
-    sigla: 'SMS',
-    nome: 'Secretaria Municipal de Saúde',
-    titular: 'Secretário(a) Municipal de Saúde',
-    departamentos: ['Vigilância Sanitária', 'Departamento de Atenção Básica', 'Divisão de Farmácia Municipal', 'Regulação e Transporte Sanitário'],
-    email: 'saude@rioclaro.rj.gov.br',
-    telefone: '(24) 3332-1300'
+    sigla: 'SMF',
+    nome: 'Secretaria Municipal de Finanças',
+    titular: 'Secretário(a) Municipal de Finanças',
+    departamentos: [
+      'Diretoria-Geral de Contabilidade',
+      'Departamento de Tesouraria',
+      'Departamento de Cadastro e Arrecadação',
+      'Departamento de Dívida Ativa',
+      'Departamento de Fiscalização Tributária',
+      'Departamento de Cadastro Imobiliário, Lançamento e Controle',
+      'Departamento de Planejamento e Orçamento',
+      'Departamento de Contabilidade - SIGFIS',
+      'Divisão de Dívida Ativa',
+      'Divisão de ITBI e Certidões',
+      'Divisão de IPTU e Emissão de Guias',
+      'Divisão de Pagamentos',
+      'Divisão de Contabilidade - SIGFIS',
+      'Divisão de Tomada de Contas'
+    ],
+    email: 'fazenda@rioclaro.rj.gov.br',
+    telefone: '(24) 3332-1500'
+  },
+  {
+    sigla: 'IPRC',
+    nome: 'Secretaria Municipal de Previdência Social',
+    titular: 'Secretário(a) Municipal de Previdência Social / FUNPREV-RC',
+    departamentos: [
+      'Departamento de Finanças do FUNPREV-RC',
+      'Departamento de Benefício Previdenciário',
+      'Departamento de Contabilidade/SIGFIS',
+      'Departamento de Patrimônio',
+      'Departamento de COMPREV',
+      'Departamento de Compras',
+      'Divisão de Controle de Receitas',
+      'Divisão de Tesouraria',
+      'Divisão de Folha de Pagamento',
+      'Divisão de Processo Administrativo',
+      'Divisão de Apoio aos Conselhos',
+      'Divisão de Protocolo e Arquivo'
+    ],
+    email: 'previdencia@rioclaro.rj.gov.br',
+    telefone: '(24) 3332-1900'
   },
   {
     sigla: 'SME',
     nome: 'Secretaria Municipal de Educação',
     titular: 'Secretário(a) Municipal de Educação',
-    departamentos: ['Coordenação Pedagógica', 'Divisão de Nutrição e Merenda Escolar', 'Departamento de Transporte Escolar', 'Gestão de Unidades Escolares'],
+    departamentos: [
+      'Subsecretaria de Gestão Pedagógica',
+      'Subsecretaria de Gestão Administrativa',
+      'Departamento de Tecnologia Educacional',
+      'Departamento de Planejamento e Estatística',
+      'Departamento de Apoio Administrativo',
+      'Departamento de Manutenção Escolar e Transporte',
+      'Departamento de Patrimônio e Arquivo',
+      'Departamento de Compras',
+      'Departamento de Recursos Humanos',
+      'Departamento de Almoxarifado',
+      'Departamento de Merenda Escolar',
+      'Departamento de Contabilidade/SIGFIS',
+      'Departamento de Tesouraria',
+      'Divisão de Educação Infantil',
+      'Divisão de Ensino Fundamental Anos Iniciais',
+      'Divisão de Ensino Fundamental Anos Finais',
+      'Divisão de Educação Especial e Inclusiva',
+      'Divisão de Projetos Educacionais e Esportivos',
+      'Divisão de Atendimento Psicológico e Psicopedagógico',
+      'Divisão de Censo Escolar',
+      'Divisão de Legislação Educacional',
+      'Divisão de Orientação e Inspeção Escolar',
+      'Divisão de Assistência Social Escolar',
+      'Divisão de Documentação e Protocolo',
+      'Divisão de Pagamentos e Prestação de Contas',
+      'Divisão de Gestão de Contratos e Convênios',
+      'Gestão de Unidades Escolares'
+    ],
     email: 'educacao@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1400'
   },
   {
-    sigla: 'SMF',
-    nome: 'Secretaria Municipal de Fazenda e Finanças',
-    titular: 'Secretário(a) Municipal de Fazenda',
-    departamentos: ['Departamento de Tributação e Fiscalização', 'Divisão de Tesouraria e Contabilidade', 'Dívida Ativa', 'Arrecadação Municipal'],
-    email: 'fazenda@rioclaro.rj.gov.br',
-    telefone: '(24) 3332-1500'
-  },
-  {
-    sigla: 'SMOSP',
-    nome: 'Secretaria Municipal de Obras e Serviços Públicos',
-    titular: 'Secretário(a) Municipal de Obras e Serviços Públicos',
-    departamentos: ['Departamento de Vias Urbanas e Rurais', 'Divisão de Limpeza e Conservação', 'Setor de Projetos e Fiscalização de Obras'],
-    email: 'obras@rioclaro.rj.gov.br',
-    telefone: '(24) 3332-1600'
-  },
-  {
     sigla: 'SMAS',
-    nome: 'Secretaria Municipal de Ação Social e Cidadania',
-    titular: 'Secretário(a) Municipal de Ação Social',
-    departamentos: ['CRAS - Centro de Referência', 'CREAS', 'Gestão do Cadastro Único e Bolsa Família', 'Conselho Tutelar'],
+    nome: 'Secretaria Municipal de Assistência Social e Direitos Humanos',
+    titular: 'Secretário(a) Municipal de Assistência Social e Direitos Humanos',
+    departamentos: [
+      'Departamento de Contabilidade',
+      'Departamento de Tesouraria',
+      'Departamento de Proteção Básica',
+      'Departamento de Proteção Social Especial',
+      'Departamento de Cadastro Único e Gestão de Benefícios',
+      'Departamento de Planejamento, Gestão do SUAS e Direitos Humanos',
+      'Departamento de Vigilância Socioassistencial e Gestão da Informação',
+      'Departamento de Apoio Administrativo',
+      'Divisão de Recursos Humanos',
+      'Divisão de Compras',
+      'Divisão de Apoio aos Conselhos Municipais',
+      'Divisão de Ações Socioassistenciais',
+      'Divisão de Cuidados com o Idoso',
+      'Divisão de Gestão de Trabalho e Educação Permanente',
+      'Divisão de Patrimônio e Almoxarifado',
+      'CRAS - Centro de Referência',
+      'CREAS'
+    ],
     email: 'social@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1700'
   },
   {
+    sigla: 'SMOSP',
+    nome: 'Secretaria Municipal de Planejamento Urbano, Obras e Serviços Públicos',
+    titular: 'Secretário(a) Municipal de Planejamento Urbano, Obras e Serviços Públicos',
+    departamentos: [
+      'Departamento de Urbanismo e Licenciamento',
+      'Departamento de Serviços Públicos',
+      'Departamento de Obras Públicas',
+      'Departamento de Transporte',
+      'Departamento de Projetos e Engenharia',
+      'Departamento de Fiscalização de Obras e Posturas',
+      'Departamento de Acompanhamento e Fiscalização',
+      'Divisão de Parques e Jardins',
+      'Divisão de Limpeza Pública',
+      'Divisão de Iluminação Pública',
+      'Divisão de Topografia e Agrimensura',
+      'Divisão de Manutenção de Cemitérios',
+      'Divisão de Controle de Abastecimento',
+      'Divisão de Oficina e Manutenção de Frota',
+      'Divisão de Controle de Estoque e Almoxarifado',
+      'Divisão de Controle de Patrimônio',
+      'Divisão de Compras',
+      'Divisão de Aprovação de Projetos'
+    ],
+    email: 'obras@rioclaro.rj.gov.br',
+    telefone: '(24) 3332-1600'
+  },
+  {
+    sigla: 'SMMA',
+    nome: 'Secretaria Municipal de Meio Ambiente e Agricultura',
+    titular: 'Secretário(a) Municipal de Meio Ambiente e Agricultura',
+    departamentos: [
+      'Departamento de Licenciamento Ambiental',
+      'Departamento de Fiscalização Ambiental',
+      'Departamento de Saneamento e Resíduos Sólidos',
+      'Departamento de Educação Ambiental e Recursos Hídricos',
+      'Departamento de Defesa Agropecuária e Inspeção Sanitária',
+      'Departamento de Estradas Vicinais',
+      'Departamento de Assistência Técnica e Extensão Rural',
+      'Departamento de Apoio ao Produtor Rural',
+      'Divisão de Bem-Estar Animal',
+      'Divisão de Licenciamento e Controle Ambiental',
+      'Divisão de Educação Ambiental e Projetos',
+      'Divisão de Reflorestamento e Áreas Verdes',
+      'Divisão de Manutenção de Estradas Vicinais',
+      'Divisão de Apoio à Agricultura Familiar e Pecuária',
+      'Divisão de Controle de Frota e Maquinário Agrícola',
+      'Divisão de Apoio Administrativo',
+      'Divisão de Patrimônio e Almoxarifado'
+    ],
+    email: 'meioambiente@rioclaro.rj.gov.br',
+    telefone: '(24) 3332-1950'
+  },
+  {
+    sigla: 'SMDEC',
+    nome: 'Secretaria Municipal de Desenvolvimento Econômico, Cultura, Turismo, Eventos, Esporte e Lazer',
+    titular: 'Secretário(a) Municipal de Desenvolvimento Econômico, Cultura, Turismo, Eventos, Esporte e Lazer',
+    departamentos: [
+      'Departamento de Desenvolvimento Econômico e Trabalho',
+      'Departamento de Cultura',
+      'Departamento de Turismo',
+      'Departamento de Eventos',
+      'Departamento de Esporte e Lazer',
+      'Departamento de Apoio Administrativo e Prestação de Contas',
+      'Divisão de Fomento ao Empreendedorismo',
+      'Divisão de Turismo',
+      'Divisão de Promoção de Eventos',
+      'Divisão de Contabilidade - SIGFIS',
+      'Divisão de Esporte e Lazer',
+      'Divisão de Patrimônio Cultural',
+      'Divisão de Gerenciamento de Bibliotecas Públicas',
+      'Divisão de Patrimônio',
+      'Divisão de Almoxarifado'
+    ],
+    email: 'desenvolvimento@rioclaro.rj.gov.br',
+    telefone: '(24) 3332-1960'
+  },
+  {
+    sigla: 'SMOP',
+    nome: 'Secretaria Municipal de Ordem Pública',
+    titular: 'Secretário(a) Municipal de Ordem Pública',
+    departamentos: [
+      'Comando da Guarda Civil Municipal',
+      'Departamento de Trânsito e Mobilidade Urbana',
+      'Departamento de Defesa Civil',
+      'Departamento de Posturas e Fiscalização',
+      'Departamento de Controle de Operações',
+      'Corregedoria da Guarda Municipal',
+      'Ouvidoria da Ordem Pública'
+    ],
+    email: 'ordempublica@rioclaro.rj.gov.br',
+    telefone: '(24) 3332-1970'
+  },
+  {
+    sigla: 'SMS',
+    nome: 'Secretaria Municipal de Saúde',
+    titular: 'Secretário(a) Municipal de Saúde',
+    departamentos: [
+      'Subsecretaria de Saúde',
+      'Diretoria Técnica Médica',
+      'Diretoria Administrativa do Hospital Nossa Senhora da Piedade',
+      'Diretoria de Enfermagem',
+      'Departamento de Atenção Básica',
+      'Departamento de Média e Alta Complexidade',
+      'Departamento de Vigilância em Saúde',
+      'Departamento de Assistência Farmacêutica',
+      'Departamento de Regulação, Controle e Avaliação',
+      'Departamento de Saúde Bucal',
+      'Departamento de Compras',
+      'Departamento de Planejamento',
+      'Departamento de Contabilidade - SIGFIS',
+      'Departamento de Tesouraria',
+      'Departamento de Transporte Sanitário',
+      'Departamento de Recursos Humanos',
+      'Divisão de Laboratório',
+      'Divisão de Raio X',
+      'Divisão de Nutrição',
+      'Divisão Administrativa do SPA de Lídice',
+      'Divisão de Patrimônio e Almoxarifado',
+      'Divisão de Tecnologia da Informação',
+      'Divisão de Saúde Mental',
+      'Divisão de Reabilitação',
+      'Divisão de Assistência Farmacêutica',
+      'Divisão de Vigilância Epidemiológica',
+      'Divisão de Vigilância Ambiental',
+      'Divisão de Vigilância em Saúde do Trabalhador',
+      'Divisão de Vigilância Sanitária',
+      'Divisão de Estratégia e Saúde da Família - ESF',
+      'Divisão de Saúde Bucal',
+      'Divisão de Núcleo de Apoio à Saúde da Família',
+      'Divisão de Tratamento Fora do Domicílio - TFD',
+      'Divisão de Contabilidade',
+      'Ouvidoria da Saúde'
+    ],
+    email: 'saude@rioclaro.rj.gov.br',
+    telefone: '(24) 3332-1300'
+  },
+  {
     sigla: 'PGM',
     nome: 'Procuradoria-Geral do Município',
-    titular: 'Procurador(a)-Geral do Município',
-    departamentos: ['Consultoria Jurídica', 'Contencioso Administrativo e Judicial', 'Execuções Fiscais'],
+    titular: 'Procurador-Geral do Município',
+    departamentos: [
+      'Gabinete do Procurador-Geral',
+      'Subprocuradoria-Geral',
+      'Assessoria Jurídica',
+      'Consultoria Jurídica',
+      'Contencioso Administrativo e Judicial',
+      'Execuções Fiscais'
+    ],
     email: 'procuradoria@rioclaro.rj.gov.br',
     telefone: '(24) 3332-1800'
   },
   {
-    sigla: 'SEGOV',
-    nome: 'Secretaria de Governo e Gabinete do Prefeito',
-    titular: 'Chefia de Gabinete do Prefeito',
-    departamentos: ['Chefia de Gabinete', 'Assessoria de Comunicação e Imprensa', 'Defesa Civil Municipal'],
-    email: 'gabinete@rioclaro.rj.gov.br',
-    telefone: '(24) 3332-1100'
+    sigla: 'CGM',
+    nome: 'Controladoria-Geral do Município',
+    titular: 'Controlador-Geral do Município',
+    departamentos: [
+      'Gabinete do Controlador-Geral',
+      'Departamento de Controle Interno',
+      'Departamento de Auditoria',
+      'Departamento de Análise de Licitações e Contratos',
+      'Departamento de Análise de Despesas e Prestação de Contas'
+    ],
+    email: 'controladoria@rioclaro.rj.gov.br',
+    telefone: '(24) 3332-1850'
   }
 ];
 
@@ -235,8 +698,10 @@ export function getSecretariaSigla(secretariaNomeOrSigla?: string, secretariasLi
   if (matchParen) {
     const parenSigla = matchParen[1].toUpperCase();
     if (parenSigla === 'SEAD') return 'SMA';
-    if (parenSigla === 'SMASC') return 'SMAS';
+    if (parenSigla === 'SMASC' || parenSigla === 'SMASDH') return 'SMAS';
     if (parenSigla === 'GP') return 'SEGOV';
+    if (parenSigla === 'SMPS' || parenSigla === 'FUNPREV') return 'IPRC';
+    if (parenSigla === 'SMMAA') return 'SMMA';
     return parenSigla;
   }
 
@@ -253,16 +718,18 @@ export function getSecretariaSigla(secretariaNomeOrSigla?: string, secretariasLi
 
   // 3. Aliases canônicos inequívocos
   if (/\bsma\b|\bsead\b/.test(normClean) || normBase.includes('administracao') || normBase === 'departamento de recursos humanos') return 'SMA';
-  if (/\bsmas\b|\bsmasc\b/.test(normClean) || normBase.includes('acao social') || normBase.includes('assistencia social')) return 'SMAS';
+  if (/\bsmas\b|\bsmasc\b|\bsmasdh\b/.test(normClean) || normBase.includes('acao social') || normBase.includes('assistencia social') || normBase.includes('direitos humanos')) return 'SMAS';
   if (/\bsms\b/.test(normClean) || normBase.includes('saude')) return 'SMS';
   if (/\bsme\b/.test(normClean) || normBase.includes('educacao')) return 'SME';
   if (/\bsmf\b/.test(normClean) || normBase.includes('fazenda') || normBase.includes('financas')) return 'SMF';
-  if (/\bsmosp\b/.test(normClean) || normBase.includes('obras')) return 'SMOSP';
-  if (/\bsmma\b/.test(normClean) || normBase.includes('meio ambiente')) return 'SMMA';
+  if (/\bsmosp\b/.test(normClean) || normBase.includes('obras') || normBase.includes('planejamento urbano')) return 'SMOSP';
+  if (/\bsmma\b|\bsmmaa\b/.test(normClean) || normBase.includes('meio ambiente') || normBase.includes('agricultura')) return 'SMMA';
+  if (/\bsmdec\b/.test(normClean) || normBase.includes('desenvolvimento economico') || normBase.includes('cultura') || normBase.includes('turismo')) return 'SMDEC';
+  if (/\bsmop\b/.test(normClean) || normBase.includes('ordem publica') || normBase.includes('guarda civil')) return 'SMOP';
   if (/\bpgm\b/.test(normClean) || normBase.includes('procuradoria')) return 'PGM';
   if (/\bcgm\b/.test(normClean) || normBase.includes('controladoria')) return 'CGM';
-  if (/\biprc\b/.test(normClean) || normBase.includes('previdencia')) return 'IPRC';
-  if (/\bsegov\b|\bgp\b/.test(normClean) || normBase.includes('gabinete do prefeito') || normBase.includes('secretaria de governo')) return 'SEGOV';
+  if (/\biprc\b|\bsmps\b|\bfunprev\b/.test(normClean) || normBase.includes('previdencia')) return 'IPRC';
+  if (/\bsegov\b|\bgp\b/.test(normClean) || normBase.includes('gabinete do prefeito') || normBase.includes('secretaria de governo') || normBase.includes('secretaria municipal de governo')) return 'SEGOV';
 
   // 4. Busca por palavra-chave exata na lista dinâmica de secretarias cadastradas no Admin
   const dynamicFound = secretariasList.find(s => {
@@ -579,33 +1046,66 @@ export function canUserAccessRecord(
   return sameDepto || isOwnDoc;
 }
 
+export interface ConfigNumeracaoMunicipal {
+  tiposSequenciaGlobal: string[];
+  atualizadoEm?: string;
+  atualizadoPor?: string;
+}
+
+export const DEFAULT_CONFIG_NUMERACAO: ConfigNumeracaoMunicipal = {
+  tiposSequenciaGlobal: ['DECRETO', 'PORTARIA']
+};
+
+export const TIPOS_DOCUMENTO_NUMERADOS = TIPOS_DOCUMENTO_NUMERADOS_OFICIAIS;
+
+export function normalizeTipoDocumento(tipoDoc: string): string {
+  return String(tipoDoc || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+}
+
+export function isTipoSequenciaGlobal(
+  tipoDoc: string,
+  config?: ConfigNumeracaoMunicipal | null
+): boolean {
+  const norm = normalizeTipoDocumento(tipoDoc);
+  const lista = config?.tiposSequenciaGlobal ?? DEFAULT_CONFIG_NUMERACAO.tiposSequenciaGlobal;
+  return lista.some(t => normalizeTipoDocumento(t) === norm);
+}
+
 /**
- * Calcula o próximo número sequencial independente para a Secretaria + Tipo de Documento + Ano
+ * Retorna o maior número sequencial já registrado para o escopo (Global Municipal ou por Secretaria + Tipo + Ano)
  */
-export function getNextSequentialForSecretaria(
+export function getMaxSequentialForSecretaria(
   records: RegistroNumeracao[],
   tipoDoc: string,
   secretaria: string,
   anoAtual: string = new Date().getFullYear().toString(),
-  secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS
+  secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS,
+  configNumeracao?: ConfigNumeracaoMunicipal | null
 ): number {
-  const normTipo = tipoDoc.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const normTipo = normalizeTipoDocumento(tipoDoc);
+  const isGlobal = isTipoSequenciaGlobal(tipoDoc, configNumeracao);
   const targetSigla = getSecretariaSigla(secretaria, secretariasList);
   const isTargetSEAD = targetSigla === 'SMA';
 
   let maxSeq = 0;
   for (const r of records) {
-    const rTipo = (r.tipoDocumento || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    const rTipo = normalizeTipoDocumento(r.tipoDocumento || '');
     if (rTipo !== normTipo) continue;
 
-    const rSec = r.secretaria || '';
-    const matches = !rSec.trim()
-      ? isTargetSEAD
-      : isSameSecretaria(rSec, secretaria, secretariasList);
-    if (!matches) continue;
+    if (!isGlobal) {
+      const rSec = r.secretaria || '';
+      const matches = !rSec.trim()
+        ? isTargetSEAD
+        : isSameSecretaria(rSec, secretaria, secretariasList);
+      if (!matches) continue;
+    }
 
     const numStr = String(r.numero || '').trim();
-    // Reconhece formatos: "001/2026", "001/2026 - SMA", "1/2026", "01/01/2026"
+    // Reconhece formatos: "001/2026", "001/2026 - SMA", "1/2026", "248/2026 - PGM"
     const match = numStr.match(/^(\d+)[\/\-](\d{4})/);
     if (match) {
       const ano = match[2];
@@ -618,41 +1118,81 @@ export function getNextSequentialForSecretaria(
     }
   }
 
-  return maxSeq + 1;
+  return maxSeq;
+}
+
+/**
+ * Calcula o próximo número sequencial para a Secretaria (ou Global Municipal, se configurado) + Tipo de Documento + Ano
+ */
+export function getNextSequentialForSecretaria(
+  records: RegistroNumeracao[],
+  tipoDoc: string,
+  secretaria: string,
+  anoAtual: string = new Date().getFullYear().toString(),
+  secretariasList: SecretariaItem[] = INITIAL_SECRETARIAS,
+  configNumeracao?: ConfigNumeracaoMunicipal | null
+): number {
+  return getMaxSequentialForSecretaria(records, tipoDoc, secretaria, anoAtual, secretariasList, configNumeracao) + 1;
+}
+
+/**
+ * Formata o número oficial seguindo o padrão 000/AAAA (ou 000/AAAA - SIGLA quando aplicável)
+ */
+export function formatNumeroOficialSequencial(
+  sequencial: number,
+  anoAtual: string,
+  incluirSigla: boolean,
+  siglaSecretaria: string,
+  isGlobal: boolean = false
+): string {
+  const seqStr = String(Math.max(1, sequencial)).padStart(3, '0');
+  if (incluirSigla && !isGlobal && siglaSecretaria) {
+    return `${seqStr}/${anoAtual} - ${siglaSecretaria}`;
+  }
+  return `${seqStr}/${anoAtual}`;
 }
 
 export const INITIAL_NUMERACOES: RegistroNumeracao[] = [];
 
 export const INITIAL_SUGESTOES = {
   destinatarios: [
+    'Procuradoria-Geral do Município (PGM)',
+    'Controladoria-Geral do Município (CGM)',
+    'Secretaria Municipal de Administração (SMA)',
+    'Secretaria Municipal de Finanças (SMF)',
     'Secretaria Municipal de Educação (SME)',
-    'Secretaria Municipal de Finanças e Fazenda',
     'Secretaria Municipal de Saúde (SMS)',
-    'Controladoria Geral do Município (CGM)',
-    'Procuradoria Geral do Município (PGM)',
+    'Secretaria Municipal de Governo (SEGOV)',
     'Gabinete do Prefeito',
     'Divisão de Recursos Humanos e Folha',
+    'Departamento de Licitação e Contratos',
     'Câmara Municipal de Rio Claro – RJ',
-    'Instituto de Previdência Municipal (IPRC)',
-    'Departamento de Compras e Licitações',
+    'Instituto de Previdência Municipal (FUNPREV-RC / IPRC)',
+    'Juízo da Vara Única da Comarca de Rio Claro – RJ',
+    'Ministério Público do Estado do Rio de Janeiro (MPRJ)',
+    'Tribunal de Contas do Estado do Rio de Janeiro (TCE-RJ)',
     'Arquivo Geral do Município'
   ],
   assuntos: [
+    'Análise jurídica de legalidade de contratação (Lei nº 14.133/2021)',
+    'Análise jurídica de Termo Aditivo contratual (prazo / valor)',
+    'Cota jurídica de saneamento processual e diligências prévias',
+    'Prestação de Informações em Mandado de Segurança / Defesa Judicial',
+    'Notificação extrajudicial por descumprimento contratual (defesa prévia)',
+    'Inscrição e Certidão de Dívida Ativa Municipal (CDA)',
+    'Recomendação jurídica preventiva de conformidade legal',
     'Entrada de Ofício e Providências Funcionais',
     'Verificação de candidato aprovado em concurso público',
-    'Verificação de candidato aprovado em processo seletivo simplificado',
     'Solicitação de manifestação jurídica sobre convocação',
     'Concessão de licença por assiduidade',
     'Encaminhamento de Impacto Orçamentário da Folha de Pagamento',
     'Comunicação Interna sobre Recadastramento Previdenciário',
-    'Escala de Plantão e Férias Coletivas do Setor de Arrecadação',
     'Averbação de Certidão de Tempo de Contribuição (CTC)',
-    'Elaboração de minuta de termo aditivo',
-    'Contratação temporária excepcional de docente'
+    'Elaboração de minuta de contrato / termo aditivo'
   ]
 };
 
-export const INITIAL_MODELOS: ModeloDocumental[] = (realModelsRaw as any[]).map(item => ({
+const BASE_IMPORTED_MODELOS: ModeloDocumental[] = (realModelsRaw as any[]).map(item => ({
   ID: item.ID || '',
   TipoDocumento: (item.TipoDocumento || 'DESPACHO').toUpperCase(),
   Area: item.Area || 'Recursos Humanos',
@@ -673,5 +1213,20 @@ export const INITIAL_MODELOS: ModeloDocumental[] = (realModelsRaw as any[]).map(
   Versao: item.Versao || '1.0',
   Ativo: item.Ativo !== false
 }));
+
+const EXISTING_MODEL_IDS = new Set(BASE_IMPORTED_MODELOS.map(m => m.ID));
+const PGM_WITH_STYLE = MODELOS_PGM_E_ADMINISTRATIVOS_OFICIAIS
+  .filter(m => !EXISTING_MODEL_IDS.has(m.ID))
+  .map(m => ({
+    ...m,
+    EstiloId: m.EstiloId || (m.ID.startsWith('PGM-') ? 'ESTILO_PGM_JURIDICO' : m.ID === 'ADM-001' ? 'ESTILO_GABINETE_PREFEITO' : 'ESTILO_PADRAO_PMRC'),
+  }));
+const ADDED_IDS = new Set([...EXISTING_MODEL_IDS, ...PGM_WITH_STYLE.map(m => m.ID)]);
+
+export const INITIAL_MODELOS: ModeloDocumental[] = [
+  ...BASE_IMPORTED_MODELOS,
+  ...PGM_WITH_STYLE,
+  ...MODELOS_SETORES_MUNICIPAIS_OFICIAIS.filter(m => !ADDED_IDS.has(m.ID))
+];
 
 export const INITIAL_LOGS: RegistroLog[] = [];

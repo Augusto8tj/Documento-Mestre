@@ -31,11 +31,49 @@ import {
   canUserViewLegacyAdminRecords,
   canUserAccessRecord,
   getNextSequentialForSecretaria,
+  getMaxSequentialForSecretaria,
+  isTipoSequenciaGlobal,
+  formatNumeroOficialSequencial,
+  ConfigNumeracaoMunicipal,
+  DEFAULT_CONFIG_NUMERACAO,
+  CARGOS_PREFEITURA_BASE,
   parseFiltroAcessibilidade,
   getEffectiveAccessibilityFilter,
   formatAccessibilityFilterLabel
 } from './mockData';
-import { AdminManagementModal } from './components/AdminManagementModal';
+import {
+  CargoComissionadoOuFG,
+  TODAS_FUNCOES_ANEXOS_I_II,
+  getCargoAssinaturaPreferencial,
+  getStatusCargoEfetivo
+} from './cargosOficiais';
+import {
+  RedatorTipoDocumento,
+  DOCUMENT_TYPE_DEFINITIONS,
+  DOCUMENT_TYPE_MAP,
+  normalizeDocumentTypeCode,
+  getDocumentTypeDefinition
+} from './documentTypes';
+import {
+  ACTIVE_STYLE_STORAGE_KEY,
+  CabecalhoLayoutEstilo,
+  EmentaEstiloVisual,
+  EstiloVisualExtraido,
+  PerfilEstiloDocumental,
+  estiloExtraidoParaPerfil,
+  getAllDocumentStyles,
+  getDocumentStyleById,
+  loadCustomDocumentStyles,
+  saveCustomDocumentStyles
+} from './documentStyles';
+import { AdminManagementModal, MarcoZeroPayload } from './components/AdminManagementModal';
+import {
+  RedatorRichEditor,
+  RedatorRichEditorHandle,
+  RedatorActiveFormats,
+  RedatorInlineFormatKind,
+  RedatorBlockFormatKind
+} from './components/RedatorRichEditor';
 import { APPS_SCRIPT_CODE, PLANILHA_ESTRUTURA } from './codeSnippets';
 import {
   Landmark,
@@ -121,13 +159,19 @@ import {
   Monitor,
   Clock,
   Files,
-  Home
+  Home,
+  Calendar,
+  MapPin,
+  Globe,
+  Ban,
+  Palette
 } from 'lucide-react';
 import { PWAInstallButton, OfflineIndicator } from './components/PWAInstallButton';
 import { BRASAO_RIO_CLARO } from './brasaoBase64';
 import { FloatingTips } from './components/FloatingTips';
 import { GuiaAjudaModal } from './components/GuiaAjudaModal';
 import { RecuperarSenhaModal } from './components/RecuperarSenhaModal';
+import { HelpTooltip } from './components/HelpTooltip';
 import {
   ThemeSettingsModal,
   ThemeMode,
@@ -138,7 +182,12 @@ import {
   loadThemePreferences,
   saveThemePreferences
 } from './components/ThemeSettingsModal';
-import { parseUploadedDocumentFile } from './utils/documentUpload';
+import {
+  parseUploadedDocumentFile,
+  SUPPORTED_DOCUMENT_ACCEPT,
+  ServidorExtraidoOCR,
+  DepartamentoExtraidoOCR
+} from './utils/documentUpload';
 import { ImportarCatalogarModal, CatalogedImportItem } from './components/ImportarCatalogarModal';
 import { CentralInicioView, SavedRedatorDraftSummary } from './components/CentralInicioView';
 
@@ -181,10 +230,63 @@ function formatDataHoraExibicao(val?: string | Date | null, incluirHora = true):
   return `${data} ${hora}`;
 }
 
+interface PersistedUiNavState {
+  activeTab: 'app' | 'codigo-html' | 'codigo-gas' | 'planilha' | 'guia';
+  activeAppView: 'inicio' | 'modelos';
+  showDevHub: boolean;
+  selectedType: string;
+  selectedCategory: string | null;
+  isSheetsDrawerOpen: boolean;
+  activeSheetTab: 'numeracao' | 'logs' | 'modelos' | 'usuarios';
+  isAdminModalOpen: boolean;
+  adminTab: 'servidores' | 'secretarias' | 'pedidos' | 'numeracao' | 'quadro_vagas' | 'auditoria';
+  isRedatorModalOpen: boolean;
+  isImportCatalogModalOpen: boolean;
+  savedAt: number;
+}
+
+const UI_NAV_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
+
+function getUiNavStorageKey(matricula?: string | null): string {
+  return `sgep_ui_nav_state_${(matricula || 'anon').trim().toLowerCase()}`;
+}
+
+function loadInitialPersistedUiNav(): {
+  nav: PersistedUiNavState | null;
+  matricula: string | null;
+  nivel: string | null;
+} {
+  try {
+    const savedSession = localStorage.getItem('sgep_user_session');
+    if (!savedSession) return { nav: null, matricula: null, nivel: null };
+    const parsedUser = JSON.parse(savedSession);
+    const mat = parsedUser?.matricula ? String(parsedUser.matricula) : null;
+    const nivel = parsedUser?.nivel ? String(parsedUser.nivel).toUpperCase() : null;
+    if (!mat) return { nav: null, matricula: null, nivel: null };
+
+    const rawNav = localStorage.getItem(getUiNavStorageKey(mat));
+    if (!rawNav) return { nav: null, matricula: mat, nivel };
+    const nav = JSON.parse(rawNav) as PersistedUiNavState;
+    if (!nav || typeof nav.savedAt !== 'number' || Date.now() - nav.savedAt > UI_NAV_TTL_MS) {
+      return { nav: null, matricula: mat, nivel };
+    }
+    return { nav, matricula: mat, nivel };
+  } catch {
+    return { nav: null, matricula: null, nivel: null };
+  }
+}
+
 export default function App() {
+  const initialRestoredSession = useMemo(() => loadInitialPersistedUiNav(), []);
+  const initialUiNav = initialRestoredSession.nav;
+
   // Navigation tabs between the Live Interactive System and the Architecture & Source Code Hub
-  const [activeTab, setActiveTab] = useState<'app' | 'codigo-html' | 'codigo-gas' | 'planilha' | 'guia'>('app');
-  const [showDevHub, setShowDevHub] = useState(false);
+  const [activeTab, setActiveTab] = useState<'app' | 'codigo-html' | 'codigo-gas' | 'planilha' | 'guia'>(
+    () => initialUiNav?.activeTab || 'app'
+  );
+  const [showDevHub, setShowDevHub] = useState<boolean>(
+    () => Boolean(initialUiNav?.showDevHub)
+  );
   const initialThemePrefs = useMemo(() => loadThemePreferences(), []);
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialThemePrefs.mode);
   const [themePalette, setThemePalette] = useState<ThemePalette>(initialThemePrefs.palette);
@@ -234,7 +336,7 @@ export default function App() {
   // System States (Simulation / Hybrid)
   const [useRealApi, setUseRealApi] = useState(true);
   const [realApiUrl, setRealApiUrl] = useState(() => {
-    const newDefaultUrl = 'https://script.google.com/macros/s/AKfycbxKi-BFIcA2dzkMijlVxtVzr-Dpi4QYnOoEu6JwvRjyChJT5ybw7z50pubYGH3J4R0L7Q/exec';
+    const newDefaultUrl = 'https://script.google.com/macros/s/AKfycbzdfB0-cqeIsRdOpSCvq5z8OAXOTyALuimpQTGG_KQ9Wb2dEVbCQigyQBEhzh2Hmnd3/exec';
     const saved = localStorage.getItem('bm_api_url');
     if (
       saved &&
@@ -245,7 +347,8 @@ export default function App() {
       !saved.includes('AKfycbxOJHeSV8LAWpaIrsP657v7G0mNrqSdF-8rWwHZ73mUHlsmtvsnLBIUxPprmrvXogEG2g') &&
       !saved.includes('AKfycbxzOzIlowNAzC2V4q1wSXaPuQ_CprYiEhOVm1pl629hc964mZO7gea12p1jn7woMAyXIw') &&
       !saved.includes('AKfycbysxJ3UUAP57KcFiXfgEmCWqcXw90rghpF4txRH44mpfELv68c4_N1VRshcJ5MFm5fP0g') &&
-      !saved.includes('AKfycbxUgx3NVytNLxTkykAs7_8qM9VkTuA-oGWWqS1ktMfitL7OenQTEvAuLPIFwpv9KvgKdw')
+      !saved.includes('AKfycbxUgx3NVytNLxTkykAs7_8qM9VkTuA-oGWWqS1ktMfitL7OenQTEvAuLPIFwpv9KvgKdw') &&
+      !saved.includes('AKfycbxKi-BFIcA2dzkMijlVxtVzr-Dpi4QYnOoEu6JwvRjyChJT5ybw7z50pubYGH3J4R0L7Q')
     ) {
       return saved;
     }
@@ -282,6 +385,54 @@ export default function App() {
       return INITIAL_NUMERACOES;
     }
   });
+
+  const [configNumeracao, setConfigNumeracao] = useState<ConfigNumeracaoMunicipal>(() => {
+    try {
+      const saved = localStorage.getItem('bm_config_numeracao_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Array.isArray(parsed.tiposSequenciaGlobal)) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return DEFAULT_CONFIG_NUMERACAO;
+  });
+
+  const [adminInitialTab, setAdminInitialTab] = useState<'servidores' | 'secretarias' | 'pedidos' | 'numeracao' | 'quadro_vagas' | 'auditoria' | undefined>(
+    () => initialUiNav?.adminTab
+  );
+  const [adminMarcoZeroContext, setAdminMarcoZeroContext] = useState<{ secretaria?: string; tipoDocumento?: string } | null>(null);
+
+  // Quadro Oficial Editável de Cargos e Funções (Anexos I e II + Quadro Efetivo)
+  const [funcoesOficiais, setFuncoesOficiais] = useState<CargoComissionadoOuFG[]>(() => {
+    try {
+      const saved = localStorage.getItem('bm_funcoes_oficiais');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return TODAS_FUNCOES_ANEXOS_I_II;
+  });
+
+  const [cargosEfetivos, setCargosEfetivos] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('bm_cargos_efetivos');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return CARGOS_PREFEITURA_BASE;
+  });
+
+  // Higienização (Excluir) & Anulação de registros na aba Numeração (Exclusivo ADMIN)
+  const [selectedNumeracaoKeys, setSelectedNumeracaoKeys] = useState<string[]>([]);
+  const [higienizarModalAlvos, setHigienizarModalAlvos] = useState<RegistroNumeracao[] | null>(null);
+  const [higienizarModo, setHigienizarModo] = useState<'EXCLUIR' | 'ANULAR'>('EXCLUIR');
+  const [higienizarMotivo, setHigienizarMotivo] = useState<string>('');
+  const [isProcessandoHigienizacao, setIsProcessandoHigienizacao] = useState<boolean>(false);
 
   const [logs, setLogs] = useState<RegistroLog[]>(() => {
     try {
@@ -329,9 +480,12 @@ export default function App() {
 
   // UI Filtering & Tela Inicial Pós-Login (Central de Início vs Banco de Modelos)
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedType, setSelectedType] = useState('TODOS');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState(() => initialUiNav?.selectedType || 'TODOS');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(() => initialUiNav?.selectedCategory ?? null);
   const [activeAppView, setActiveAppView] = useState<'inicio' | 'modelos'>(() => {
+    if (initialUiNav?.activeAppView === 'modelos' || initialUiNav?.activeAppView === 'inicio') {
+      return initialUiNav.activeAppView;
+    }
     try {
       const savedSession = localStorage.getItem('sgep_user_session');
       if (savedSession) {
@@ -366,12 +520,19 @@ export default function App() {
   // CRUD Modal
   const [isCrudModalOpen, setIsCrudModalOpen] = useState(false);
   const [editingModelo, setEditingModelo] = useState<Partial<ModeloDocumental>>({});
+  const [isModeloCatManual, setIsModeloCatManual] = useState(false);
 
   // Sheets Inspector Floating Modal State & Controls
-  const [isSheetsDrawerOpen, setIsSheetsDrawerOpen] = useState(false);
-  const [activeSheetTab, setActiveSheetTab] = useState<'numeracao' | 'logs' | 'modelos' | 'usuarios'>('numeracao');
+  const [isSheetsDrawerOpen, setIsSheetsDrawerOpen] = useState<boolean>(
+    () => Boolean(initialUiNav?.isSheetsDrawerOpen)
+  );
+  const [activeSheetTab, setActiveSheetTab] = useState<'numeracao' | 'logs' | 'modelos' | 'usuarios'>(
+    () => initialUiNav?.activeSheetTab || 'numeracao'
+  );
   const [isSheetsMaximized, setIsSheetsMaximized] = useState(false);
-  const [sheetViewMode, setSheetViewMode] = useState<'cards' | 'table'>('table');
+  const [sheetViewMode, setSheetViewMode] = useState<'cards' | 'table'>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 'cards' : 'table'
+  );
   const [sheetScrollProgress, setSheetScrollProgress] = useState(0);
   const sheetsTableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -399,11 +560,31 @@ export default function App() {
   };
 
   // Painel de Gestão do Administrador (Servidores, Senhas, Secretarias e Departamentos)
-  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(
+    () => Boolean(initialUiNav?.isAdminModalOpen && initialRestoredSession.nivel === 'ADMIN')
+  );
   const [secretarias, setSecretarias] = useState<SecretariaItem[]>(() => {
     try {
       const saved = localStorage.getItem('bm_secretarias');
-      return saved ? JSON.parse(saved) : INITIAL_SECRETARIAS;
+      if (!saved) return INITIAL_SECRETARIAS;
+      const parsed: SecretariaItem[] = JSON.parse(saved);
+      if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_SECRETARIAS;
+      // Mescla automaticamente quaisquer novas Secretarias/Órgãos oficiais (13 pastas) e departamentos ausentes sem perder customizações
+      const bySigla = new Map<string, SecretariaItem>();
+      parsed.forEach(s => {
+        if (s && s.sigla) bySigla.set(s.sigla.toUpperCase(), s);
+      });
+      INITIAL_SECRETARIAS.forEach(official => {
+        const key = official.sigla.toUpperCase();
+        const existing = bySigla.get(key);
+        if (!existing) {
+          bySigla.set(key, official);
+        } else {
+          const mergedDeps = Array.from(new Set([...(existing.departamentos || []), ...(official.departamentos || [])]));
+          bySigla.set(key, { ...existing, departamentos: mergedDeps });
+        }
+      });
+      return Array.from(bySigla.values());
     } catch {
       return INITIAL_SECRETARIAS;
     }
@@ -446,7 +627,9 @@ export default function App() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const redatorFileInputRef = useRef<HTMLInputElement>(null);
   const crudFileInputRef = useRef<HTMLInputElement>(null);
-  const [isImportCatalogModalOpen, setIsImportCatalogModalOpen] = useState(false);
+  const [isImportCatalogModalOpen, setIsImportCatalogModalOpen] = useState<boolean>(
+    () => Boolean(initialUiNav?.isImportCatalogModalOpen)
+  );
   const [isUploadingSingleFile, setIsUploadingSingleFile] = useState(false);
 
   const handleUploadDocumentoParaRedator = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -455,9 +638,9 @@ export default function App() {
     if (!file) return;
     setIsUploadingSingleFile(true);
     try {
-      const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
-      if (isPdf) {
-        showToast(`Lendo e reconhecendo "${file.name}"...`, 'Importando PDF');
+      const needsOcrNotice = /\.(pdf|jpe?g|png|webp|doc)$/i.test(file.name) || file.type === 'application/pdf' || file.type.startsWith('image/');
+      if (needsOcrNotice) {
+        showToast(`Lendo e reconhecendo "${file.name}"...`, 'Importando Documento');
       }
       const parsed = await parseUploadedDocumentFile(file, {
         categoriasExistentes: Array.from(new Set(modelos.map(m => m.Categoria).filter(Boolean))),
@@ -483,9 +666,16 @@ export default function App() {
         setRedatorReferenciaDoc(parsed.referencia);
       }
       const sizeKb = Math.max(1, Math.round(parsed.tamanhoBytes / 1024));
-      showToast(
-        `Arquivo "${file.name}" (${parsed.formatoOriginal}, ${sizeKb} KB) ${parsed.reconhecidoPorIA ? 'reconhecido e ' : ''}importado para o Redator!`
-      );
+      if (parsed.assinaturaDigital?.detectada) {
+        showToast(
+          `Atenção: "${file.name}" possui assinatura digital (${parsed.assinaturaDigital.padrao}). Foi carregada uma CÓPIA DERIVADA editável no Redator — mantenha o arquivo original intacto para não perder a validade jurídica.`,
+          'Assinatura Digital Preservada'
+        );
+      } else {
+        showToast(
+          `Arquivo "${file.name}" (${parsed.formatoOriginal}, ${sizeKb} KB) ${parsed.reconhecidoPorIA ? 'reconhecido e ' : ''}importado para o Redator!`
+        );
+      }
     } catch (err: any) {
       showToast(err?.message || 'Não foi possível importar o documento.', 'Erro no Upload', true);
     } finally {
@@ -499,9 +689,9 @@ export default function App() {
     if (!file) return;
     setIsUploadingSingleFile(true);
     try {
-      const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
-      if (isPdf) {
-        showToast(`Lendo e catalogando "${file.name}"...`, 'Importando PDF');
+      const needsOcrNotice = /\.(pdf|jpe?g|png|webp|doc)$/i.test(file.name) || file.type === 'application/pdf' || file.type.startsWith('image/');
+      if (needsOcrNotice) {
+        showToast(`Lendo e catalogando "${file.name}"...`, 'Importando Documento');
       }
       const parsed = await parseUploadedDocumentFile(file, {
         categoriasExistentes: Array.from(new Set(modelos.map(m => m.Categoria).filter(Boolean))),
@@ -518,9 +708,16 @@ export default function App() {
         BaseLegal: prev.BaseLegal?.trim() ? prev.BaseLegal : (parsed.baseLegal || ''),
       }));
       const sizeKb = Math.max(1, Math.round(parsed.tamanhoBytes / 1024));
-      showToast(
-        `Documento "${file.name}" (${parsed.formatoOriginal}, ${sizeKb} KB) ${parsed.reconhecidoPorIA ? 'reconhecido e catalogado' : 'carregado'} no formulário!`
-      );
+      if (parsed.assinaturaDigital?.detectada) {
+        showToast(
+          `Assinatura digital detectada em "${file.name}". Foi gerada uma minuta modelo parametrizada com [CAMPOS] sem dados pessoais — o arquivo original assinado permanece intacto.`,
+          'Assinatura Digital Respeitada'
+        );
+      } else {
+        showToast(
+          `Documento "${file.name}" (${parsed.formatoOriginal}, ${sizeKb} KB) ${parsed.reconhecidoPorIA ? 'reconhecido e catalogado' : 'carregado'} no formulário!`
+        );
+      }
     } catch (err: any) {
       showToast(err?.message || 'Não foi possível importar o arquivo como modelo.', 'Erro no Upload', true);
     } finally {
@@ -529,7 +726,15 @@ export default function App() {
   };
 
   const handleCatalogarModeloImportado = async (item: CatalogedImportItem): Promise<boolean> => {
-    const textoFinal = (item.modoTexto === 'modelo' ? item.textoModelo : item.textoOriginal).trim();
+    const isAssinado = Boolean(item.assinaturaDigital?.detectada);
+    // Para documentos assinados digitalmente, prioriza sempre a minuta parametrizada (sem assinaturas/dados pessoais)
+    const textoFinal = (
+      isAssinado
+        ? item.textoModelo || item.textoOriginal
+        : item.modoTexto === 'modelo'
+        ? item.textoModelo
+        : item.textoOriginal
+    ).trim();
     if (!item.titulo.trim() || !textoFinal) {
       showToast('Informe um título e conteúdo antes de catalogar como modelo.', 'Campos Obrigatórios', true);
       return false;
@@ -549,7 +754,12 @@ export default function App() {
       Ativo: true,
       UsoFrequente: 0,
       Versao: '1.0',
+      EstiloId: item.estiloClonadoId || undefined,
     };
+
+    const sigNote = isAssinado
+      ? ` [Minuta derivada — assinatura digital do original intacta | SHA-256: ${item.assinaturaDigital?.hashSha256?.slice(0, 16) || 'n/d'}]`
+      : '';
 
     setModelos(prev => [newDoc, ...prev]);
     setLogs(prev => [{
@@ -557,7 +767,7 @@ export default function App() {
       usuario: currentUser?.nome || 'Servidor',
       acao: 'CATALOGAR_MODELO_IMPORTADO',
       docId: newId,
-      detalhes: `Catalogou ${item.formatoOriginal} "${item.fileName}" como ${newDoc.TipoDocumento}: ${newDoc.Titulo} (${newDoc.Categoria})`,
+      detalhes: `Catalogou ${item.formatoOriginal} "${item.fileName}" como ${newDoc.TipoDocumento}: ${newDoc.Titulo} (${newDoc.Categoria})${sigNote}`,
     }, ...prev]);
 
     if (useRealApi) {
@@ -582,7 +792,11 @@ export default function App() {
       }
     }
 
-    showToast(`Modelo ${newId} ("${newDoc.Titulo}") catalogado no Banco Mestre!`);
+    showToast(
+      isAssinado
+        ? `Minuta ${newId} derivada para Modelos! O arquivo original assinado digitalmente permaneceu intacto.`
+        : `Modelo ${newId} ("${newDoc.Titulo}") catalogado no Banco Mestre!`
+    );
     return true;
   };
 
@@ -599,9 +813,19 @@ export default function App() {
     const servidorIdentificado = currentUser?.nome
       ? `${currentUser.nome}${currentUser.matricula ? ` (Mat. ${currentUser.matricula})` : ''}`
       : 'Servidor Municipal';
-    const assuntoFinal = (item.assunto || item.titulo || item.fileName).trim();
+
+    const isAssinado = Boolean(item.assinaturaDigital?.detectada);
+    const shaCurto = item.assinaturaDigital?.hashSha256 ? item.assinaturaDigital.hashSha256.slice(0, 16) : '';
+    const linkOrig = (item.linkArquivoOriginal || '').trim();
+    const assuntoBase = (item.assunto || item.titulo || item.fileName).trim();
+    const assuntoFinal = isAssinado
+      ? `${assuntoBase} [Assinado Digitalmente${shaCurto ? ` • SHA-256: ${shaCurto}…` : ''}${linkOrig ? ` • Original: ${linkOrig}` : ''}]`
+      : assuntoBase;
+
     const destinatarioFinal = (item.destinatario || 'Não informado').trim();
     const anoAtual = String(new Date().getFullYear());
+
+    const isTipoGlobal = isTipoSequenciaGlobal(tipoDoc, configNumeracao);
 
     if (!usarNumeroOriginal && useRealApi) {
       try {
@@ -617,7 +841,8 @@ export default function App() {
             departamento: deptoAlvo,
             servidor: servidorIdentificado,
             sigla: siglaAlvo,
-            incluirSigla: incluirSiglaNoNumero,
+            incluirSigla: incluirSiglaNoNumero && !isTipoGlobal,
+            sequenciaGlobal: isTipoGlobal,
             usuarioLogado: servidorIdentificado,
             token: currentUser?.token || '',
           }),
@@ -634,10 +859,14 @@ export default function App() {
             destinatario: destinatarioFinal,
             secretaria: json.secretaria || secAlvo,
             departamento: json.departamento || deptoAlvo,
-            incluirSigla: incluirSiglaNoNumero,
+            incluirSigla: incluirSiglaNoNumero && !isTipoGlobal,
           };
           setNumeracoes(prev => [novoReg, ...prev]);
-          showToast(`Documento catalogado no Livro com número oficial ${json.numeroGerado}!`);
+          showToast(
+            isAssinado
+              ? `Ato assinado digitalmente indexado no Livro (${json.numeroGerado}) com hash SHA-256 preservado!`
+              : `Documento catalogado no Livro com número oficial ${json.numeroGerado}!`
+          );
           return true;
         }
       } catch (err) {
@@ -648,9 +877,8 @@ export default function App() {
     const numeroFinal = usarNumeroOriginal && item.numeroOriginal.trim()
       ? item.numeroOriginal.trim()
       : (() => {
-          const proximoSeq = getNextSequentialForSecretaria(numeracoes, tipoDoc, secAlvo, anoAtual, secretarias);
-          const seqStr = String(proximoSeq).padStart(3, '0');
-          return incluirSiglaNoNumero ? `${seqStr}/${anoAtual} - ${siglaAlvo}` : `${seqStr}/${anoAtual}`;
+          const proximoSeq = getNextSequentialForSecretaria(numeracoes, tipoDoc, secAlvo, anoAtual, secretarias, configNumeracao);
+          return formatNumeroOficialSequencial(proximoSeq, anoAtual, incluirSiglaNoNumero, siglaAlvo, isTipoGlobal);
         })();
 
     const nowIso = item.dataDocumento.trim() || new Date().toISOString();
@@ -667,36 +895,270 @@ export default function App() {
       incluirSigla: incluirSiglaNoNumero,
     };
 
+    const sigAudit = isAssinado
+      ? ` | ASSINATURA DIGITAL PRESERVADA (${item.assinaturaDigital?.padrao || 'Digital'}) | SHA-256: ${item.assinaturaDigital?.hashSha256 || 'n/d'}${linkOrig ? ` | Original: ${linkOrig}` : ''}`
+      : '';
+
     setNumeracoes(prev => [novoReg, ...prev]);
     setLogs(prev => [{
       dataHora: new Date().toISOString(),
       usuario: servidorIdentificado,
       acao: 'CATALOGAR_LIVRO_IMPORTADO',
       docId: numeroFinal,
-      detalhes: `Registrou ${item.formatoOriginal} "${item.fileName}" no Livro como ${tipoDoc} ${numeroFinal} | Assunto: ${assuntoFinal}`,
+      detalhes: `Registrou ${item.formatoOriginal} "${item.fileName}" no Livro como ${tipoDoc} ${numeroFinal} | Assunto: ${assuntoBase}${sigAudit}`,
     }, ...prev]);
 
-    showToast(`Documento registrado no Livro de Numeração (${numeroFinal})!`);
+    showToast(
+      isAssinado
+        ? `Documento assinado indexado no Livro (${numeroFinal}) com integridade SHA-256 registrada!`
+        : `Documento registrado no Livro de Numeração (${numeroFinal})!`
+    );
     return true;
   };
 
   const handleAbrirImportadoNoRedator = (item: CatalogedImportItem) => {
-    const tipoSuportado = ['MEMORANDO', 'OFICIO', 'DESPACHO', 'CIRCULAR', 'PORTARIA', 'DECRETO', 'ATO', 'TERMO', 'EMAIL'].includes(item.tipoDocumento)
-      ? item.tipoDocumento
-      : 'MEMORANDO';
+    const tipoSuportado = normalizeDocumentTypeCode(item.tipoDocumento);
     redatorDraftSkipNextPromptRef.current = true;
     setPendingRedatorDraft(null);
-    setRedatorTipo(tipoSuportado as any);
+    setRedatorTipo(tipoSuportado);
     setRedatorNumero('');
     setRedatorAssunto(item.assunto || item.titulo || '');
     setRedatorDestinatario(item.destinatario || '');
-    setRedatorReferenciaDoc(item.referencia || '');
+    setRedatorReferenciaDoc(item.referencia || (item.assinaturaDigital?.detectada && item.numeroOriginal ? `Ref. documento original assinado nº ${item.numeroOriginal}` : ''));
     if (item.secretariaOrigem && item.secretariaOrigem !== 'TODAS') {
       setRedatorSecretaria(item.secretariaOrigem);
     }
     setRedatorTexto(item.modoTexto === 'modelo' ? item.textoModelo : item.textoOriginal);
+    if (item.estiloClonadoId) {
+      const cloned = getDocumentStyleById(item.estiloClonadoId, customDocumentStyles);
+      aplicarPerfilEstiloDocumental(cloned, true);
+    } else if (item.estiloVisual) {
+      const perfilTemp = estiloExtraidoParaPerfil(item.estiloVisual, {
+        nomeCustom: item.estiloNomeCustom || item.estiloVisual.nomeSugerido,
+        arquivoOrigem: item.fileName,
+      });
+      setCustomDocumentStyles(prev => {
+        const next = [perfilTemp, ...prev.filter(s => s.nome.toLowerCase() !== perfilTemp.nome.toLowerCase())];
+        saveCustomDocumentStyles(next);
+        return next;
+      });
+      aplicarPerfilEstiloDocumental(perfilTemp, true);
+    }
     setIsRedatorModalOpen(true);
-    showToast(`"${item.fileName}" carregado no Redator Oficial! Pronto para revisar e gerar numeração.`);
+    if (item.assinaturaDigital?.detectada) {
+      showToast(
+        `Cópia derivada de "${item.fileName}" aberta no Redator Oficial. Mantenha o arquivo original assinado intacto para preservar sua validade jurídica.`,
+        'Cópia Derivada (Assinatura Preservada)'
+      );
+    } else {
+      showToast(`"${item.fileName}" carregado no Redator Oficial com estilo visual aplicado!`);
+    }
+  };
+
+  // =========================================================================
+  // ABASTECIMENTO ASSISTIDO DO SISTEMA COM DADOS EXTRAÍDOS VIA OCR
+  // =========================================================================
+  const handleAbastecerServidorOCR = async (
+    srv: ServidorExtraidoOCR,
+    item: CatalogedImportItem
+  ): Promise<boolean> => {
+    if (currentUser?.nivel !== 'ADMIN') {
+      showToast('Apenas perfis ADMIN podem cadastrar ou atualizar servidores na base municipal.', 'Permissão', true);
+      return false;
+    }
+
+    const existing = usuarios.find(
+      u =>
+        (srv.matricula && u.matricula && u.matricula.trim() === srv.matricula.trim()) ||
+        u.nome.trim().toLowerCase() === srv.nome.trim().toLowerCase()
+    );
+
+    const secResolvida = resolveCanonicalSecretariaName(
+      srv.secretaria || item.secretariaOrigem || 'Secretaria Municipal de Administração (SMA)',
+      secretarias
+    );
+    const isExon = srv.acaoAto === 'EXONERACAO';
+
+    if (existing) {
+      const secretariasAtualizadas = Array.from(
+        new Set([...(existing.secretarias || (existing.secretaria ? [existing.secretaria] : [])), secResolvida])
+      );
+      const atualizado: UsuarioSistema = {
+        ...existing,
+        matricula: existing.matricula || srv.matricula || `OCR-${Date.now().toString().slice(-4)}`,
+        cargo: srv.cargoEfetivo || existing.cargo,
+        funcaoGratificada: isExon
+          ? ''
+          : (srv.funcaoGratificada || existing.funcaoGratificada || ''),
+        secretaria: existing.secretaria || secResolvida,
+        secretarias: secretariasAtualizadas,
+        departamento: srv.departamento || existing.departamento || 'Gabinete',
+      };
+      const ok = await handleSaveUsuario(atualizado);
+      if (ok) {
+        setLogs(prev => [{
+          dataHora: new Date().toISOString(),
+          usuario: currentUser.nome,
+          acao: 'OCR_ATUALIZAR_SERVIDOR',
+          docId: atualizado.matricula,
+          detalhes: `Atualizou servidor ${atualizado.nome} (Mat. ${atualizado.matricula}) via OCR de "${item.fileName}" (${srv.acaoAto || 'ATUALIZACAO'}).`,
+        }, ...prev]);
+        showToast(
+          isExon
+            ? `Servidor "${atualizado.nome}" atualizado (função comissionada/FG limpa conforme exoneração no OCR).`
+            : `Dados do servidor "${atualizado.nome}" atualizados com sucesso a partir do OCR!`
+        );
+      }
+      return ok;
+    }
+
+    const matriculaNova = srv.matricula || `OCR${Date.now().toString().slice(-5)}`;
+    const novoServidor: UsuarioSistema = {
+      id: `USR-OCR-${Date.now()}`,
+      matricula: matriculaNova,
+      nome: srv.nome.trim(),
+      cargo: srv.cargoEfetivo || '',
+      funcaoGratificada: isExon ? '' : (srv.funcaoGratificada || ''),
+      secretaria: secResolvida,
+      secretarias: [secResolvida],
+      departamento: srv.departamento || 'Gabinete',
+      nivel: 'PADRAO',
+      ativo: !isExon,
+      filtroAcessibilidade: {
+        acessarSecretaria: false,
+        acessarDepartamento: true,
+        acessarProprios: true,
+      },
+    };
+    const ok = await handleSaveUsuario(novoServidor);
+    if (ok) {
+      setLogs(prev => [{
+        dataHora: new Date().toISOString(),
+        usuario: currentUser.nome,
+        acao: 'OCR_CADASTRAR_SERVIDOR',
+        docId: matriculaNova,
+        detalhes: `Cadastrou servidor ${novoServidor.nome} (Mat. ${matriculaNova}) via OCR de "${item.fileName}".`,
+      }, ...prev]);
+      showToast(`Servidor "${novoServidor.nome}" (Mat. ${matriculaNova}) cadastrado na base municipal via OCR!`);
+    }
+    return ok;
+  };
+
+  const handleAbastecerDepartamentoOCR = async (
+    dep: DepartamentoExtraidoOCR,
+    item: CatalogedImportItem
+  ): Promise<boolean> => {
+    if (currentUser?.nivel !== 'ADMIN') {
+      showToast('Apenas perfis ADMIN podem incluir departamentos nas secretarias.', 'Permissão', true);
+      return false;
+    }
+    const secAlvoNome = dep.secretaria || item.secretariaOrigem || 'Secretaria Municipal de Administração (SMA)';
+    const siglaAlvo = getSecretariaSigla(secAlvoNome, secretarias);
+    const secObj = secretarias.find(
+      s => s.sigla.toUpperCase() === siglaAlvo.toUpperCase() || secAlvoNome.toLowerCase().includes(s.nome.toLowerCase())
+    ) || secretarias[0];
+
+    if (!secObj) return false;
+    const deptLimpo = dep.departamento.trim();
+    const jaExiste = (secObj.departamentos || []).some(d => d.toLowerCase() === deptLimpo.toLowerCase());
+    if (jaExiste) {
+      showToast(`O setor "${deptLimpo}" já consta na ${secObj.sigla}.`);
+      return true;
+    }
+
+    handleSaveSecretaria({
+      ...secObj,
+      departamentos: [...(secObj.departamentos || []), deptLimpo],
+    });
+    setLogs(prev => [{
+      dataHora: new Date().toISOString(),
+      usuario: currentUser.nome,
+      acao: 'OCR_ADICIONAR_DEPARTAMENTO',
+      docId: secObj.sigla,
+      detalhes: `Incluiu departamento "${deptLimpo}" em ${secObj.nome} (${secObj.sigla}) via OCR de "${item.fileName}".`,
+    }, ...prev]);
+    showToast(`Departamento "${deptLimpo}" adicionado aos combos da ${secObj.sigla}!`);
+    return true;
+  };
+
+  const handleAbastecerCargoOCR = async (
+    cargoNome: string,
+    item: CatalogedImportItem
+  ): Promise<boolean> => {
+    if (currentUser?.nivel !== 'ADMIN') {
+      showToast('Apenas perfis ADMIN podem incluir cargos no Quadro Oficial.', 'Permissão', true);
+      return false;
+    }
+    const limpo = cargoNome.trim().toUpperCase();
+    if (!limpo) return false;
+    if (cargosEfetivos.some(c => c.toUpperCase() === limpo)) {
+      showToast(`O cargo "${limpo}" já consta no Quadro Oficial.`);
+      return true;
+    }
+    const atualizada = [...cargosEfetivos, limpo].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    handleSaveCargosEfetivos(atualizada);
+    setLogs(prev => [{
+      dataHora: new Date().toISOString(),
+      usuario: currentUser.nome,
+      acao: 'OCR_ADICIONAR_CARGO',
+      docId: limpo,
+      detalhes: `Incluiu cargo "${limpo}" no Quadro Efetivo via OCR de "${item.fileName}".`,
+    }, ...prev]);
+    showToast(`Cargo "${limpo}" incluído no Quadro Oficial e disponível em todos os combos!`);
+    return true;
+  };
+
+  const handleAbastecerCombosRedatorOCR = (
+    payload: { destinatarios: string[]; assunto?: string },
+    item: CatalogedImportItem
+  ) => {
+    const novosDest = (payload.destinatarios || []).map(d => d.trim()).filter(Boolean);
+    const novoAss = (payload.assunto || '').trim();
+    setSugestoes(prev => {
+      const destSet = new Set(prev.destinatarios);
+      novosDest.forEach(d => destSet.add(d));
+      const assSet = new Set(prev.assuntos);
+      if (novoAss && novoAss.length >= 4) assSet.add(novoAss);
+      const next = {
+        destinatarios: Array.from(destSet).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+        assuntos: Array.from(assSet).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      };
+      try {
+        localStorage.setItem('bm_sugestoes', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    setLogs(prev => [{
+      dataHora: new Date().toISOString(),
+      usuario: currentUser?.nome || 'Servidor',
+      acao: 'OCR_ABASTECER_COMBOS',
+      docId: item.fileName,
+      detalhes: `Incorporou ${novosDest.length} destinatário(s)${novoAss ? ' e 1 assunto' : ''} aos combos do Redator a partir de "${item.fileName}".`,
+    }, ...prev]);
+    showToast('Destinatário(s) e assunto salvos nos combos inteligentes do Redator Oficial!');
+  };
+
+  const handleAtualizarMarcoZeroOCR = async (payload: {
+    secretaria: string;
+    tipoDocumento: string;
+    ultimoNumero: number;
+    ano: string;
+    observacao: string;
+  }): Promise<boolean> => {
+    if (currentUser?.nivel !== 'ADMIN') {
+      showToast('Apenas perfis ADMIN podem definir o Marco Zero de numeração.', 'Permissão', true);
+      return false;
+    }
+    const isGlobal = isTipoSequenciaGlobal(payload.tipoDocumento, configNumeracao);
+    return await handleDefinirMarcoZero({
+      secretaria: payload.secretaria,
+      departamento: currentUser.departamento || 'Gabinete',
+      tipoDocumento: payload.tipoDocumento,
+      ultimoNumero: payload.ultimoNumero,
+      ano: payload.ano,
+      observacao: payload.observacao,
+      incluirSigla: incluirSiglaNoNumero && !isGlobal,
+    });
   };
 
   // Fila de Pedidos de Recuperação de Senha para Gestão Administrativa
@@ -727,15 +1189,33 @@ export default function App() {
   };
 
   // Redator de Memorando / Ofício / E-mail / Portaria / Decreto / Atos / TAC Modal State
-  const [isRedatorModalOpen, setIsRedatorModalOpen] = useState(false);
+  const [isRedatorModalOpen, setIsRedatorModalOpen] = useState<boolean>(
+    () => Boolean(initialUiNav?.isRedatorModalOpen)
+  );
   const [isRedatorFullscreen, setIsRedatorFullscreen] = useState(false);
+  const [viewportSize, setViewportSize] = useState<{ width: number; height: number }>(() => ({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1280,
+    height: typeof window !== 'undefined' ? window.innerHeight : 800,
+  }));
+  // Armazena tamanho customizado APENAS quando redimensionado manualmente em tela grande (em proporção da tela)
   const [redatorModalSize, setRedatorModalSize] = useState<{ width: number; height: number } | null>(() => {
     try {
-      const saved = localStorage.getItem('bm_redator_modal_size');
-      if (saved) {
+      // Limpa chave legada que podia salvar dimensões pequenas de celular/janela estreita
+      localStorage.removeItem('bm_redator_modal_size');
+      const saved = localStorage.getItem('bm_redator_modal_ratio_v2');
+      if (saved && typeof window !== 'undefined' && window.innerWidth >= 900) {
         const parsed = JSON.parse(saved);
-        if (typeof parsed?.width === 'number' && typeof parsed?.height === 'number') {
-          return { width: parsed.width, height: parsed.height };
+        if (
+          typeof parsed?.widthRatio === 'number' &&
+          typeof parsed?.heightRatio === 'number' &&
+          parsed.widthRatio >= 0.55 &&
+          parsed.widthRatio <= 0.99 &&
+          parsed.heightRatio >= 0.6 &&
+          parsed.heightRatio <= 0.99
+        ) {
+          const w = Math.round(Math.min(window.innerWidth - 16, Math.max(760, window.innerWidth * parsed.widthRatio)));
+          const h = Math.round(Math.min(window.innerHeight - 16, Math.max(540, window.innerHeight * parsed.heightRatio)));
+          return { width: w, height: h };
         }
       }
     } catch {
@@ -765,37 +1245,31 @@ export default function App() {
     startHeight: number;
   } | null>(null);
 
-  const REDATOR_MIN_WIDTH = 360;
-  const REDATOR_MIN_HEIGHT = 320;
+  const REDATOR_MIN_WIDTH = 640;
+  const REDATOR_MIN_HEIGHT = 460;
+  const isCompactViewport = viewportSize.width < 900;
 
+  // Monitora redimensionamento da janela para adaptar automaticamente celular / tablet / notebook / desktop
   useEffect(() => {
-    try {
-      if (redatorModalSize) {
-        localStorage.setItem('bm_redator_modal_size', JSON.stringify(redatorModalSize));
-      } else {
-        localStorage.removeItem('bm_redator_modal_size');
+    const handleViewportResize = () => {
+      const nextW = window.innerWidth;
+      const nextH = window.innerHeight;
+      setViewportSize({ width: nextW, height: nextH });
+      // Ao reduzir para tela pequena (< 900px), limpa posição/tamanho manual para preencher a tela toda automaticamente
+      if (nextW < 900) {
+        setRedatorModalPos(null);
       }
-    } catch {
-      // ignora restrições de armazenamento
-    }
-  }, [redatorModalSize]);
+    };
+    window.addEventListener('resize', handleViewportResize);
+    return () => window.removeEventListener('resize', handleViewportResize);
+  }, []);
 
   useEffect(() => {
-    if (!isRedatorModalOpen || isRedatorFullscreen || isResizingRedatorModal || isDraggingRedatorModal) return;
+    if (!isRedatorModalOpen || isRedatorFullscreen || isCompactViewport || isResizingRedatorModal || isDraggingRedatorModal) return;
     const ensureRedatorInViewport = () => {
-      const margin = 8;
-      const minW = Math.min(REDATOR_MIN_WIDTH, Math.max(280, window.innerWidth - margin * 2));
-      const minH = Math.min(REDATOR_MIN_HEIGHT, Math.max(260, window.innerHeight - margin * 2));
-      const maxW = Math.max(minW, window.innerWidth - margin * 2);
-      const maxH = Math.max(minH, window.innerHeight - margin * 2);
-
-      setRedatorModalSize(prev => {
-        if (!prev) return prev;
-        const cw = Math.round(Math.min(Math.max(minW, prev.width), maxW));
-        const ch = Math.round(Math.min(Math.max(minH, prev.height), maxH));
-        if (cw === prev.width && ch === prev.height) return prev;
-        return { width: cw, height: ch };
-      });
+      const margin = 12;
+      const maxW = Math.max(REDATOR_MIN_WIDTH, window.innerWidth - margin * 2);
+      const maxH = Math.max(REDATOR_MIN_HEIGHT, window.innerHeight - margin * 2);
 
       const el = redatorModalRef.current;
       if (el) {
@@ -817,10 +1291,21 @@ export default function App() {
       window.cancelAnimationFrame(rafId);
       window.removeEventListener('resize', ensureRedatorInViewport);
     };
-  }, [isRedatorModalOpen, isRedatorFullscreen, isResizingRedatorModal, isDraggingRedatorModal]);
+  }, [isRedatorModalOpen, isRedatorFullscreen, isCompactViewport, isResizingRedatorModal, isDraggingRedatorModal]);
+
+  const resetRedatorResponsiveLayout = () => {
+    setRedatorModalSize(null);
+    setRedatorModalPos(null);
+    try {
+      localStorage.removeItem('bm_redator_modal_ratio_v2');
+      localStorage.removeItem('bm_redator_modal_size');
+    } catch {
+      // ignora restrições de armazenamento
+    }
+  };
 
   const handleRedatorHeaderPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isRedatorFullscreen) return;
+    if (isRedatorFullscreen || isCompactViewport) return;
     if ((e.target as HTMLElement).closest('button')) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const el = redatorModalRef.current;
@@ -835,9 +1320,6 @@ export default function App() {
       height: rect.height,
     };
     setRedatorModalPos({ x: Math.round(rect.left), y: Math.round(rect.top) });
-    if (!redatorModalSize) {
-      setRedatorModalSize({ width: Math.round(rect.width), height: Math.round(rect.height) });
-    }
     setIsDraggingRedatorModal(true);
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -876,7 +1358,7 @@ export default function App() {
     dir: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
   ) => (e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
-    if (isRedatorFullscreen) return;
+    if (isRedatorFullscreen || isCompactViewport) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const el = redatorModalRef.current;
     if (!el) return;
@@ -908,8 +1390,8 @@ export default function App() {
     e.stopPropagation();
 
     const margin = 8;
-    const minW = Math.min(REDATOR_MIN_WIDTH, Math.max(280, window.innerWidth - margin * 2));
-    const minH = Math.min(REDATOR_MIN_HEIGHT, Math.max(260, window.innerHeight - margin * 2));
+    const minW = Math.min(REDATOR_MIN_WIDTH, Math.max(320, window.innerWidth - margin * 2));
+    const minH = Math.min(REDATOR_MIN_HEIGHT, Math.max(320, window.innerHeight - margin * 2));
     const dx = e.clientX - resize.startX;
     const dy = e.clientY - resize.startY;
 
@@ -948,6 +1430,22 @@ export default function App() {
     e.stopPropagation();
     redatorResizeStateRef.current = null;
     setIsResizingRedatorModal(false);
+    // Salva a proporção escolhida pelo usuário somente em telas grandes (>= 900px)
+    const el = redatorModalRef.current;
+    if (el && window.innerWidth >= 900) {
+      const rect = el.getBoundingClientRect();
+      try {
+        localStorage.setItem(
+          'bm_redator_modal_ratio_v2',
+          JSON.stringify({
+            widthRatio: Number((rect.width / window.innerWidth).toFixed(3)),
+            heightRatio: Number((rect.height / window.innerHeight).toFixed(3)),
+          })
+        );
+      } catch {
+        // ignora restrições de armazenamento
+      }
+    }
     try {
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId);
@@ -958,27 +1456,68 @@ export default function App() {
   };
 
   const handleRedatorHeaderDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest('button') || isCompactViewport) return;
     if (isRedatorFullscreen) {
       setIsRedatorFullscreen(false);
       return;
     }
     if (redatorModalSize || redatorModalPos) {
-      setRedatorModalSize(null);
-      setRedatorModalPos(null);
+      resetRedatorResponsiveLayout();
     } else {
       setIsRedatorFullscreen(true);
     }
   };
-  const [redatorTipo, setRedatorTipo] = useState<'MEMORANDO' | 'OFICIO' | 'DESPACHO' | 'CIRCULAR' | 'PORTARIA' | 'DECRETO' | 'EMAIL' | 'ATO' | 'TERMO'>('MEMORANDO');
+  const [redatorTipo, setRedatorTipo] = useState<RedatorTipoDocumento>('MEMORANDO');
+  const [redatorTipoGrupo, setRedatorTipoGrupo] = useState<'PRINCIPAIS' | 'EXPEDIENTE' | 'NORMATIVO' | 'PGM' | 'TODOS'>('PRINCIPAIS');
   const [redatorNumero, setRedatorNumero] = useState('');
   const [redatorEmailCc, setRedatorEmailCc] = useState('');
   const [isLoadingFromGas, setIsLoadingFromGas] = useState(false);
-  const [redatorData, setRedatorData] = useState(() => {
+  const MESES_EXTENSO_PT = [
+    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+  ];
+  const obterDataIsoHoje = () => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  const formatarLocalDataExtenso = (local: string, isoDate?: string) => {
+    const localLimpo = (local || 'Rio Claro-RJ').trim() || 'Rio Claro-RJ';
+    if (isoDate && /^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+      const [yStr, mStr, dStr] = isoDate.split('-');
+      const dia = parseInt(dStr, 10);
+      const mesIdx = parseInt(mStr, 10) - 1;
+      const ano = parseInt(yStr, 10);
+      if (dia >= 1 && dia <= 31 && mesIdx >= 0 && mesIdx <= 11 && ano > 1900) {
+        return `${localLimpo}, ${dia} de ${MESES_EXTENSO_PT[mesIdx]} de ${ano}`;
+      }
+    }
     const hoje = new Date();
-    const meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-    return `Rio Claro-RJ, ${hoje.getDate()} de ${meses[hoje.getMonth()]} de ${hoje.getFullYear()}`;
-  });
+    return `${localLimpo}, ${hoje.getDate()} de ${MESES_EXTENSO_PT[hoje.getMonth()]} de ${hoje.getFullYear()}`;
+  };
+  const formatarLocalDataSemDuplicar = (valor?: string) => {
+    const limpo = (valor || '').trim().replace(/\.+$/, '');
+    if (!limpo) return `${formatarLocalDataExtenso('Rio Claro-RJ')}.`;
+    if (limpo.includes(',') || /rio claro/i.test(limpo)) {
+      return `${limpo}.`;
+    }
+    return `Rio Claro – RJ, ${limpo}.`;
+  };
+
+  const [redatorDataModo, setRedatorDataModo] = useState<'AUTOMATICO' | 'PERSONALIZADO'>('AUTOMATICO');
+  const [redatorLocalPersonalizado, setRedatorLocalPersonalizado] = useState('Rio Claro-RJ');
+  const [redatorDataIsoPersonalizada, setRedatorDataIsoPersonalizada] = useState(() => obterDataIsoHoje());
+  const [redatorData, setRedatorData] = useState(() => formatarLocalDataExtenso('Rio Claro-RJ'));
+
+  const ativarLocalDataAutomatico = () => {
+    const hojeIso = obterDataIsoHoje();
+    setRedatorDataModo('AUTOMATICO');
+    setRedatorLocalPersonalizado('Rio Claro-RJ');
+    setRedatorDataIsoPersonalizada(hojeIso);
+    setRedatorData(formatarLocalDataExtenso('Rio Claro-RJ', hojeIso));
+  };
   const [redatorSetorOrigem, setRedatorSetorOrigem] = useState(() => currentUser?.departamento?.trim() || 'Departamento de Recursos Humanos (DRH)');
   const [redatorDestinatario, setRedatorDestinatario] = useState('Secretaria Municipal de Saúde');
   const [redatorTratamento, setRedatorTratamento] = useState('À / Ao');
@@ -989,7 +1528,7 @@ export default function App() {
   );
   const [redatorFecho, setRedatorFecho] = useState('Permanecemos à disposição para eventuais esclarecimentos adicionais.');
   const [redatorSignatario, setRedatorSignatario] = useState(() => currentUser?.nome || 'Servidor Municipal');
-  const [redatorCargo, setRedatorCargo] = useState(() => currentUser?.cargo || 'Servidor Público Municipal');
+  const [redatorCargo, setRedatorCargo] = useState(() => getCargoAssinaturaPreferencial(currentUser));
   const [redatorSecretaria, setRedatorSecretaria] = useState(() =>
     currentUser?.secretaria ? resolveCanonicalSecretariaName(currentUser.secretaria) : 'Secretaria Municipal de Administração (SMA)'
   );
@@ -1018,7 +1557,7 @@ export default function App() {
 
   // Rascunho Automático (Auto-save) no Redator Oficial por matrícula
   type RedatorDraftPayload = {
-    tipo: 'MEMORANDO' | 'OFICIO' | 'DESPACHO' | 'CIRCULAR' | 'PORTARIA' | 'DECRETO' | 'EMAIL' | 'ATO' | 'TERMO';
+    tipo: RedatorTipoDocumento;
     assunto: string;
     destinatario: string;
     tratamento: string;
@@ -1028,6 +1567,8 @@ export default function App() {
     emailCc: string;
     setorOrigem: string;
     secretaria: string;
+    dataDocumento?: string;
+    dataModo?: 'AUTOMATICO' | 'PERSONALIZADO';
     savedAt: string;
   };
   const [redatorDraftSavedAt, setRedatorDraftSavedAt] = useState<string>('');
@@ -1056,6 +1597,18 @@ export default function App() {
   const [isArrastandoRegua, setIsArrastandoRegua] = useState<boolean>(false);
   const reguaBarraRef = useRef<HTMLDivElement>(null);
   const redatorTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const redatorRichEditorRef = useRef<RedatorRichEditorHandle>(null);
+  const [redatorEditorModo, setRedatorEditorModo] = useState<'visual' | 'codigo'>('visual');
+  const [redatorFormatosAtivos, setRedatorFormatosAtivos] = useState<RedatorActiveFormats>({
+    bold: false,
+    italic: false,
+    underline: false,
+    strike: false,
+    mark: false,
+    ul: false,
+    ol: false,
+    quote: false
+  });
   const [redatorHistoricoUndo, setRedatorHistoricoUndo] = useState<string[]>([]);
   const [redatorHistoricoRedo, setRedatorHistoricoRedo] = useState<string[]>([]);
 
@@ -1094,8 +1647,41 @@ export default function App() {
     } catch { return 0.0; }
   });
 
-  // Estados de Assinatura Colegiada / Comissões de Sindicância e PAD
-  const [redatorModoAssinatura, setRedatorModoAssinatura] = useState<'INDIVIDUAL' | 'COMISSAO_PAD' | 'COMISSAO_DEFESA' | 'TAC_CAC' | 'PERSONALIZADA'>('INDIVIDUAL');
+  // Perfis de Estilo Visual por Setor (Nativos + Clonados de PDF/DOCX/ODT)
+  const [customDocumentStyles, setCustomDocumentStyles] = useState<PerfilEstiloDocumental[]>(() =>
+    loadCustomDocumentStyles()
+  );
+  const [redatorEstiloId, setRedatorEstiloId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(ACTIVE_STYLE_STORAGE_KEY) || 'ESTILO_PADRAO_PMRC';
+    } catch {
+      return 'ESTILO_PADRAO_PMRC';
+    }
+  });
+  const [isEstiloEditorOpen, setIsEstiloEditorOpen] = useState<boolean>(false);
+  const [estiloEditNome, setEstiloEditNome] = useState<string>('');
+  const [estiloEditCabecalho, setEstiloEditCabecalho] = useState<CabecalhoLayoutEstilo>('LATERAL');
+  const [estiloEditCor, setEstiloEditCor] = useState<string>('#002b82');
+  const [estiloEditSubtitulo, setEstiloEditSubtitulo] = useState<string>('');
+  const [estiloEditRodape, setEstiloEditRodape] = useState<string>('');
+  const [estiloEditEmenta, setEstiloEditEmenta] = useState<EmentaEstiloVisual>('DIREITA_BORDA');
+
+  const allDocumentStyles = useMemo(
+    () => getAllDocumentStyles(customDocumentStyles),
+    [customDocumentStyles]
+  );
+  const activeDocumentStyle = useMemo(
+    () => getDocumentStyleById(redatorEstiloId, customDocumentStyles),
+    [redatorEstiloId, customDocumentStyles]
+  );
+
+  // Estados de Assinatura Individual, Dupla / Referendo (Prefeito + Secretário) e Comissões
+  const [redatorModoAssinatura, setRedatorModoAssinatura] = useState<
+    'INDIVIDUAL' | 'DUPLA_REFERENDO' | 'COMISSAO_PAD' | 'COMISSAO_DEFESA' | 'TAC_CAC' | 'PERSONALIZADA'
+  >('INDIVIDUAL');
+  const [redatorSegundoSignatario, setRedatorSegundoSignatario] = useState<string>('[Nome do(a) Secretário(a) / Procurador-Geral]');
+  const [redatorSegundoCargo, setRedatorSegundoCargo] = useState<string>('Secretário(a) Municipal / Referendo');
+  const [redatorSegundaSecretaria, setRedatorSegundaSecretaria] = useState<string>('Secretaria Municipal de Administração (SMA)');
   const [redatorMembrosComissao, setRedatorMembrosComissao] = useState<MembroComissao[]>([
     {
       id: 'm1',
@@ -1169,7 +1755,129 @@ export default function App() {
   const [isModalSalvarComissaoAberto, setIsModalSalvarComissaoAberto] = useState<boolean>(false);
   const [nomeNovaComissaoSalvar, setNomeNovaComissaoSalvar] = useState<string>('');
 
-  const mudarModoAssinatura = (novoModo: 'INDIVIDUAL' | 'COMISSAO_PAD' | 'COMISSAO_DEFESA' | 'TAC_CAC' | 'PERSONALIZADA') => {
+  const aplicarPerfilEstiloDocumental = (style: PerfilEstiloDocumental, silent: boolean = false) => {
+    setRedatorEstiloId(style.id);
+    try {
+      localStorage.setItem(ACTIVE_STYLE_STORAGE_KEY, style.id);
+    } catch {}
+    setRedatorFonte(style.fonte);
+    setRedatorTamanhoFonte(style.tamanhoFonte);
+    setRedatorAlinhamento(style.alinhamento);
+    setRedatorRecuoParagrafo(style.recuoParagrafoCm);
+    setRedatorMargemSuperior(style.margens.superior);
+    setRedatorMargemInferior(style.margens.inferior);
+    setRedatorMargemEsquerda(style.margens.esquerda);
+    setRedatorMargemDireita(style.margens.direita);
+    if (style.assinaturaPadrao === 'DUPLA_REFERENDO') {
+      setRedatorModoAssinatura('DUPLA_REFERENDO');
+    } else if (style.assinaturaPadrao === 'INDIVIDUAL' && redatorModoAssinatura === 'DUPLA_REFERENDO') {
+      setRedatorModoAssinatura('INDIVIDUAL');
+    }
+    if (!silent) {
+      showToast(`Perfil visual "${style.nome}" aplicado ao documento!`);
+    }
+  };
+
+  const abrirEditorEstiloAtual = () => {
+    setEstiloEditNome(
+      activeDocumentStyle.origem === 'NATIVO'
+        ? `${activeDocumentStyle.nome.split('(')[0].trim()} — Personalizado`
+        : activeDocumentStyle.nome
+    );
+    setEstiloEditCabecalho(activeDocumentStyle.cabecalhoLayout);
+    setEstiloEditCor(activeDocumentStyle.corPrimaria);
+    setEstiloEditSubtitulo(activeDocumentStyle.cabecalhoSubtituloCustom || '');
+    setEstiloEditRodape(activeDocumentStyle.rodapeTexto || '');
+    setEstiloEditEmenta(activeDocumentStyle.ementaEstilo);
+    setIsEstiloEditorOpen(prev => !prev);
+  };
+
+  const handleSalvarEstiloPersonalizadoAtual = () => {
+    const nomeLimpo = estiloEditNome.trim() || `Estilo Personalizado (${getSecretariaSigla(redatorSecretaria, secretarias)})`;
+    const novoPerfil: PerfilEstiloDocumental = {
+      id: `CUSTOM-${Date.now().toString(36).toUpperCase()}`,
+      nome: nomeLimpo,
+      setorReferencia: getSecretariaSigla(redatorSecretaria, secretarias) || 'GERAL',
+      descricao: `${redatorFonte} ${redatorTamanhoFonte}, cabeçalho ${estiloEditCabecalho.toLowerCase()}, margens ${redatorMargemSuperior}/${redatorMargemEsquerda}/${redatorMargemDireita}/${redatorMargemInferior} cm.`,
+      origem: 'PERSONALIZADO',
+      criadoEm: new Date().toISOString(),
+      fonte: redatorFonte,
+      tamanhoFonte: redatorTamanhoFonte,
+      alinhamento: redatorAlinhamento,
+      espacamentoLinhas: activeDocumentStyle.espacamentoLinhas || 1.5,
+      recuoParagrafoCm: redatorRecuoParagrafo,
+      margens: {
+        superior: redatorMargemSuperior,
+        inferior: redatorMargemInferior,
+        esquerda: redatorMargemEsquerda,
+        direita: redatorMargemDireita,
+      },
+      corPrimaria: estiloEditCor || '#002b82',
+      corBordaCabecalho: estiloEditCor || '#002b82',
+      cabecalhoLayout: estiloEditCabecalho,
+      cabecalhoSubtituloCustom: estiloEditSubtitulo.trim() || undefined,
+      rodapeTexto: estiloEditRodape.trim() || undefined,
+      epigrafeAlinhamento: activeDocumentStyle.epigrafeAlinhamento,
+      epigrafeCaixaAlta: activeDocumentStyle.epigrafeCaixaAlta,
+      ementaEstilo: estiloEditEmenta,
+      assinaturaPadrao: redatorModoAssinatura === 'DUPLA_REFERENDO' ? 'DUPLA_REFERENDO' : redatorModoAssinatura === 'INDIVIDUAL' ? 'INDIVIDUAL' : 'COMISSAO_PAD',
+    };
+    setCustomDocumentStyles(prev => {
+      const next = [novoPerfil, ...prev.filter(s => s.nome.toLowerCase() !== nomeLimpo.toLowerCase())];
+      saveCustomDocumentStyles(next);
+      return next;
+    });
+    setRedatorEstiloId(novoPerfil.id);
+    try {
+      localStorage.setItem(ACTIVE_STYLE_STORAGE_KEY, novoPerfil.id);
+    } catch {}
+    setIsEstiloEditorOpen(false);
+    showToast(`Perfil visual "${nomeLimpo}" salvo e pronto para uso em todo o setor!`);
+  };
+
+  const handleExcluirEstiloCustom = (styleId: string) => {
+    setCustomDocumentStyles(prev => {
+      const next = prev.filter(s => s.id !== styleId);
+      saveCustomDocumentStyles(next);
+      return next;
+    });
+    if (redatorEstiloId === styleId) {
+      aplicarPerfilEstiloDocumental(getDocumentStyleById('ESTILO_PADRAO_PMRC', []), true);
+    }
+    showToast('Perfil visual personalizado removido.');
+  };
+
+  const handleClonarEstiloVisual = (
+    estilo: EstiloVisualExtraido,
+    item: CatalogedImportItem,
+    nomeCustom?: string
+  ): PerfilEstiloDocumental | null => {
+    const perfil = estiloExtraidoParaPerfil(estilo, {
+      nomeCustom: nomeCustom || estilo.nomeSugerido,
+      arquivoOrigem: item.fileName,
+    });
+    setCustomDocumentStyles(prev => {
+      const next = [perfil, ...prev.filter(s => s.nome.toLowerCase() !== perfil.nome.toLowerCase())];
+      saveCustomDocumentStyles(next);
+      return next;
+    });
+    setLogs(prev => [
+      {
+        dataHora: new Date().toISOString(),
+        usuario: currentUser?.nome || 'Servidor',
+        acao: 'CLONAR_ESTILO_VISUAL',
+        docId: perfil.id,
+        detalhes: `Clonou perfil visual "${perfil.nome}" a partir de "${item.fileName}" (${perfil.fonte} ${perfil.tamanhoFonte}, ${perfil.cabecalhoLayout})`,
+      },
+      ...prev,
+    ]);
+    showToast(`Perfil visual "${perfil.nome}" clonado e salvo! Já disponível no seletor de estilos do Redator.`);
+    return perfil;
+  };
+
+  const mudarModoAssinatura = (
+    novoModo: 'INDIVIDUAL' | 'DUPLA_REFERENDO' | 'COMISSAO_PAD' | 'COMISSAO_DEFESA' | 'TAC_CAC' | 'PERSONALIZADA'
+  ) => {
     setRedatorModoAssinatura(novoModo);
     if (novoModo === 'COMISSAO_PAD' && redatorMembrosComissao.length < 3) {
       setRedatorMembrosComissao([
@@ -1192,7 +1900,8 @@ export default function App() {
         { id: 't4', nome: '[Nome da Testemunha 02]', funcao: 'Testemunha 2', matricula: '----', cargoEfetivo: 'Testemunha' }
       ]);
     }
-    showToast(`Estrutura de assinaturas alterada para: ${novoModo.replace('_', ' ')}`);
+    const labelModo = novoModo === 'DUPLA_REFERENDO' ? 'Assinatura Dupla / Referendo' : novoModo.replace('_', ' ');
+    showToast(`Estrutura de assinaturas alterada para: ${labelModo}`);
   };
 
   const handleAtualizarMembro = (id: string, campo: keyof MembroComissao, valor: string) => {
@@ -1322,17 +2031,73 @@ export default function App() {
     }
   };
 
-  // Helper para prefixo oficial de documento (ex: MEMO RH 710/2026, OFÍCIO RH 710/2026, PORTARIA Nº 015/2026, ATO Nº 001/2026 ou CAC Nº 001/2026)
+  // Helper para prefixo oficial de documento (todos os 26 tipos administrativos, normativos e jurídicos da PGM)
   const getDocumentoPrefixo = (tipo: string, num: string) => {
     const anoAtual = new Date().getFullYear();
     const numLimpo = num ? num : `____/${anoAtual}`;
-    if (tipo === 'DECRETO') return `DECRETO Nº ${numLimpo}`;
-    if (tipo === 'PORTARIA') return `PORTARIA Nº ${numLimpo}`;
-    if (tipo === 'ATO') return `ATO DISCIPLINAR Nº ${numLimpo}`;
-    if (tipo === 'TERMO') return `TERMO / CAC Nº ${numLimpo}`;
-    if (tipo === 'MEMORANDO') return `MEMO RH ${numLimpo}`;
-    if (tipo === 'OFICIO') return `OFÍCIO RH ${numLimpo}`;
-    return `${tipo} RH ${numLimpo}`;
+    const def = getDocumentTypeDefinition(tipo);
+    const siglaSec = getSecretariaSigla(redatorSecretaria, secretarias) || 'PMRC';
+    return def.prefixoTemplate(numLimpo, siglaSec);
+  };
+
+  // Detecta se o texto atual ainda é um modelo-base inicial de algum tipo (para não sobrescrever redação autoral do servidor)
+  const isRedatorTextoBoilerplate = (texto: string): boolean => {
+    const limpo = (texto || '').trim();
+    if (!limpo) return true;
+    if (
+      limpo.includes('Cumprimentando-o cordialmente, sirvo-me do presente para solicitar a Vossa Senhoria') ||
+      limpo.includes('Cumprimentando-o cordialmente, sirvo-me do presente para tratar') ||
+      limpo.includes('Escrevo em nome da ') ||
+      limpo.includes('O PREFEITO MUNICIPAL DE RIO CLARO, Estado do Rio de Janeiro, no uso') ||
+      limpo.includes('COMPROMISSO DE AJUSTAMENTO DE CONDUTA FUNCIONAL') ||
+      limpo.includes('A COMISSÃO PROCESSANTE DA PREFEITURA MUNICIPAL DE RIO CLARO')
+    ) {
+      return true;
+    }
+    return DOCUMENT_TYPE_DEFINITIONS.some(d => limpo === d.defaultTexto.trim() || limpo.startsWith(d.defaultTexto.trim().slice(0, 75)));
+  };
+
+  const isRedatorAssuntoBoilerplate = (assunto: string): boolean => {
+    const limpo = (assunto || '').trim();
+    if (!limpo || limpo === 'Quantitativo de Servidores e Informações de Folha') return true;
+    return DOCUMENT_TYPE_DEFINITIONS.some(d => limpo.toLowerCase() === d.defaultAssunto.trim().toLowerCase());
+  };
+
+  const handleSelecionarTipoRedator = (t: RedatorTipoDocumento) => {
+    const def = DOCUMENT_TYPE_MAP[t] || DOCUMENT_TYPE_MAP.MEMORANDO;
+    setRedatorTipo(t);
+    setRedatorNumero('');
+
+    if (t === 'DECRETO' || t === 'PROJETO_LEI') {
+      if (currentUser?.nivel === 'ADMIN' || isUserAuthorizedForSecretaria(currentUser, 'Gabinete do Prefeito', secretarias)) {
+        setRedatorSecretaria('Secretaria de Governo e Gabinete do Prefeito (SEGOV)');
+        setRedatorSetorOrigem('Gabinete do Prefeito');
+        setRedatorSignatario('Prefeito Municipal de Rio Claro');
+        setRedatorCargo('Prefeito Municipal');
+      } else {
+        showToast(`Minuta de ${def.label} carregada mantendo a emissão vinculada à sua Secretaria autorizada.`, 'Escopo Mantido');
+      }
+    }
+
+    if (def.defaultDestinatario && (!redatorDestinatario.trim() || redatorDestinatario === 'Secretaria Municipal de Saúde' || DOCUMENT_TYPE_DEFINITIONS.some(d => d.defaultDestinatario === redatorDestinatario))) {
+      setRedatorDestinatario(def.defaultDestinatario);
+    }
+
+    setRedatorFecho(def.defaultFecho);
+
+    if (isRedatorAssuntoBoilerplate(redatorAssunto)) {
+      setRedatorAssunto(def.defaultAssunto);
+    }
+
+    if (isRedatorTextoBoilerplate(redatorTexto)) {
+      if (t === 'EMAIL') {
+        setRedatorTexto(
+          `Prezado(a) ${redatorDestinatario || 'Servidor(a)'},\n\nEscrevo em nome da ${redatorSecretaria} da Prefeitura Municipal de Rio Claro – RJ, referente ao assunto "${redatorAssunto || 'Processo Administrativo'}".\n\nSolicitamos a gentileza de analisar as informações apresentadas e acusar o recebimento desta mensagem, bem como adotar as providências administrativas cabíveis no âmbito de sua competência.\n\nPermanecemos à disposição para prestar quaisquer esclarecimentos complementares.\n\nAtenciosamente,\n\n${redatorSignatario}\n${redatorCargo}\n${redatorSecretaria}\nPrefeitura Municipal de Rio Claro – RJ`
+        );
+      } else {
+        setRedatorTexto(def.defaultTexto);
+      }
+    }
   };
 
   // Estado da Visualização Flutuante (Picture-in-Picture para acompanhamento em tempo real durante edição)
@@ -1702,7 +2467,7 @@ export default function App() {
 
   // Lista consolidada de Signatários / Autoridades / Servidores da base (filtrada por escopo para não-ADMIN)
   const listaSignatariosBase = useMemo(() => {
-    const map = new Map<string, { nome: string; cargo: string; departamento: string; secretaria: string; matricula: string }>();
+    const map = new Map<string, { nome: string; cargo: string; cargoEfetivo: string; funcaoGratificada: string; departamento: string; secretaria: string; matricula: string }>();
 
     const adicionarSignatario = (u: UsuarioSistema) => {
       if (u.ativo === false) return;
@@ -1721,9 +2486,14 @@ export default function App() {
         }
       }
 
+      const cargoAssinatura = getCargoAssinaturaPreferencial(u) || (u.nivel === 'ADMIN' ? 'Chefe de Divisão / Gestor' : 'Servidor Municipal');
+      const cargoEfetivoLimpo = getStatusCargoEfetivo(u.cargo).nomeLimpo || u.cargo || cargoAssinatura;
+
       map.set(u.matricula, {
         nome: u.nome,
-        cargo: u.cargo || (u.nivel === 'ADMIN' ? 'Chefe de Divisão / Gestor' : 'Servidor Municipal'),
+        cargo: cargoAssinatura,
+        cargoEfetivo: cargoEfetivoLimpo,
+        funcaoGratificada: u.funcaoGratificada || '',
         departamento: u.departamento || 'Departamento de Recursos Humanos (DRH)',
         secretaria: secPrincipalU,
         matricula: u.matricula
@@ -2024,6 +2794,12 @@ export default function App() {
     if (draft.setorOrigem && !isUserRestrictedToDepartamento(currentUser)) {
       setRedatorSetorOrigem(draft.setorOrigem);
     }
+    if (draft.dataModo === 'PERSONALIZADO' && draft.dataDocumento?.trim()) {
+      setRedatorDataModo('PERSONALIZADO');
+      setRedatorData(draft.dataDocumento.trim());
+    } else {
+      ativarLocalDataAutomatico();
+    }
     setRedatorNumero('');
     setRedatorDraftSavedAt(draft.savedAt || '');
     setPendingRedatorDraft(null);
@@ -2060,42 +2836,136 @@ export default function App() {
     } catch {}
   }, [isRedatorModalOpen, currentUser?.matricula]);
 
-  // Auto-save silencioso com debounce enquanto o servidor redige no Redator Oficial
+  // Restauração automática de tela e rascunho em caso de atualização / recarregamento da aba
+  const restoredUiNoticeDoneRef = useRef(false);
+  useEffect(() => {
+    if (restoredUiNoticeDoneRef.current || !currentUser || !initialUiNav) return;
+    restoredUiNoticeDoneRef.current = true;
+
+    // Se o usuário estava no Redator Oficial quando o sistema atualizou, restaura o rascunho direto sem interromper
+    if (initialUiNav.isRedatorModalOpen) {
+      try {
+        const raw = localStorage.getItem(redatorDraftStorageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw) as RedatorDraftPayload;
+          if (parsed && (parsed.texto?.trim() || parsed.assunto?.trim() || parsed.destinatario?.trim())) {
+            redatorDraftSkipNextPromptRef.current = true;
+            setRedatorTipo(parsed.tipo || 'MEMORANDO');
+            setRedatorAssunto(parsed.assunto || '');
+            setRedatorDestinatario(parsed.destinatario || '');
+            setRedatorTratamento(parsed.tratamento || 'À / Ao');
+            setRedatorReferenciaDoc(parsed.referenciaDoc || '');
+            setRedatorTexto(parsed.texto || '');
+            setRedatorFecho(parsed.fecho || 'Permanecemos à disposição para eventuais esclarecimentos adicionais.');
+            setRedatorEmailCc(parsed.emailCc || '');
+            if (parsed.secretaria && (currentUser.nivel === 'ADMIN' || isUserAuthorizedForSecretaria(currentUser, parsed.secretaria, secretarias))) {
+              setRedatorSecretaria(resolveCanonicalSecretariaName(parsed.secretaria, secretarias));
+            }
+            if (parsed.setorOrigem && !isUserRestrictedToDepartamento(currentUser)) {
+              setRedatorSetorOrigem(parsed.setorOrigem);
+            }
+            if (parsed.dataModo === 'PERSONALIZADO' && parsed.dataDocumento?.trim()) {
+              setRedatorDataModo('PERSONALIZADO');
+              setRedatorData(parsed.dataDocumento.trim());
+            }
+            setRedatorDraftSavedAt(parsed.savedAt || '');
+            setPendingRedatorDraft(null);
+          }
+        }
+      } catch {}
+    }
+
+    const estavaEmTelaSecundaria =
+      initialUiNav.isRedatorModalOpen ||
+      initialUiNav.isAdminModalOpen ||
+      initialUiNav.isSheetsDrawerOpen ||
+      initialUiNav.isImportCatalogModalOpen ||
+      initialUiNav.activeAppView === 'modelos' ||
+      initialUiNav.activeTab !== 'app';
+
+    if (estavaEmTelaSecundaria) {
+      window.setTimeout(() => {
+        showToast('Tela restaurada automaticamente onde você parou.', 'Sessão Preservada');
+      }, 350);
+    }
+  }, [currentUser?.matricula]);
+
+  // Persiste continuamente a tela ativa, abas e modais para que atualizações nunca devolvam à tela inicial
+  useEffect(() => {
+    if (!currentUser?.matricula) return;
+    try {
+      const payload: PersistedUiNavState = {
+        activeTab,
+        activeAppView,
+        showDevHub,
+        selectedType,
+        selectedCategory,
+        isSheetsDrawerOpen,
+        activeSheetTab,
+        isAdminModalOpen: currentUser.nivel === 'ADMIN' ? isAdminModalOpen : false,
+        adminTab: adminInitialTab || 'servidores',
+        isRedatorModalOpen,
+        isImportCatalogModalOpen,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(getUiNavStorageKey(currentUser.matricula), JSON.stringify(payload));
+    } catch {}
+  }, [
+    currentUser?.matricula,
+    currentUser?.nivel,
+    activeTab,
+    activeAppView,
+    showDevHub,
+    selectedType,
+    selectedCategory,
+    isSheetsDrawerOpen,
+    activeSheetTab,
+    isAdminModalOpen,
+    adminInitialTab,
+    isRedatorModalOpen,
+    isImportCatalogModalOpen
+  ]);
+
+  // Auto-save silencioso ágil (500ms) + gravação imediata ao recarregar/atualizar a aba (beforeunload/pagehide)
+  const persistRedatorDraftNow = () => {
+    if (!isRedatorModalOpen || !currentUser || redatorNumero || pendingRedatorDraft) return;
+    if (!redatorTexto.trim() && !redatorAssunto.trim() && !redatorDestinatario.trim()) return;
+    try {
+      const agora = new Date();
+      const hh = String(agora.getHours()).padStart(2, '0');
+      const mm = String(agora.getMinutes()).padStart(2, '0');
+      const savedAt = `${hh}:${mm}`;
+      const payload: RedatorDraftPayload = {
+        tipo: redatorTipo,
+        assunto: redatorAssunto,
+        destinatario: redatorDestinatario,
+        tratamento: redatorTratamento,
+        referenciaDoc: redatorReferenciaDoc,
+        texto: redatorTexto,
+        fecho: redatorFecho,
+        emailCc: redatorEmailCc,
+        setorOrigem: redatorSetorOrigem,
+        secretaria: redatorSecretaria,
+        dataDocumento: redatorData,
+        dataModo: redatorDataModo,
+        savedAt
+      };
+      localStorage.setItem(redatorDraftStorageKey, JSON.stringify(payload));
+      setRedatorDraftSavedAt(savedAt);
+    } catch {}
+  };
+
   useEffect(() => {
     if (!isRedatorModalOpen || !currentUser || redatorNumero || pendingRedatorDraft) return;
-    if (!redatorTexto.trim() && !redatorAssunto.trim()) return;
+    if (!redatorTexto.trim() && !redatorAssunto.trim() && !redatorDestinatario.trim()) return;
 
-    const timer = window.setTimeout(() => {
-      try {
-        const agora = new Date();
-        const hh = String(agora.getHours()).padStart(2, '0');
-        const mm = String(agora.getMinutes()).padStart(2, '0');
-        const savedAt = `${hh}:${mm}`;
-        const payload: RedatorDraftPayload = {
-          tipo: redatorTipo,
-          assunto: redatorAssunto,
-          destinatario: redatorDestinatario,
-          tratamento: redatorTratamento,
-          referenciaDoc: redatorReferenciaDoc,
-          texto: redatorTexto,
-          fecho: redatorFecho,
-          emailCc: redatorEmailCc,
-          setorOrigem: redatorSetorOrigem,
-          secretaria: redatorSecretaria,
-          savedAt
-        };
-        localStorage.setItem(redatorDraftStorageKey, JSON.stringify(payload));
-        setRedatorDraftSavedAt(savedAt);
-      } catch {}
-    }, 1400);
-
+    const timer = window.setTimeout(persistRedatorDraftNow, 500);
     return () => window.clearTimeout(timer);
   }, [
     isRedatorModalOpen,
-    currentUser,
+    currentUser?.matricula,
     redatorNumero,
     pendingRedatorDraft,
-    redatorDraftStorageKey,
     redatorTipo,
     redatorAssunto,
     redatorDestinatario,
@@ -2105,14 +2975,28 @@ export default function App() {
     redatorFecho,
     redatorEmailCc,
     redatorSetorOrigem,
-    redatorSecretaria
+    redatorSecretaria,
+    redatorData,
+    redatorDataModo,
+    redatorDraftStorageKey
   ]);
+
+  useEffect(() => {
+    if (!isRedatorModalOpen || !currentUser) return;
+    const handleBeforeUnload = () => {
+      persistRedatorDraftNow();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
+    };
+  });
 
   // Reaproveitar / Duplicar documento emitido no Livro como base para um novo (sem número)
   const handleUsarDocumentoComoBase = (doc: RegistroNumeracao) => {
-    const allowedTypes = ['MEMORANDO', 'OFICIO', 'DESPACHO', 'CIRCULAR', 'PORTARIA', 'DECRETO', 'EMAIL', 'ATO', 'TERMO'] as const;
-    const rawType = (doc.tipoDocumento || 'MEMORANDO').toUpperCase();
-    const tipoFinal = (allowedTypes.includes(rawType as any) ? rawType : 'MEMORANDO') as typeof redatorTipo;
+    const tipoFinal = normalizeDocumentTypeCode(doc.tipoDocumento || 'MEMORANDO');
 
     redatorDraftSkipNextPromptRef.current = true;
     setPendingRedatorDraft(null);
@@ -2179,9 +3063,13 @@ export default function App() {
   };
 
   // Abrir Redator Oficial a partir da Central de Início ou cabeçalho (opcionalmente pré-selecionando o tipo)
-  const handleAbrirRedatorComTipo = (tipoInicial?: 'MEMORANDO' | 'OFICIO' | 'DESPACHO') => {
+  const handleAbrirRedatorComTipo = (tipoInicial?: RedatorTipoDocumento) => {
     if (currentUser) {
       syncUserScopeState(currentUser, false);
+      const secAtiva = activeSecretaria !== 'TODAS' ? activeSecretaria : (listaSecretariasDoUsuario[0] || currentUser.secretaria || '');
+      if (getSecretariaSigla(secAtiva, secretarias) === 'PGM') {
+        setRedatorTipoGrupo('PGM');
+      }
       if (currentUser.nivel !== 'ADMIN') {
         const secScope = activeSecretaria !== 'TODAS' ? activeSecretaria : listaSecretariasDoUsuario[0];
         setRedatorSecretaria(resolveCanonicalSecretariaName(secScope, secretarias));
@@ -2191,7 +3079,7 @@ export default function App() {
       }
     }
     if (tipoInicial) {
-      setRedatorTipo(tipoInicial);
+      handleSelecionarTipoRedator(tipoInicial);
     }
     setRedatorNumero('');
     setIsRedatorModalOpen(true);
@@ -2317,7 +3205,7 @@ export default function App() {
     }
     if (forceResetFields) {
       setRedatorSignatario(user.nome || 'Servidor Municipal');
-      setRedatorCargo(user.cargo || 'Servidor Público Municipal');
+      setRedatorCargo(getCargoAssinaturaPreferencial(user));
       setRedatorMatricula(user.matricula || '');
       setSelectedComboDocNum('');
       setInspectedDocFromCombo(null);
@@ -2355,36 +3243,53 @@ export default function App() {
     }
   };
 
-  // Fechamento de Modais com a tecla ESC para navegação fluida e evitar sensação de travamento
+  // Fechamento de Modais secundários com a tecla ESC (o Redator Oficial só fecha pelos botões Fechar / ✕ para evitar perda acidental de trabalho)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (isAiHelperOpen) {
-          setIsAiHelperOpen(false);
-        } else if (isGuiaAjudaOpen) {
-          setIsGuiaAjudaOpen(false);
-        } else if (isRecuperarSenhaOpen) {
-          setIsRecuperarSenhaOpen(false);
-        } else if (isRedatorLetterheadOpen) {
-          setIsRedatorLetterheadOpen(false);
-        } else if (isPasswordModalOpen) {
-          setIsPasswordModalOpen(false);
-        } else if (isCrudModalOpen) {
-          setIsCrudModalOpen(false);
-        } else if (isVariableModalOpen) {
-          setIsVariableModalOpen(false);
-        } else if (isAdminModalOpen) {
-          setIsAdminModalOpen(false);
-        } else if (isSheetsDrawerOpen) {
-          setIsSheetsDrawerOpen(false);
-        } else if (isRedatorModalOpen) {
-          setIsRedatorModalOpen(false);
-        }
+      if (e.key !== 'Escape') return;
+
+      // Não fechar modais se o usuário pressionou ESC dentro de campo editável (ex.: fechar lista de <select>, calendário ou autocomplete)
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toUpperCase();
+      const isEditingControl =
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        Boolean(target?.isContentEditable);
+
+      if (isEditingControl && isRedatorModalOpen && !isRedatorLetterheadOpen && !isThemeModalOpen && !isImportCatalogModalOpen) {
+        return;
+      }
+
+      if (isThemeModalOpen) {
+        setIsThemeModalOpen(false);
+      } else if (isImportCatalogModalOpen) {
+        setIsImportCatalogModalOpen(false);
+      } else if (isAiHelperOpen) {
+        setIsAiHelperOpen(false);
+      } else if (isGuiaAjudaOpen) {
+        setIsGuiaAjudaOpen(false);
+      } else if (isRecuperarSenhaOpen) {
+        setIsRecuperarSenhaOpen(false);
+      } else if (isRedatorLetterheadOpen) {
+        setIsRedatorLetterheadOpen(false);
+      } else if (isPasswordModalOpen) {
+        setIsPasswordModalOpen(false);
+      } else if (isCrudModalOpen) {
+        setIsCrudModalOpen(false);
+      } else if (isVariableModalOpen) {
+        setIsVariableModalOpen(false);
+      } else if (isAdminModalOpen) {
+        setIsAdminModalOpen(false);
+      } else if (isSheetsDrawerOpen) {
+        setIsSheetsDrawerOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    isThemeModalOpen,
+    isImportCatalogModalOpen,
     isAiHelperOpen,
     isGuiaAjudaOpen,
     isRecuperarSenhaOpen,
@@ -2463,6 +3368,7 @@ export default function App() {
           secretaria: primarySec,
           secretarias: canonicalSecs.length > 0 ? canonicalSecs : [primarySec],
           cargo: result.usuario.cargo || '',
+          funcaoGratificada: result.usuario.funcaoGratificada || '',
           departamento: (result.usuario.departamento || result.usuario.local || '').trim(),
           ativo: true,
           senha: sen,
@@ -2473,6 +3379,7 @@ export default function App() {
         };
         setCurrentUser(authUser);
         localStorage.setItem('sgep_user_session', JSON.stringify(authUser));
+        try { localStorage.removeItem(getUiNavStorageKey(authUser.matricula)); } catch {}
         const shouldSkipHub = localStorage.getItem(`bm_skip_home_hub_${authUser.matricula}`) === '1';
         setSkipHomeHub(shouldSkipHub);
         setActiveAppView(shouldSkipHub ? 'modelos' : 'inicio');
@@ -2543,6 +3450,9 @@ export default function App() {
         body: JSON.stringify({ action: 'LOGOUT', token: currentUser.token })
       }).catch(() => {});
     }
+    if (currentUser?.matricula) {
+      try { localStorage.removeItem(getUiNavStorageKey(currentUser.matricula)); } catch {}
+    }
     localStorage.removeItem('sgep_user_session');
     localStorage.removeItem('bm_active_secretaria');
     setCurrentUser(null);
@@ -2554,6 +3464,10 @@ export default function App() {
     setInspectedDocFromCombo(null);
     setRedatorNumero('');
     setActiveSheetTab('numeracao');
+    setIsSheetsDrawerOpen(false);
+    setIsAdminModalOpen(false);
+    setIsRedatorModalOpen(false);
+    setIsImportCatalogModalOpen(false);
     setShowDevHub(false);
     setActiveTab('app');
     setActiveAppView('inicio');
@@ -2692,7 +3606,8 @@ export default function App() {
                   nome: s.nome || '',
                   secretaria: primarySec,
                   departamento: String(s.departamento || '').trim(),
-                  cargo: s.cargo || 'Servidor Municipal',
+                  cargo: s.cargo || (s.funcaoGratificada ? '' : 'Servidor Municipal'),
+                  funcaoGratificada: s.funcaoGratificada || '',
                   nivel: (String(s.matricula).trim() === '1001' ? 'ADMIN' : ((s.nivel || 'PADRAO').toUpperCase() as any)),
                   ativo: s.ativo === undefined
                     ? true
@@ -2703,9 +3618,39 @@ export default function App() {
               });
 
               setUsuarios(prev => {
+                let recusadasSet = new Set<string>();
+                try {
+                  const rawRec = localStorage.getItem('bm_matriculas_recusadas');
+                  if (rawRec) {
+                    const parsedRec = JSON.parse(rawRec);
+                    if (Array.isArray(parsedRec)) {
+                      recusadasSet = new Set(parsedRec.map((m: any) => String(m).trim().toLowerCase()).filter(Boolean));
+                    }
+                  }
+                } catch {}
+                let recusadasChanged = false;
+
                 const map = new Map<string, UsuarioSistema>();
                 // Usuários vindos diretamente da planilha oficial Google Drive
-                sheetUsers.forEach(u => map.set(u.matricula.toLowerCase(), u));
+                sheetUsers.forEach(u => {
+                  const key = u.matricula.toLowerCase();
+                  if (recusadasSet.has(key)) {
+                    // Se o servidor voltou como ATIVO na planilha, libera da lista local de recusados
+                    if (u.ativo) {
+                      recusadasSet.delete(key);
+                      recusadasChanged = true;
+                    } else {
+                      // Mantém recusado oculto até que a planilha (GAS v4.5) exclua a linha definitivamente
+                      return;
+                    }
+                  }
+                  map.set(key, u);
+                });
+
+                if (recusadasChanged) {
+                  try { localStorage.setItem('bm_matriculas_recusadas', JSON.stringify(Array.from(recusadasSet))); } catch {}
+                }
+
                 // Preservar usuário master 1001 e dados de sessão/senha/filtro configurados
                 prev.forEach(u => {
                   const key = u.matricula.toLowerCase();
@@ -2715,6 +3660,7 @@ export default function App() {
                       ...fromSheet,
                       senha: u.senha || fromSheet.senha,
                       token: u.token || fromSheet.token,
+                      funcaoGratificada: fromSheet.funcaoGratificada || u.funcaoGratificada || '',
                       nivel: (fromSheet.nivel && fromSheet.nivel !== 'PADRAO') ? fromSheet.nivel : (u.nivel || fromSheet.nivel),
                       filtroAcessibilidade: fromSheet.filtroAcessibilidade || u.filtroAcessibilidade
                     });
@@ -2773,6 +3719,10 @@ export default function App() {
           if (json.registrosNumeracao && Array.isArray(json.registrosNumeracao)) {
             setNumeracoes(json.registrosNumeracao);
           }
+          if (json.configNumeracao && Array.isArray(json.configNumeracao.tiposSequenciaGlobal)) {
+            setConfigNumeracao(json.configNumeracao);
+            try { localStorage.setItem('bm_config_numeracao_v1', JSON.stringify(json.configNumeracao)); } catch {}
+          }
           if (!silent) {
             showToast('Modelos e histórico de numeração sincronizados com a planilha oficial!');
           }
@@ -2819,6 +3769,17 @@ export default function App() {
   useEffect(() => {
     handleSyncData(undefined, true);
   }, []);
+
+  // Sincronização silenciosa periódica em segundo plano (3 min) sem alterar a tela nem interromper a digitação
+  useEffect(() => {
+    if (!currentUser || !useRealApi) return;
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (isLoadingFromGas) return;
+      handleSyncData(currentUser.token, true);
+    }, 3 * 60 * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [currentUser?.matricula, currentUser?.token, useRealApi]);
 
   // -----------------------------------------------------------------
   // MÓDULO: ALTERAÇÃO DE NOME E SENHA DO SERVIDOR LOGADO
@@ -3007,6 +3968,8 @@ export default function App() {
       ? currentUser!.departamento!.trim()
       : (redatorSetorOrigem.trim() || currentUser?.departamento?.trim() || deptoPadraoPasta);
 
+    const isTipoGlobal = isTipoSequenciaGlobal(tipoDoc, configNumeracao);
+
     if (useRealApi) {
       try {
         const response = await fetchWithTimeout(realApiUrl, {
@@ -3021,7 +3984,8 @@ export default function App() {
             departamento: deptoAlvo,
             servidor: servidorIdentificado,
             sigla: siglaAlvo,
-            incluirSigla: incluirSiglaNoNumero,
+            incluirSigla: incluirSiglaNoNumero && !isTipoGlobal,
+            sequenciaGlobal: isTipoGlobal,
             usuarioLogado: servidorIdentificado,
             token: currentUser?.token || ''
           })
@@ -3041,7 +4005,7 @@ export default function App() {
             destinatario: destinatarioFinal,
             secretaria: json.secretaria || secAlvo,
             departamento: json.departamento || deptoAlvo,
-            incluirSigla: incluirSiglaNoNumero
+            incluirSigla: incluirSiglaNoNumero && !isTipoGlobal
           };
           setNumeracoes(prev => [novoReg, ...prev]);
           limparRascunhoRedator();
@@ -3059,9 +4023,8 @@ export default function App() {
 
     // Geração no modo de contingência / simulação local garantida
     await new Promise(resolve => setTimeout(resolve, 150));
-    const proximoSeq = getNextSequentialForSecretaria(numeracoes, tipoDoc, secAlvo, anoAtual, secretarias);
-    const seqStr = String(proximoSeq).padStart(3, '0');
-    const nextNum = incluirSiglaNoNumero ? `${seqStr}/${anoAtual} - ${siglaAlvo}` : `${seqStr}/${anoAtual}`;
+    const proximoSeq = getNextSequentialForSecretaria(numeracoes, tipoDoc, secAlvo, anoAtual, secretarias, configNumeracao);
+    const nextNum = formatNumeroOficialSequencial(proximoSeq, anoAtual, incluirSiglaNoNumero, siglaAlvo, isTipoGlobal);
     const nowIso = new Date().toISOString();
 
     const novoReg: RegistroNumeracao = {
@@ -3074,7 +4037,7 @@ export default function App() {
       destinatario: destinatarioFinal,
       secretaria: secAlvo,
       departamento: deptoAlvo,
-      incluirSigla: incluirSiglaNoNumero
+      incluirSigla: incluirSiglaNoNumero && !isTipoGlobal
     };
 
     const novoLog: RegistroLog = {
@@ -3222,23 +4185,29 @@ export default function App() {
     setRedatorTexto(sanitizarTextoSemTabulacaoResidual(mod.Texto));
     if (mod.Assunto || mod.Titulo) setRedatorAssunto(mod.Assunto || mod.Titulo);
     if (mod.SetorDestino) setRedatorDestinatario(mod.SetorDestino);
-    const tipoMod = (mod.TipoDocumento || '').toUpperCase();
-    const tiposSuportados = ['MEMORANDO', 'OFICIO', 'DESPACHO', 'CIRCULAR', 'PORTARIA', 'DECRETO', 'ATO', 'TERMO', 'EMAIL'];
-    if (tiposSuportados.includes(tipoMod)) {
-      setRedatorTipo(tipoMod as any);
-    } else if (tipoMod === 'DECISAO') {
-      setRedatorTipo('ATO');
+    const tipoMod = normalizeDocumentTypeCode(mod.TipoDocumento);
+    setRedatorTipo(tipoMod);
+    const defMod = DOCUMENT_TYPE_MAP[tipoMod];
+    if (defMod) {
+      setRedatorFecho(defMod.defaultFecho);
+      if (defMod.group === 'PGM') setRedatorTipoGrupo('PGM');
     }
-    if (tipoMod === 'TERMO') {
+    if (mod.EstiloId) {
+      const styleMod = getDocumentStyleById(mod.EstiloId, customDocumentStyles);
+      aplicarPerfilEstiloDocumental(styleMod, true);
+    }
+    if (tipoMod === 'TERMO' && mod.ID !== 'GP-010') {
       setRedatorModoAssinatura('TAC_CAC');
       setRedatorFecho('E, por estarem plenamente acordados, firmam o presente termo em 3 (três) vias de igual teor.');
+    } else if (mod.ID === 'GP-010' || mod.ID === 'GP-001' || mod.ID === 'GP-004') {
+      setRedatorModoAssinatura('DUPLA_REFERENDO');
     } else if (tipoMod === 'ATO' && (mod.Area || '').toLowerCase().includes('disciplin')) {
       setRedatorFecho('Comissão de Processo Administrativo Disciplinar / Sindicância');
       if (redatorModoAssinatura === 'INDIVIDUAL' && (mod.Texto || '').toLowerCase().includes('vogal')) {
         mudarModoAssinatura('COMISSAO_PAD');
       }
     }
-    showToast(`Texto do modelo "${mod.Titulo}" carregado no redator!`);
+    showToast(`Modelo "${mod.Titulo}" carregado${mod.EstiloId ? ' com estilo visual do setor' : ''}!`);
   };
 
   // Ações da Barra de Ferramentas de Formatação Oficial
@@ -3273,6 +4242,20 @@ export default function App() {
   };
 
   const aplicarFormatacaoSelecao = (antes: string, depois: string, placeholder = 'texto') => {
+    const kindMap: Record<string, RedatorInlineFormatKind> = {
+      '**': 'bold',
+      '*': 'italic',
+      '<u>': 'underline',
+      '~~': 'strike',
+      '<mark>': 'mark',
+      '[': 'campo'
+    };
+    const kind = kindMap[antes];
+    if (kind && redatorRichEditorRef.current) {
+      redatorRichEditorRef.current.toggleFormat(kind);
+      return;
+    }
+
     const ta = redatorTextareaRef.current;
     if (!ta) return;
     const start = ta.selectionStart;
@@ -3293,6 +4276,20 @@ export default function App() {
   };
 
   const aplicarPrefixoLinha = (prefixo: string, placeholder = 'Item') => {
+    const blockMap: Record<string, RedatorBlockFormatKind> = {
+      '- ': 'ul',
+      '1. ': 'ol',
+      '> ': 'quote',
+      '---': 'hr',
+      'I - ': 'inciso',
+      'a) ': 'alinea'
+    };
+    const blockKind = blockMap[prefixo];
+    if (blockKind && redatorRichEditorRef.current) {
+      redatorRichEditorRef.current.applyBlock(blockKind);
+      return;
+    }
+
     const ta = redatorTextareaRef.current;
     if (!ta) return;
     const start = ta.selectionStart;
@@ -3318,6 +4315,12 @@ export default function App() {
   };
 
   const handleLimparFormatacaoRedator = () => {
+    if (redatorRichEditorRef.current) {
+      redatorRichEditorRef.current.clearFormatting();
+      showToast('Formatação e tabulações residuais removidas.');
+      return;
+    }
+
     const ta = redatorTextareaRef.current;
     if (!ta) return;
     const start = ta.selectionStart;
@@ -3639,16 +4642,7 @@ export default function App() {
   // Helper oficial unificado de nomenclatura de arquivo de documentos da Prefeitura de Rio Claro
   // Exemplo: 'Memo 757-2026 - SMA - Quantitativo de Servidores e Informações de Folha.pdf'
   const getOfficialDocFileName = (extension: 'pdf' | 'doc' | 'txt') => {
-    const tipoNome = redatorTipo === 'MEMORANDO' ? 'Memo'
-      : redatorTipo === 'OFICIO' ? 'Oficio'
-      : redatorTipo === 'DESPACHO' ? 'Despacho'
-      : redatorTipo === 'PORTARIA' ? 'Portaria'
-      : redatorTipo === 'DECRETO' ? 'Decreto'
-      : redatorTipo === 'CIRCULAR' ? 'Circular'
-      : redatorTipo === 'EMAIL' ? 'Email'
-      : redatorTipo === 'ATO' ? 'Ato_Disciplinar'
-      : redatorTipo === 'TERMO' ? 'Termo_CAC'
-      : redatorTipo;
+    const tipoNome = getDocumentTypeDefinition(redatorTipo).filePrefix;
 
     let numPart = (redatorNumero || 'minuta').trim();
     if (numPart.includes('-')) {
@@ -3666,9 +4660,10 @@ export default function App() {
       : `${tipoNome} ${numLimpo} - ${sigla} - ${assuntoLimpo}.${extension}`;
   };
 
-  // Helper para renderizar assinaturas individuais ou de Comissão Processante no Word (.doc / MHTML)
+  // Helper para renderizar assinaturas individuais, dupla/referendo ou Comissão Processante no Word (.doc / MHTML)
   const renderAssinaturasHtmlWord = () => {
     const sec = redatorSecretaria.trim() || 'Secretaria Municipal de Administração (SMA)';
+    const accentColor = activeDocumentStyle.corPrimaria || '#002b82';
     if (redatorModoAssinatura === 'INDIVIDUAL') {
       const sig = redatorSignatario.trim() || (redatorTipo === 'DECRETO' ? 'Prefeito Municipal' : 'Augusto Lourenço da Silva Júnior');
       const cargo = redatorCargo.trim() || (redatorTipo === 'DECRETO' ? 'Prefeito Municipal de Rio Claro' : 'Chefe de Divisão de Treinamento e RH');
@@ -3677,8 +4672,39 @@ export default function App() {
           <div class="sig-line" style="width: 240pt; border-top: 1pt solid #000000; margin: 0 auto 6pt auto;"></div>
           <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 11pt; color: #000000;">${sig}</div>
           <div style="font-family: Arial, sans-serif; font-style: italic; font-size: 9.5pt; color: #333333;">${cargo}</div>
-          <div style="font-family: Arial, sans-serif; font-size: 9pt; color: #002b82; font-weight: bold;">${sec}</div>
+          <div style="font-family: Arial, sans-serif; font-size: 9pt; color: ${accentColor}; font-weight: bold;">${sec}</div>
           <div style="font-family: Arial, sans-serif; font-size: 8.5pt; color: #666666;">Prefeitura Municipal de Rio Claro – RJ</div>
+        </div>
+      `;
+    }
+
+    if (redatorModoAssinatura === 'DUPLA_REFERENDO') {
+      const sig1 = redatorSignatario.trim() || 'Prefeito Municipal';
+      const cargo1 = redatorCargo.trim() || 'Prefeito Municipal de Rio Claro';
+      const sig2 = redatorSegundoSignatario.trim() || '[Autoridade Referendante]';
+      const cargo2 = redatorSegundoCargo.trim() || 'Secretário(a) Municipal';
+      const sec2 = redatorSegundaSecretaria.trim() || sec;
+      return `
+        <div style="margin-top: 36pt; page-break-inside: avoid; mso-page-break-inside: avoid;">
+          <table border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; text-align: center;">
+            <tr>
+              <td width="50%" valign="top" style="width: 50%; text-align: center; padding: 6pt 12pt;">
+                <div style="border-top: 1pt solid #000000; width: 175pt; margin: 0 auto 6pt auto;"></div>
+                <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 10.5pt; color: #000000;">${sig1}</div>
+                <div style="font-family: Arial, sans-serif; font-size: 9pt; font-style: italic; color: #333333;">${cargo1}</div>
+                <div style="font-family: Arial, sans-serif; font-size: 8.5pt; font-weight: bold; color: ${accentColor};">${sec}</div>
+              </td>
+              <td width="50%" valign="top" style="width: 50%; text-align: center; padding: 6pt 12pt;">
+                <div style="border-top: 1pt solid #000000; width: 175pt; margin: 0 auto 6pt auto;"></div>
+                <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 10.5pt; color: #000000;">${sig2}</div>
+                <div style="font-family: Arial, sans-serif; font-size: 9pt; font-style: italic; color: #333333;">${cargo2}</div>
+                <div style="font-family: Arial, sans-serif; font-size: 8.5pt; font-weight: bold; color: ${accentColor};">${sec2}</div>
+              </td>
+            </tr>
+          </table>
+          <p style="text-align: center; font-family: Arial, sans-serif; font-size: 8pt; color: #64748b; margin-top: 12pt; text-indent: 0;">
+            Prefeitura Municipal de Rio Claro – RJ
+          </p>
         </div>
       `;
     }
@@ -3686,7 +4712,7 @@ export default function App() {
     if (redatorModoAssinatura === 'COMISSAO_PAD' || redatorMembrosComissao.length === 3) {
       return `
         <div style="margin-top: 36pt; page-break-inside: avoid; mso-page-break-inside: avoid;">
-          <p style="text-align: center; font-family: Arial, sans-serif; font-weight: bold; font-size: 10pt; color: #002b82; text-transform: uppercase; margin-bottom: 20pt; text-indent: 0;">
+          <p style="text-align: center; font-family: Arial, sans-serif; font-weight: bold; font-size: 10pt; color: ${accentColor}; text-transform: uppercase; margin-bottom: 20pt; text-indent: 0;">
             COMISSÃO PROCESSANTE DE SINDICÂNCIA E PAD
           </p>
           <table border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; text-align: center;">
@@ -3695,7 +4721,7 @@ export default function App() {
                 <td width="33%" valign="top" style="width: 33%; text-align: center; padding: 0 6pt;">
                   <div style="border-top: 1pt solid #000000; width: 130pt; margin: 0 auto 6pt auto;"></div>
                   <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 10pt; color: #000000;">${m.nome}</div>
-                  <div style="font-family: Arial, sans-serif; font-size: 9pt; font-weight: bold; color: #002b82;">${m.funcao}</div>
+                  <div style="font-family: Arial, sans-serif; font-size: 9pt; font-weight: bold; color: ${accentColor};">${m.funcao}</div>
                   <div style="font-family: Arial, sans-serif; font-size: 8.5pt; font-style: italic; color: #475569;">${m.cargoEfetivo}</div>
                   <div style="font-family: Arial, sans-serif; font-size: 8pt; color: #64748b;">Matrícula nº ${m.matricula}</div>
                 </td>
@@ -3721,7 +4747,7 @@ export default function App() {
                   ${m1 ? `
                     <div style="border-top: 1pt solid #000000; width: 150pt; margin: 0 auto 6pt auto;"></div>
                     <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 10pt; color: #000000;">${m1.nome}</div>
-                    <div style="font-family: Arial, sans-serif; font-size: 9pt; font-weight: bold; color: #002b82;">${m1.funcao}</div>
+                    <div style="font-family: Arial, sans-serif; font-size: 9pt; font-weight: bold; color: ${accentColor};">${m1.funcao}</div>
                     <div style="font-family: Arial, sans-serif; font-size: 8.5pt; font-style: italic; color: #475569;">${m1.cargoEfetivo}</div>
                     <div style="font-family: Arial, sans-serif; font-size: 8pt; color: #64748b;">Matrícula nº ${m1.matricula}</div>
                   ` : ''}
@@ -3730,7 +4756,7 @@ export default function App() {
                   ${m2 ? `
                     <div style="border-top: 1pt solid #000000; width: 150pt; margin: 0 auto 6pt auto;"></div>
                     <div style="font-family: Arial, sans-serif; font-weight: bold; font-size: 10pt; color: #000000;">${m2.nome}</div>
-                    <div style="font-family: Arial, sans-serif; font-size: 9pt; font-weight: bold; color: #002b82;">${m2.funcao}</div>
+                    <div style="font-family: Arial, sans-serif; font-size: 9pt; font-weight: bold; color: ${accentColor};">${m2.funcao}</div>
                     <div style="font-family: Arial, sans-serif; font-size: 8.5pt; font-style: italic; color: #475569;">${m2.cargoEfetivo}</div>
                     <div style="font-family: Arial, sans-serif; font-size: 8pt; color: #64748b;">Matrícula nº ${m2.matricula}</div>
                   ` : ''}
@@ -3746,35 +4772,58 @@ export default function App() {
     `;
   };
 
-  // Helper para renderizar assinaturas individuais ou da Comissão em JSX (Prévia e Impressão Nativa)
+  // Helper para renderizar assinaturas individuais, dupla/referendo ou Comissão em JSX (Prévia e Impressão Nativa)
   const renderAssinaturasJSX = (isPrint: boolean = false) => {
+    const accentColor = activeDocumentStyle.corPrimaria || '#002b82';
     if (redatorModoAssinatura === 'INDIVIDUAL') {
       return (
         <div id="assinatura-timbrado" className={`assinatura-timbrado avoid-break text-center pt-6 max-w-sm mx-auto font-sans ${isPrint ? 'mt-10' : 'mt-6'}`} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
           <div className="w-52 h-[1px] bg-slate-400 mx-auto mb-2"></div>
-          <p className="font-bold text-xs sm:text-sm text-slate-900 dark:text-slate-100">{redatorSignatario}</p>
-          <p className="text-[11px] text-slate-700 dark:text-slate-300 italic">{redatorCargo}</p>
-          <p className="text-[10px] text-[#002b82] dark:text-sky-400 font-semibold">{redatorSecretaria}</p>
+          <p className="font-bold text-xs sm:text-sm text-slate-900">{redatorSignatario}</p>
+          <p className="text-[11px] text-slate-700 italic">{redatorCargo}</p>
+          <p className="text-[10px] font-semibold" style={{ color: accentColor }}>{redatorSecretaria}</p>
           <p className="text-[10px] text-slate-500 mt-0.5">Prefeitura Municipal de Rio Claro – RJ</p>
+        </div>
+      );
+    }
+
+    if (redatorModoAssinatura === 'DUPLA_REFERENDO') {
+      return (
+        <div id="assinatura-timbrado" className={`assinatura-timbrado avoid-break pt-6 font-sans ${isPrint ? 'mt-10' : 'mt-6'}`} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-center">
+            <div className="flex flex-col items-center">
+              <div className="w-48 h-[1px] bg-slate-400 mb-2"></div>
+              <p className="font-bold text-xs sm:text-sm text-slate-900 leading-tight">{redatorSignatario}</p>
+              <p className="text-[11px] text-slate-700 italic mt-0.5 leading-tight">{redatorCargo}</p>
+              <p className="text-[10px] font-semibold mt-0.5 leading-tight" style={{ color: accentColor }}>{redatorSecretaria}</p>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="w-48 h-[1px] bg-slate-400 mb-2"></div>
+              <p className="font-bold text-xs sm:text-sm text-slate-900 leading-tight">{redatorSegundoSignatario}</p>
+              <p className="text-[11px] text-slate-700 italic mt-0.5 leading-tight">{redatorSegundoCargo}</p>
+              <p className="text-[10px] font-semibold mt-0.5 leading-tight" style={{ color: accentColor }}>{redatorSegundaSecretaria || redatorSecretaria}</p>
+            </div>
+          </div>
+          <p className="text-center text-[10px] text-slate-500 mt-3">Prefeitura Municipal de Rio Claro – RJ</p>
         </div>
       );
     }
 
     if (redatorModoAssinatura === 'COMISSAO_PAD' || redatorMembrosComissao.length === 3) {
       return (
-        <div id="assinatura-timbrado" className={`assinatura-timbrado avoid-break pt-6 border-t border-slate-200 dark:border-slate-700 font-sans ${isPrint ? 'mt-10' : 'mt-6'}`} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+        <div id="assinatura-timbrado" className={`assinatura-timbrado avoid-break pt-6 border-t border-slate-200 font-sans ${isPrint ? 'mt-10' : 'mt-6'}`} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
           <div className="text-center mb-4">
-            <span className="text-[11px] font-black text-[#002b82] dark:text-sky-400 tracking-wider uppercase">
+            <span className="text-[11px] font-black tracking-wider uppercase" style={{ color: accentColor }}>
               COMISSÃO PROCESSANTE DE SINDICÂNCIA E PAD
             </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
             {redatorMembrosComissao.map((m, idx) => (
-              <div key={m.id || idx} className="p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 flex flex-col items-center">
+              <div key={m.id || idx} className="p-2.5 rounded-lg border border-slate-200/60 bg-slate-50/40 flex flex-col items-center">
                 <div className="w-36 h-[1px] bg-slate-400 mb-2"></div>
-                <p className="font-bold text-xs text-slate-900 dark:text-slate-100 leading-tight">{m.nome}</p>
-                <p className="text-[11px] font-semibold text-[#002b82] dark:text-sky-400 mt-0.5 leading-tight">{m.funcao}</p>
-                <p className="text-[10px] text-slate-600 dark:text-slate-400 italic mt-0.5 leading-tight">{m.cargoEfetivo}</p>
+                <p className="font-bold text-xs text-slate-900 leading-tight">{m.nome}</p>
+                <p className="text-[11px] font-semibold mt-0.5 leading-tight" style={{ color: accentColor }}>{m.funcao}</p>
+                <p className="text-[10px] text-slate-600 italic mt-0.5 leading-tight">{m.cargoEfetivo}</p>
                 <p className="text-[9px] text-slate-500 mt-0.5">Matrícula nº {m.matricula}</p>
               </div>
             ))}
@@ -3785,19 +4834,19 @@ export default function App() {
     }
 
     return (
-      <div id="assinatura-timbrado" className={`assinatura-timbrado avoid-break pt-6 border-t border-slate-200 dark:border-slate-700 font-sans ${isPrint ? 'mt-10' : 'mt-6'}`} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+      <div id="assinatura-timbrado" className={`assinatura-timbrado avoid-break pt-6 border-t border-slate-200 font-sans ${isPrint ? 'mt-10' : 'mt-6'}`} style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
         <div className="text-center mb-3">
-          <span className="text-[11px] font-black text-[#002b82] dark:text-sky-400 tracking-wider uppercase">
+          <span className="text-[11px] font-black tracking-wider uppercase" style={{ color: accentColor }}>
             {redatorModoAssinatura === 'TAC_CAC' ? 'TERMO DE AJUSTAMENTO DE CONDUTA (CAC / TAC)' : 'ASSINATURAS DO EXPEDIENTE DISCIPLINAR'}
           </span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
           {redatorMembrosComissao.map((m, idx) => (
-            <div key={m.id || idx} className="p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 flex flex-col items-center">
+            <div key={m.id || idx} className="p-2.5 rounded-lg border border-slate-200/60 bg-slate-50/40 flex flex-col items-center">
               <div className="w-44 h-[1px] bg-slate-400 mb-2"></div>
-              <p className="font-bold text-xs text-slate-900 dark:text-slate-100 leading-tight">{m.nome}</p>
-              <p className="text-[11px] font-semibold text-[#002b82] dark:text-sky-400 mt-0.5 leading-tight">{m.funcao}</p>
-              <p className="text-[10px] text-slate-600 dark:text-slate-400 italic mt-0.5 leading-tight">{m.cargoEfetivo}</p>
+              <p className="font-bold text-xs text-slate-900 leading-tight">{m.nome}</p>
+              <p className="text-[11px] font-semibold mt-0.5 leading-tight" style={{ color: accentColor }}>{m.funcao}</p>
+              <p className="text-[10px] text-slate-600 italic mt-0.5 leading-tight">{m.cargoEfetivo}</p>
               <p className="text-[9px] text-slate-500 mt-0.5">Matrícula nº {m.matricula}</p>
             </div>
           ))}
@@ -3831,56 +4880,88 @@ export default function App() {
 
     const boundary = "----=_NextPart_SGEP_DOC_" + Date.now();
 
-    let headerAndBodyHtml = "";
-    if (redatorTipo === 'DECRETO') {
-      headerAndBodyHtml = `
-        <p style="text-align: center; font-family: Arial, sans-serif; font-size: 13pt; font-weight: bold; color: #002b82; margin: 0 0 16pt 0;">${numTexto}</p>
-        <table border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; margin-bottom: 20pt; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
+    const corInst = activeDocumentStyle.corPrimaria || '#002b82';
+    const lineHeightDocx = activeDocumentStyle.espacamentoLinhas || 1.5;
+    const subtituloCabecalho = activeDocumentStyle.cabecalhoSubtituloCustom || sec;
+    const rodapeDoc = (activeDocumentStyle.rodapeTexto || '').trim();
+
+    const buildEmentaWordHtml = (textoEmenta: string, larguraDir: string) => {
+      if (!textoEmenta) return '';
+      if (activeDocumentStyle.ementaEstilo === 'CAIXA_SOMBREADA') {
+        return `<div style="margin: 0 0 18pt 0; padding: 8pt 12pt; background-color: #f8fafc; border-left: 3pt solid ${corInst}; border-top: 0.75pt solid #cbd5e1; border-right: 0.75pt solid #cbd5e1; border-bottom: 0.75pt solid #cbd5e1; text-align: justify; font-family: 'Times New Roman', serif; font-style: italic; font-size: 10pt; color: #1e293b; line-height: 1.35; mso-line-height-rule: exactly;">${textoEmenta}</div>`;
+      }
+      if (activeDocumentStyle.ementaEstilo === 'SIMPLES') {
+        return `<p style="margin: 0 0 16pt 0; text-indent: 0; text-align: justify; font-family: 'Times New Roman', serif; font-style: italic; font-size: 10pt; color: #1e293b; line-height: 1.35; mso-line-height-rule: exactly;"><strong>Ementa:</strong> ${textoEmenta}</p>`;
+      }
+      const leftPct = larguraDir === '58%' ? '42%' : '38%';
+      const borderLeftCss = activeDocumentStyle.ementaEstilo === 'DIREITA_SEM_BORDA'
+        ? 'border-left: none; padding-left: 4pt;'
+        : `border-left: 2pt solid ${corInst}; padding-left: 10pt;`;
+      return `
+        <table border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; margin-bottom: 18pt; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
           <tr>
-            <td width="42%" style="width: 42%;"></td>
-            <td width="58%" style="width: 58%; text-align: justify; font-family: 'Times New Roman', serif; font-style: italic; font-size: 10pt; color: #1e293b; border-left: 2pt solid #002b82; padding-left: 10pt; line-height: 1.35; mso-line-height-rule: exactly;">
-              ${ass}
+            <td width="${leftPct}" style="width: ${leftPct};"></td>
+            <td width="${larguraDir}" style="width: ${larguraDir}; text-align: justify; font-family: 'Times New Roman', serif; font-style: italic; font-size: 10pt; color: #1e293b; ${borderLeftCss} line-height: 1.35; mso-line-height-rule: exactly;">
+              ${textoEmenta}
             </td>
           </tr>
-        </table>
+        </table>`;
+    };
+
+    const docDef = getDocumentTypeDefinition(redatorTipo);
+    let headerAndBodyHtml = "";
+    if (redatorTipo === 'DECRETO' || redatorTipo === 'PROJETO_LEI') {
+      headerAndBodyHtml = `
+        <p style="text-align: center; font-family: Arial, sans-serif; font-size: 13pt; font-weight: bold; color: ${corInst}; margin: 0 0 16pt 0;">${numTexto}</p>
+        ${buildEmentaWordHtml(ass, '58%')}
         <div class="doc-body">${corpoHTML}</div>
         <p style="text-indent: 0; margin-top: 24pt; margin-bottom: 12pt; font-style: italic;">Gabinete do Prefeito, ${dataFormatada}.</p>
       `;
-    } else if (redatorTipo === 'PORTARIA') {
+    } else if (docDef.layout === 'SOLENE') {
       headerAndBodyHtml = `
-        <p style="text-align: center; font-family: Arial, sans-serif; font-size: 13pt; font-weight: bold; color: #002b82; margin: 0 0 16pt 0;">${numTexto}</p>
-        <table border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; margin-bottom: 20pt; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
-          <tr>
-            <td width="42%" style="width: 42%;"></td>
-            <td width="58%" style="width: 58%; text-align: justify; font-family: 'Times New Roman', serif; font-style: italic; font-size: 10pt; color: #1e293b; border-left: 2pt solid #475569; padding-left: 10pt; line-height: 1.35; mso-line-height-rule: exactly;">
-              ${ass}
-            </td>
-          </tr>
-        </table>
+        <p style="text-align: center; font-family: Arial, sans-serif; font-size: 13pt; font-weight: bold; color: ${corInst}; margin: 0 0 14pt 0;">${numTexto}</p>
+        ${buildEmentaWordHtml(ass, '62%')}
+        <div class="doc-body">${corpoHTML}</div>
+        ${fecho ? `<p style="text-indent: 0; margin-top: 20pt; margin-bottom: 10pt; font-weight: bold;">${fecho}</p>` : ''}
+        <p style="text-indent: 0; margin-bottom: 24pt; font-style: italic;">Rio Claro-RJ, ${dataFormatada}.</p>
+      `;
+    } else if (docDef.layout === 'JUDICIAL') {
+      headerAndBodyHtml = `
+        <p style="text-align: right; font-family: Arial, sans-serif; font-size: 9pt; color: #475569; margin: 0 0 14pt 0;">${numTexto} • ${dataFormatada}</p>
         <div class="doc-body">${corpoHTML}</div>
         <p style="text-indent: 0; margin-top: 20pt; margin-bottom: 10pt; font-weight: bold;">${fecho}</p>
         <p style="text-indent: 0; margin-bottom: 24pt; font-style: italic;">Rio Claro-RJ, ${dataFormatada}.</p>
       `;
-    } else if (redatorTipo === 'ATO' || redatorTipo === 'TERMO') {
+    } else if (docDef.layout === 'NOTIFICACAO') {
       headerAndBodyHtml = `
-        <p style="text-align: center; font-family: Arial, sans-serif; font-size: 13pt; font-weight: bold; color: #002b82; margin: 0 0 14pt 0;">${numTexto}</p>
-        ${ass ? `
-        <table border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; margin-bottom: 18pt; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
-          <tr>
-            <td width="35%" style="width: 35%;"></td>
-            <td width="65%" style="width: 65%; text-align: justify; font-family: 'Times New Roman', serif; font-style: italic; font-size: 10pt; color: #1e293b; border-left: 2pt solid #002b82; padding-left: 10pt; line-height: 1.35; mso-line-height-rule: exactly;">
-              ${ass}
-            </td>
-          </tr>
-        </table>` : ''}
+        <p style="text-align: center; font-family: Arial, sans-serif; font-size: 13pt; font-weight: bold; color: #9f1239; margin: 0 0 14pt 0;">${numTexto}</p>
+        <div style="margin-bottom: 14pt; font-family: Arial, sans-serif; font-size: 10pt; border: 1pt solid #e2e8f0; padding: 8pt 10pt; background-color: #f8fafc;">
+          <p style="margin: 0 0 4pt 0; text-indent: 0;"><strong>NOTIFICANTE:</strong> Município de Rio Claro – RJ (${sec})</p>
+          <p style="margin: 0 0 4pt 0; text-indent: 0;"><strong>NOTIFICADO(A):</strong> ${dest}</p>
+          <p style="margin: 0; text-indent: 0;"><strong>OBJETO:</strong> ${ass}</p>
+        </div>
         <div class="doc-body">${corpoHTML}</div>
-        <p style="text-indent: 0; margin-top: 20pt; margin-bottom: 24pt; font-style: italic;">Rio Claro-RJ, ${dataFormatada}.</p>
+        <p style="text-indent: 0; margin-top: 20pt; margin-bottom: 10pt; font-weight: bold;">${fecho}</p>
+        <p style="text-indent: 0; margin-bottom: 24pt; font-style: italic;">Rio Claro-RJ, ${dataFormatada}.</p>
+      `;
+    } else if (docDef.layout === 'JURIDICO') {
+      headerAndBodyHtml = `
+        <p style="text-align: center; font-family: Arial, sans-serif; font-size: 13pt; font-weight: bold; color: ${corInst}; margin: 0 0 4pt 0;">${numTexto}</p>
+        <p style="text-align: center; font-family: Arial, sans-serif; font-size: 9pt; color: #475569; margin: 0 0 14pt 0;">${docDef.subtitle}</p>
+        <div style="margin-bottom: 16pt; font-family: Arial, sans-serif; font-size: 10pt; border-top: 1pt solid #cbd5e1; border-bottom: 1pt solid #cbd5e1; padding: 8pt 0;">
+          ${dest ? `<p style="margin: 0 0 3pt 0; text-indent: 0;"><strong>Interessado / Destino:</strong> ${dest}</p>` : ''}
+          ${redatorReferenciaDoc ? `<p style="margin: 0 0 3pt 0; text-indent: 0;"><strong>Processo / Referência:</strong> ${redatorReferenciaDoc}</p>` : ''}
+          <p style="margin: 0; text-indent: 0;"><strong>Assunto / Objeto:</strong> ${ass}</p>
+        </div>
+        <div class="doc-body">${corpoHTML}</div>
+        <p style="text-indent: 0; margin-top: 20pt; margin-bottom: 10pt;">${fecho}</p>
+        <p style="text-indent: 0; margin-bottom: 24pt; font-style: italic;">Rio Claro-RJ, ${dataFormatada}.</p>
       `;
     } else {
       headerAndBodyHtml = `
         <table border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; margin-bottom: 18pt; mso-table-lspace: 0pt; mso-table-rspace: 0pt;">
           <tr>
-            <td align="left" style="font-family: Arial, sans-serif; font-size: 11pt; font-weight: bold; color: #002b82; padding: 0;">${numTexto}</td>
+            <td align="left" style="font-family: Arial, sans-serif; font-size: 11pt; font-weight: bold; color: ${corInst}; padding: 0;">${numTexto}</td>
             <td align="right" style="font-family: Arial, sans-serif; font-size: 10pt; color: #475569; text-align: right; padding: 0;">Rio Claro-RJ, ${dataFormatada}</td>
           </tr>
         </table>
@@ -3896,6 +4977,42 @@ export default function App() {
         <p style="text-indent: 0; margin-top: 20pt; margin-bottom: 28pt;">${fecho}</p>
       `;
     }
+
+    const headerBorderCss = activeDocumentStyle.cabecalhoLayout === 'SOLENE_DUPLO'
+      ? `3pt double ${corInst}`
+      : `2pt solid ${corInst}`;
+
+    const wordHeaderTableHtml = (activeDocumentStyle.cabecalhoLayout === 'CENTRALIZADO' || activeDocumentStyle.cabecalhoLayout === 'SOLENE_DUPLO')
+      ? `<table class="header-table" border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; border-bottom: ${headerBorderCss}; margin-top: 0pt; margin-bottom: 14pt; padding-bottom: 6pt; mso-margin-bottom-alt: 14pt;">
+          <tr>
+            <td align="center" style="text-align: center; vertical-align: top; padding: 0 0 6pt 0;">
+              <p style="margin: 0 0 4pt 0; padding: 0; text-align: center !important; text-indent: 0 !important; line-height: 1;">
+                <img src="cid:brasao_rioclaro" width="54" height="64" alt="Brasão de Rio Claro" style="width: 40pt; height: 48pt; border: 0;" />
+              </p>
+              <p style="margin: 0; padding: 0; text-align: center !important; text-indent: 0 !important; line-height: 1.15; font-family: Arial, sans-serif; font-size: 8.5pt; font-weight: bold; color: ${corInst}; text-transform: uppercase;">ESTADO DO RIO DE JANEIRO</p>
+              <p style="margin: 0; padding: 0; text-align: center !important; text-indent: 0 !important; line-height: 1.15; font-family: Arial, sans-serif; font-size: 11.5pt; font-weight: 900; color: ${corInst}; text-transform: uppercase;">PREFEITURA MUNICIPAL DE RIO CLARO</p>
+              <p style="margin: 0; padding: 0; text-align: center !important; text-indent: 0 !important; line-height: 1.15; font-family: Arial, sans-serif; font-size: 9.5pt; font-weight: bold; color: ${corInst}; text-transform: uppercase;">${subtituloCabecalho}</p>
+              ${redatorSetorOrigem && redatorSetorOrigem !== subtituloCabecalho ? `<p style="margin: 0; padding: 0; text-align: center !important; text-indent: 0 !important; line-height: 1.15; font-family: Arial, sans-serif; font-size: 8pt; color: #475569;">${redatorSetorOrigem}</p>` : ''}
+              <p class="header-last-line" style="margin: 0 0 6pt 0; padding: 0; text-align: center !important; text-indent: 0 !important; line-height: 1.15; font-family: Arial, sans-serif; font-size: 7.5pt; color: #475569;">Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68</p>
+            </td>
+          </tr>
+        </table>`
+      : `<table class="header-table" border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; border-bottom: ${headerBorderCss}; margin-top: 0pt; margin-bottom: 12pt; padding-bottom: 0pt; mso-margin-bottom-alt: 12pt;">
+          <tr>
+            <td width="80" valign="top" align="left" style="width: 60pt; text-align: left; vertical-align: top; padding: 0;">
+              <p style="margin: 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1;">
+                <img src="cid:brasao_rioclaro" width="60" height="72" alt="Brasão de Rio Claro" style="width: 45pt; height: 54pt; display: block; border: 0; position: absolute; left: 0.18cm; top: -0.21cm; margin-left: 0.18cm; margin-top: -0.21cm; mso-position-horizontal: absolute; mso-position-horizontal-relative: column; mso-position-vertical: absolute; mso-position-vertical-relative: paragraph;" />
+              </p>
+            </td>
+            <td valign="top" align="left" style="vertical-align: top; padding: 0; text-align: left;">
+              <p style="margin: 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1.15; mso-line-height-rule: exactly; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 0pt; font-family: Arial, sans-serif; font-size: 8.5pt; font-weight: bold; color: ${corInst}; text-transform: uppercase;">ESTADO DO RIO DE JANEIRO</p>
+              <p style="margin: 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1.15; mso-line-height-rule: exactly; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 0pt; font-family: Arial, sans-serif; font-size: 11pt; font-weight: 900; color: ${corInst}; text-transform: uppercase;">PREFEITURA MUNICIPAL DE RIO CLARO</p>
+              <p style="margin: 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1.15; mso-line-height-rule: exactly; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 0pt; font-family: Arial, sans-serif; font-size: 7.5pt; color: #475569;">Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68</p>
+              <p style="margin: 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1.15; mso-line-height-rule: exactly; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 0pt; font-family: Arial, sans-serif; font-size: 9pt; font-weight: bold; color: ${corInst}; text-transform: uppercase;">${subtituloCabecalho}</p>
+              <p class="header-last-line" style="margin: 0 0 6pt 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1.15; mso-line-height-rule: exactly; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 6pt; font-family: Arial, sans-serif; font-size: 8pt; color: #475569;">${redatorSetorOrigem || 'Departamento de Recursos Humanos'}</p>
+            </td>
+          </tr>
+        </table>`;
 
     const htmlDocument = `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
@@ -3920,7 +5037,7 @@ export default function App() {
 body {
   font-family: ${fontFamilyDocx};
   font-size: ${fontSizeDocx};
-  line-height: 1.5;
+  line-height: ${lineHeightDocx};
   color: #000000;
 }
 p {
@@ -3929,7 +5046,7 @@ p {
   text-align: ${textAlignDocx};
   text-indent: 0;
   mso-char-indent-count: 0;
-  line-height: 1.5;
+  line-height: ${lineHeightDocx};
   mso-line-height-rule: exactly;
 }
 .header-table {
@@ -3938,7 +5055,7 @@ p {
   border: none;
   mso-table-lspace: 0pt;
   mso-table-rspace: 0pt;
-  border-bottom: 2pt solid #002b82;
+  border-bottom: ${headerBorderCss};
   margin-top: 0pt;
   margin-bottom: 12pt;
   padding-bottom: 0pt;
@@ -3953,7 +5070,6 @@ p {
   mso-char-indent-count: 0 !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
-  text-align: left !important;
   margin-top: 0 !important;
   margin-bottom: 0 !important;
   mso-margin-top-alt: 0pt !important;
@@ -3984,26 +5100,13 @@ p {
 </head>
 <body>
 
-<table class="header-table" border="0" cellspacing="0" cellpadding="0" style="width: 100%; border-collapse: collapse; border-bottom: 2pt solid #002b82; margin-top: 0pt; margin-bottom: 12pt; padding-bottom: 0pt; mso-margin-bottom-alt: 12pt;">
-  <tr>
-    <td width="80" valign="top" align="left" style="width: 60pt; text-align: left; vertical-align: top; padding: 0;">
-      <p style="margin: 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1;">
-        <img src="cid:brasao_rioclaro" width="60" height="72" alt="Brasão de Rio Claro" style="width: 45pt; height: 54pt; display: block; border: 0; position: absolute; left: 0.18cm; top: -0.21cm; margin-left: 0.18cm; margin-top: -0.21cm; mso-position-horizontal: absolute; mso-position-horizontal-relative: column; mso-position-vertical: absolute; mso-position-vertical-relative: paragraph;" />
-      </p>
-    </td>
-    <td valign="top" align="left" style="vertical-align: top; padding: 0; text-align: left;">
-      <p style="margin: 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1.15; mso-line-height-rule: exactly; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 0pt; font-family: Arial, sans-serif; font-size: 8.5pt; font-weight: bold; color: #002b82; text-transform: uppercase;">ESTADO DO RIO DE JANEIRO</p>
-      <p style="margin: 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1.15; mso-line-height-rule: exactly; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 0pt; font-family: Arial, sans-serif; font-size: 11pt; font-weight: 900; color: #002b82; text-transform: uppercase;">PREFEITURA MUNICIPAL DE RIO CLARO</p>
-      <p style="margin: 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1.15; mso-line-height-rule: exactly; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 0pt; font-family: Arial, sans-serif; font-size: 7.5pt; color: #475569;">Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68</p>
-      <p style="margin: 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1.15; mso-line-height-rule: exactly; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 0pt; font-family: Arial, sans-serif; font-size: 9pt; font-weight: bold; color: #002b82; text-transform: uppercase;">${sec}</p>
-      <p class="header-last-line" style="margin: 0 0 6pt 0; padding: 0; text-indent: 0 !important; mso-char-indent-count: 0 !important; margin-left: 0 !important; text-align: left !important; line-height: 1.15; mso-line-height-rule: exactly; mso-margin-top-alt: 0pt; mso-margin-bottom-alt: 6pt; font-family: Arial, sans-serif; font-size: 8pt; color: #475569;">${redatorSetorOrigem || 'Departamento de Recursos Humanos'}</p>
-    </td>
-  </tr>
-</table>
+${wordHeaderTableHtml}
 
 ${headerAndBodyHtml}
 
 ${renderAssinaturasHtmlWord()}
+
+${rodapeDoc ? `<div style="margin-top: 28pt; padding-top: 8pt; border-top: 0.75pt solid #cbd5e1; text-align: center; font-family: Arial, sans-serif; font-size: 7.5pt; color: #64748b;">${rodapeDoc}</div>` : ''}
 
 </body>
 </html>`;
@@ -4063,6 +5166,8 @@ ${renderAssinaturasHtmlWord()}
 
     const blocoAssinatura = redatorModoAssinatura === 'INDIVIDUAL'
       ? `${redatorSignatario || 'Servidor Responsável'}\n${redatorCargo || 'Cargo / Função Pública'}\n${sec}${redatorMatricula ? `\nMatrícula: ${redatorMatricula}` : ''}`
+      : redatorModoAssinatura === 'DUPLA_REFERENDO'
+      ? `${redatorSignatario || 'Autoridade Principal'}\n${redatorCargo || 'Prefeito Municipal'}\n${sec}\n\n${redatorSegundoSignatario || '[Nome do(a) Secretário(a) / Procurador-Geral]'}\n${redatorSegundoCargo || 'Secretário(a) Municipal / Referendo'}\n${redatorSegundaSecretaria || sec}`
       : redatorMembrosComissao
           .filter(m => m.nome.trim() || m.funcao.trim())
           .map(m => `${m.nome || '___________________________'}\n${m.funcao}${m.cargoEfetivo ? ` • ${m.cargoEfetivo}` : ''}${m.matricula ? ` (Mat. ${m.matricula})` : ''}`)
@@ -4071,7 +5176,7 @@ ${renderAssinaturasHtmlWord()}
     const cabecalhoInst = [
       'ESTADO DO RIO DE JANEIRO',
       'PREFEITURA MUNICIPAL DE RIO CLARO',
-      sec.toUpperCase(),
+      (activeDocumentStyle.cabecalhoSubtituloCustom || sec).toUpperCase(),
       setor && setor !== sec ? setor : ''
     ].filter(Boolean).join('\n');
 
@@ -4090,7 +5195,8 @@ ${renderAssinaturasHtmlWord()}
       '',
       redatorFecho || '',
       '',
-      blocoAssinatura
+      blocoAssinatura,
+      activeDocumentStyle.rodapeTexto ? `\n---\n${activeDocumentStyle.rodapeTexto}` : ''
     ].filter((item, idx, arr) => !(item === '' && arr[idx - 1] === ''));
 
     const conteudoTxt = linhas.join('\n');
@@ -4162,7 +5268,12 @@ ${renderAssinaturasHtmlWord()}
     container.style.boxSizing = 'border-box';
     container.style.background = '#ffffff';
     container.style.color = '#000000';
-    container.style.lineHeight = '1.5';
+    const corInst = activeDocumentStyle.corPrimaria || '#002b82';
+    const lineHeightDoc = String(activeDocumentStyle.espacamentoLinhas || 1.5);
+    const subtituloCabecalho = activeDocumentStyle.cabecalhoSubtituloCustom || redatorSecretaria;
+    const rodapeDoc = (activeDocumentStyle.rodapeTexto || '').trim();
+
+    container.style.lineHeight = lineHeightDoc;
 
     const numTexto = redatorTipo === 'EMAIL'
       ? 'COMUNICAÇÃO ELETRÔNICA INSTITUCIONAL (E-MAIL)'
@@ -4170,21 +5281,61 @@ ${renderAssinaturasHtmlWord()}
 
     const corpoHTML = converterTextoOficialHTML(redatorTexto, 'print', redatorFonte, redatorTamanhoFonte, redatorAlinhamento);
 
+    const printDocDef = getDocumentTypeDefinition(redatorTipo);
     let conteudoMeio = '';
-    if (redatorTipo === 'DECRETO' || redatorTipo === 'PORTARIA' || redatorTipo === 'ATO' || redatorTipo === 'TERMO') {
+    if (printDocDef.layout === 'SOLENE') {
+      const ementaCapturaHtml = redatorAssunto
+        ? activeDocumentStyle.ementaEstilo === 'CAIXA_SOMBREADA'
+          ? `<div style="margin-bottom: 20px; padding: 10px 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-left: 3px solid ${corInst}; text-align: justify; font-style: italic; font-size: 11px; color: #1e293b; line-height: 1.4;">${redatorAssunto}</div>`
+          : activeDocumentStyle.ementaEstilo === 'SIMPLES'
+            ? `<div style="margin-bottom: 18px; text-align: justify; font-style: italic; font-size: 11px; color: #1e293b; line-height: 1.4;"><strong>Ementa:</strong> ${redatorAssunto}</div>`
+            : `<div style="margin-left: auto; width: 60%; text-align: justify; font-style: italic; font-size: 11px; color: #1e293b; line-height: 1.4; margin-bottom: 20px; ${activeDocumentStyle.ementaEstilo === 'DIREITA_SEM_BORDA' ? '' : `padding-left: 12px; border-left: 2px solid ${corInst};`}">${redatorAssunto}</div>`
+        : '';
       conteudoMeio = `
         <div style="margin-bottom: 24px; font-family: Arial, sans-serif;">
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px;">
-            <strong style="color: #002b82; font-size: 15px; font-weight: 900; text-transform: uppercase;">
+            <strong style="color: ${corInst}; font-size: 15px; font-weight: 900; text-transform: uppercase;">
               ${numTexto}
             </strong>
             <span style="font-size: 12px; color: #334155; font-weight: 600;">${redatorData}</span>
           </div>
-          ${redatorAssunto ? `
-            <div style="margin-left: auto; width: 60%; text-align: justify; font-style: italic; font-size: 11px; color: #1e293b; line-height: 1.4; margin-bottom: 20px; padding-left: 12px; border-left: 2px solid #cbd5e1;">
-              ${redatorAssunto}
-            </div>
-          ` : ''}
+          ${ementaCapturaHtml}
+        </div>
+      `;
+    } else if (printDocDef.layout === 'JUDICIAL') {
+      conteudoMeio = `
+        <div style="margin-bottom: 18px; font-family: Arial, sans-serif; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">
+          <span style="color: #475569; font-size: 10px; font-weight: 700; text-transform: uppercase;">${numTexto}</span>
+          <span style="font-size: 11px; color: #334155; font-weight: 600;">${redatorData}</span>
+        </div>
+      `;
+    } else if (printDocDef.layout === 'NOTIFICACAO') {
+      conteudoMeio = `
+        <div style="margin-bottom: 20px; font-family: Arial, sans-serif;">
+          <div style="text-align: center; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid #be123c;">
+            <strong style="color: #9f1239; font-size: 15px; font-weight: 900; text-transform: uppercase;">${numTexto}</strong>
+            <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${printDocDef.subtitle} • ${redatorData}</div>
+          </div>
+          <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 10px 12px; border-radius: 6px; font-size: 11.5px; color: #0f172a; line-height: 1.45;">
+            <div><strong>NOTIFICANTE:</strong> Município de Rio Claro – RJ (${redatorSecretaria})</div>
+            <div><strong>NOTIFICADO(A):</strong> ${redatorDestinatario || '[NOME / RAZÃO SOCIAL]'}</div>
+            ${redatorReferenciaDoc ? `<div><strong>REFERÊNCIA / PROCESSO:</strong> ${redatorReferenciaDoc}</div>` : ''}
+            <div><strong>OBJETO:</strong> ${redatorAssunto}</div>
+          </div>
+        </div>
+      `;
+    } else if (printDocDef.layout === 'JURIDICO') {
+      conteudoMeio = `
+        <div style="margin-bottom: 20px; font-family: Arial, sans-serif;">
+          <div style="text-align: center; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1.5px solid ${corInst};">
+            <strong style="color: ${corInst}; font-size: 15px; font-weight: 900; text-transform: uppercase;">${numTexto}</strong>
+            <div style="font-size: 10px; color: #475569; margin-top: 2px;">${printDocDef.subtitle} • ${redatorData}</div>
+          </div>
+          <div style="border-bottom: 1px solid #cbd5e1; padding-bottom: 10px; font-size: 11.5px; color: #0f172a; line-height: 1.45;">
+            ${redatorDestinatario ? `<div><strong>Interessado / Destinatário:</strong> ${redatorDestinatario}</div>` : ''}
+            ${redatorReferenciaDoc ? `<div><strong>Processo / Referência:</strong> ${redatorReferenciaDoc}</div>` : ''}
+            <div><strong>Assunto / Objeto:</strong> ${redatorAssunto}</div>
+          </div>
         </div>
       `;
     } else {
@@ -4192,7 +5343,7 @@ ${renderAssinaturasHtmlWord()}
         <div style="margin-bottom: 24px; font-family: Arial, sans-serif;">
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px;">
             <div>
-              <strong style="color: #002b82; font-size: 15px; font-weight: 900;">
+              <strong style="color: ${corInst}; font-size: 15px; font-weight: 900;">
                 ${numTexto}
               </strong>
               ${redatorReferenciaDoc && redatorTipo !== 'EMAIL' ? `
@@ -4232,20 +5383,40 @@ ${renderAssinaturasHtmlWord()}
           <div style="width: 240px; height: 1px; background-color: #94a3b8; margin: 0 auto 10px auto;"></div>
           <p style="font-size: 13px; font-weight: bold; color: #0f172a; margin: 0;">${redatorSignatario}</p>
           <p style="font-size: 11px; color: #334155; font-style: italic; margin: 2px 0 0 0;">${redatorCargo}</p>
-          <p style="font-size: 11px; color: #002b82; font-weight: 600; margin: 2px 0 0 0;">${redatorSecretaria}</p>
+          <p style="font-size: 11px; color: ${corInst}; font-weight: 600; margin: 2px 0 0 0;">${redatorSecretaria}</p>
           <p style="font-size: 9.5px; color: #64748b; margin: 2px 0 0 0;">Prefeitura Municipal de Rio Claro – RJ</p>
+        </div>
+      `;
+    } else if (redatorModoAssinatura === 'DUPLA_REFERENDO') {
+      assinaturasCapturaHtml = `
+        <div id="assinatura-timbrado" style="margin-top: 38px; padding-top: 20px; font-family: Arial, sans-serif; break-inside: avoid; page-break-inside: avoid;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 28px; text-align: center;">
+            <div style="padding: 0 8px;">
+              <div style="width: 210px; height: 1px; background-color: #64748b; margin: 0 auto 8px auto;"></div>
+              <p style="font-size: 12.5px; font-weight: bold; color: #0f172a; margin: 0;">${redatorSignatario}</p>
+              <p style="font-size: 10.5px; color: #334155; font-style: italic; margin: 2px 0 0 0;">${redatorCargo}</p>
+              <p style="font-size: 10.5px; color: ${corInst}; font-weight: 600; margin: 2px 0 0 0;">${redatorSecretaria}</p>
+            </div>
+            <div style="padding: 0 8px;">
+              <div style="width: 210px; height: 1px; background-color: #64748b; margin: 0 auto 8px auto;"></div>
+              <p style="font-size: 12.5px; font-weight: bold; color: #0f172a; margin: 0;">${redatorSegundoSignatario || '[Nome do(a) Secretário(a) / Procurador-Geral]'}</p>
+              <p style="font-size: 10.5px; color: #334155; font-style: italic; margin: 2px 0 0 0;">${redatorSegundoCargo || 'Secretário(a) Municipal / Referendo'}</p>
+              <p style="font-size: 10.5px; color: ${corInst}; font-weight: 600; margin: 2px 0 0 0;">${redatorSegundaSecretaria || redatorSecretaria}</p>
+            </div>
+          </div>
+          <p style="text-align: center; font-size: 9px; color: #64748b; margin-top: 14px;">Prefeitura Municipal de Rio Claro – RJ</p>
         </div>
       `;
     } else if (redatorModoAssinatura === 'COMISSAO_PAD' || redatorMembrosComissao.length === 3) {
       assinaturasCapturaHtml = `
         <div id="assinatura-timbrado" style="margin-top: 36px; padding-top: 20px; border-top: 1px solid #cbd5e1; font-family: Arial, sans-serif; break-inside: avoid; page-break-inside: avoid;">
-          <p style="text-align: center; font-size: 11px; font-weight: 900; color: #002b82; text-transform: uppercase; margin-bottom: 24px; letter-spacing: 0.5px;">COMISSÃO PROCESSANTE DE SINDICÂNCIA E PAD</p>
+          <p style="text-align: center; font-size: 11px; font-weight: 900; color: ${corInst}; text-transform: uppercase; margin-bottom: 24px; letter-spacing: 0.5px;">COMISSÃO PROCESSANTE DE SINDICÂNCIA E PAD</p>
           <div style="display: flex; justify-content: space-around; text-align: center; gap: 16px;">
             ${redatorMembrosComissao.map(m => `
               <div style="flex: 1; padding: 0 8px;">
                 <div style="width: 140px; height: 1px; background-color: #94a3b8; margin: 0 auto 8px auto;"></div>
                 <p style="font-size: 12px; font-weight: bold; color: #0f172a; margin: 0;">${m.nome}</p>
-                <p style="font-size: 10.5px; color: #002b82; font-weight: bold; margin: 2px 0 0 0;">${m.funcao}</p>
+                <p style="font-size: 10.5px; color: ${corInst}; font-weight: bold; margin: 2px 0 0 0;">${m.funcao}</p>
                 <p style="font-size: 9.5px; color: #475569; font-style: italic; margin: 2px 0 0 0;">${m.cargoEfetivo}</p>
                 <p style="font-size: 8.5px; color: #64748b; margin: 2px 0 0 0;">Matrícula nº ${m.matricula}</p>
               </div>
@@ -4257,13 +5428,13 @@ ${renderAssinaturasHtmlWord()}
     } else {
       assinaturasCapturaHtml = `
         <div id="assinatura-timbrado" style="margin-top: 36px; padding-top: 20px; border-top: 1px solid #cbd5e1; font-family: Arial, sans-serif; break-inside: avoid; page-break-inside: avoid;">
-          <p style="text-align: center; font-size: 11px; font-weight: 900; color: #002b82; text-transform: uppercase; margin-bottom: 24px;">${redatorModoAssinatura === 'TAC_CAC' ? 'TERMO DE AJUSTAMENTO DE CONDUTA (CAC / TAC)' : 'ASSINATURAS DO EXPEDIENTE'}</p>
+          <p style="text-align: center; font-size: 11px; font-weight: 900; color: ${corInst}; text-transform: uppercase; margin-bottom: 24px;">${redatorModoAssinatura === 'TAC_CAC' ? 'TERMO DE AJUSTAMENTO DE CONDUTA (CAC / TAC)' : 'ASSINATURAS DO EXPEDIENTE'}</p>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px 24px; text-align: center;">
             ${redatorMembrosComissao.map(m => `
               <div style="padding: 0 10px;">
                 <div style="width: 160px; height: 1px; background-color: #94a3b8; margin: 0 auto 8px auto;"></div>
                 <p style="font-size: 12px; font-weight: bold; color: #0f172a; margin: 0;">${m.nome}</p>
-                <p style="font-size: 10.5px; color: #002b82; font-weight: bold; margin: 2px 0 0 0;">${m.funcao}</p>
+                <p style="font-size: 10.5px; color: ${corInst}; font-weight: bold; margin: 2px 0 0 0;">${m.funcao}</p>
                 <p style="font-size: 9.5px; color: #475569; font-style: italic; margin: 2px 0 0 0;">${m.cargoEfetivo}</p>
                 <p style="font-size: 8.5px; color: #64748b; margin: 2px 0 0 0;">Matrícula nº ${m.matricula}</p>
               </div>
@@ -4274,39 +5445,62 @@ ${renderAssinaturasHtmlWord()}
       `;
     }
 
-    container.innerHTML = `
-      <div id="cabecalho-timbrado" style="display: flex; align-items: center; gap: 18px; padding-bottom: 16px; border-bottom: 2px solid #002b82; margin-bottom: 24px; break-inside: avoid; page-break-inside: avoid;">
-        <img
-          src="${BRASAO_RIO_CLARO}"
-          alt="Brasão Oficial da Prefeitura Municipal de Rio Claro RJ"
-          width="83"
-          height="96"
-          style="width: 83px; height: 96px; min-width: 83px; min-height: 96px; max-width: 83px; max-height: 96px; aspect-ratio: 86 / 100; object-fit: contain; flex-shrink: 0; display: block;"
-        />
-        <div style="font-family: Arial, sans-serif; color: #002b82;">
-          <div style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">
-            ESTADO DO RIO DE JANEIRO
+    const borderBottomCabecalho = activeDocumentStyle.cabecalhoLayout === 'SOLENE_DUPLO'
+      ? `4px double ${corInst}`
+      : `2px solid ${corInst}`;
+
+    const cabecalhoCapturaHtml = (activeDocumentStyle.cabecalhoLayout === 'CENTRALIZADO' || activeDocumentStyle.cabecalhoLayout === 'SOLENE_DUPLO')
+      ? `<div id="cabecalho-timbrado" style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding-bottom: 14px; border-bottom: ${borderBottomCabecalho}; margin-bottom: 24px; break-inside: avoid; page-break-inside: avoid;">
+          <img
+            src="${BRASAO_RIO_CLARO}"
+            alt="Brasão Oficial da Prefeitura Municipal de Rio Claro RJ"
+            width="68"
+            height="79"
+            style="width: 68px; height: 79px; object-fit: contain; display: block;"
+          />
+          <div style="font-family: Arial, sans-serif; color: ${corInst};">
+            <div style="font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.7px; line-height: 1.2;">ESTADO DO RIO DE JANEIRO</div>
+            <div style="font-size: 15px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.2px; line-height: 1.2; margin-top: 2px;">PREFEITURA MUNICIPAL DE RIO CLARO</div>
+            <div style="font-size: 11.5px; font-weight: bold; color: ${corInst}; text-transform: uppercase; line-height: 1.2; margin-top: 3px;">${subtituloCabecalho}</div>
+            ${redatorSetorOrigem && redatorSetorOrigem !== subtituloCabecalho ? `<div style="font-size: 10px; color: #475569; font-weight: 500; line-height: 1.2; margin-top: 2px;">${redatorSetorOrigem}</div>` : ''}
+            <div style="font-size: 9.5px; color: #475569; font-weight: 500; line-height: 1.2; margin-top: 3px;">Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68</div>
           </div>
-          <div style="font-size: 15px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.2px; line-height: 1.2; margin-top: 2px;">
-            PREFEITURA MUNICIPAL DE RIO CLARO
-          </div>
-          <div style="font-size: 10px; color: #475569; font-weight: 500; line-height: 1.2; margin-top: 3px;">
-            Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68
-          </div>
-          <div style="font-size: 11px; font-weight: bold; color: #002b82; text-transform: uppercase; line-height: 1.2; margin-top: 3px;">
-            ${redatorSecretaria}
-          </div>
-          ${redatorSetorOrigem && redatorSetorOrigem !== redatorSecretaria ? `
-            <div style="font-size: 10px; color: #475569; font-weight: 500; line-height: 1.2; margin-top: 2px;">
-              ${redatorSetorOrigem}
+        </div>`
+      : `<div id="cabecalho-timbrado" style="display: flex; align-items: center; gap: 18px; padding-bottom: 16px; border-bottom: ${borderBottomCabecalho}; margin-bottom: 24px; break-inside: avoid; page-break-inside: avoid;">
+          <img
+            src="${BRASAO_RIO_CLARO}"
+            alt="Brasão Oficial da Prefeitura Municipal de Rio Claro RJ"
+            width="83"
+            height="96"
+            style="width: 83px; height: 96px; min-width: 83px; min-height: 96px; max-width: 83px; max-height: 96px; aspect-ratio: 86 / 100; object-fit: contain; flex-shrink: 0; display: block;"
+          />
+          <div style="font-family: Arial, sans-serif; color: ${corInst};">
+            <div style="font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2;">
+              ESTADO DO RIO DE JANEIRO
             </div>
-          ` : ''}
-        </div>
-      </div>
+            <div style="font-size: 15px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.2px; line-height: 1.2; margin-top: 2px;">
+              PREFEITURA MUNICIPAL DE RIO CLARO
+            </div>
+            <div style="font-size: 10px; color: #475569; font-weight: 500; line-height: 1.2; margin-top: 3px;">
+              Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68
+            </div>
+            <div style="font-size: 11px; font-weight: bold; color: ${corInst}; text-transform: uppercase; line-height: 1.2; margin-top: 3px;">
+              ${subtituloCabecalho}
+            </div>
+            ${redatorSetorOrigem && redatorSetorOrigem !== subtituloCabecalho ? `
+              <div style="font-size: 10px; color: #475569; font-weight: 500; line-height: 1.2; margin-top: 2px;">
+                ${redatorSetorOrigem}
+              </div>
+            ` : ''}
+          </div>
+        </div>`;
+
+    container.innerHTML = `
+      ${cabecalhoCapturaHtml}
 
       ${conteudoMeio}
 
-      <div class="sgep-rich-doc" style="font-family: ${redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : '"Times New Roman", Times, serif'}; font-size: ${redatorTamanhoFonte === '10pt' ? '12px' : redatorTamanhoFonte === '11pt' ? '13px' : '14px'}; line-height: 1.6; text-align: ${redatorAlinhamento}; margin-bottom: 28px; padding-left: 0;">
+      <div class="sgep-rich-doc" style="font-family: ${redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : '"Times New Roman", Times, serif'}; font-size: ${redatorTamanhoFonte === '10pt' ? '12px' : redatorTamanhoFonte === '11pt' ? '13px' : '14px'}; line-height: ${lineHeightDoc}; text-align: ${redatorAlinhamento}; margin-bottom: 28px; padding-left: 0;">
         ${corpoHTML}
       </div>
 
@@ -4315,6 +5509,8 @@ ${renderAssinaturasHtmlWord()}
       </div>
 
       ${assinaturasCapturaHtml}
+
+      ${rodapeDoc ? `<div style="margin-top: 28px; padding-top: 8px; border-top: 1px solid #cbd5e1; text-align: center; font-family: Arial, sans-serif; font-size: 9px; color: #64748b;">${rodapeDoc}</div>` : ''}
     `;
 
     return container;
@@ -4573,6 +5769,8 @@ ${renderAssinaturasHtmlWord()}
       ? currentUser!.departamento!.trim()
       : (currentUser?.departamento?.trim() || (siglaAlvo === 'SMA' ? 'Departamento de Recursos Humanos (DRH)' : 'Gabinete'));
 
+    const isTipoGlobal = isTipoSequenciaGlobal(tipoDoc, configNumeracao);
+
     if (useRealApi) {
       try {
         const response = await fetchWithTimeout(realApiUrl, {
@@ -4587,7 +5785,8 @@ ${renderAssinaturasHtmlWord()}
             departamento: deptoAlvo,
             servidor: servidorIdentificado,
             sigla: siglaAlvo,
-            incluirSigla: incluirSiglaNoNumero,
+            incluirSigla: incluirSiglaNoNumero && !isTipoGlobal,
+            sequenciaGlobal: isTipoGlobal,
             usuarioLogado: servidorIdentificado,
             token: currentUser?.token || ''
           })
@@ -4609,7 +5808,7 @@ ${renderAssinaturasHtmlWord()}
             destinatario: destinatarioDigitado,
             secretaria: secAlvo,
             departamento: deptoAlvo,
-            incluirSigla: incluirSiglaNoNumero
+            incluirSigla: incluirSiglaNoNumero && !isTipoGlobal
           };
           setNumeracoes(prev => [novoReg, ...prev]);
           setIsGeneratingNumber(false);
@@ -4626,9 +5825,8 @@ ${renderAssinaturasHtmlWord()}
 
     // Geração no modo de contingência / simulação local garantida
     await new Promise(resolve => setTimeout(resolve, 150));
-    const proximoSeq = getNextSequentialForSecretaria(numeracoes, tipoDoc, secAlvo, anoAtual, secretarias);
-    const seqStr = String(proximoSeq).padStart(3, '0');
-    const nextNum = incluirSiglaNoNumero ? `${seqStr}/${anoAtual} - ${siglaAlvo}` : `${seqStr}/${anoAtual}`;
+    const proximoSeq = getNextSequentialForSecretaria(numeracoes, tipoDoc, secAlvo, anoAtual, secretarias, configNumeracao);
+    const nextNum = formatNumeroOficialSequencial(proximoSeq, anoAtual, incluirSiglaNoNumero, siglaAlvo, isTipoGlobal);
     const nowIso = new Date().toISOString();
 
     // 1. Gravação Principal na aba "Numeração"
@@ -4642,7 +5840,7 @@ ${renderAssinaturasHtmlWord()}
       destinatario: destinatarioDigitado,
       secretaria: secAlvo,
       departamento: deptoAlvo,
-      incluirSigla: incluirSiglaNoNumero
+      incluirSigla: incluirSiglaNoNumero && !isTipoGlobal
     };
 
     // 2. Gravação de Segurança e Rastreabilidade na aba "Logs_Auditoria"
@@ -4784,6 +5982,7 @@ ${renderAssinaturasHtmlWord()}
       matricula: mat,
       nome: servidor.nome || '',
       cargo: servidor.cargo || '',
+      funcaoGratificada: (servidor.funcaoGratificada || '').trim(),
       secretaria: resolveCanonicalSecretariaName(servidor.secretaria || 'Secretaria Municipal de Administração (SMA)', secretarias),
       secretarias: servidor.secretarias && servidor.secretarias.length > 0
         ? servidor.secretarias.map(s => resolveCanonicalSecretariaName(s, secretarias))
@@ -4809,6 +6008,21 @@ ${renderAssinaturasHtmlWord()}
     }
     setUsuarios(newUsuariosList);
     localStorage.setItem('bm_usuarios', JSON.stringify(newUsuariosList));
+
+    // Se a matrícula estava na lista local de recusados, remove ao salvar/reintegrar
+    try {
+      const rawRec = localStorage.getItem('bm_matriculas_recusadas');
+      if (rawRec) {
+        const parsedRec = JSON.parse(rawRec);
+        if (Array.isArray(parsedRec)) {
+          const matKey = mat.toLowerCase();
+          const filteredRec = parsedRec.filter((m: any) => String(m).trim().toLowerCase() !== matKey);
+          if (filteredRec.length !== parsedRec.length) {
+            localStorage.setItem('bm_matriculas_recusadas', JSON.stringify(filteredRec));
+          }
+        }
+      }
+    } catch {}
 
     // Se o servidor editado for o próprio usuário da sessão ativa, atualiza sua sessão em tempo real
     if (currentUser && currentUser.matricula === mat) {
@@ -4837,6 +6051,7 @@ ${renderAssinaturasHtmlWord()}
             matricula: mat,
             nome: updatedUser.nome,
             cargo: updatedUser.cargo,
+            funcaoGratificada: updatedUser.funcaoGratificada || '',
             secretaria: updatedUser.secretaria,
             secretarias: updatedUser.secretarias,
             departamento: updatedUser.departamento,
@@ -4869,9 +6084,31 @@ ${renderAssinaturasHtmlWord()}
   };
 
   const handleToggleStatusUsuario = async (matricula: string, novoStatus: boolean): Promise<boolean> => {
-    const newUsuariosList = usuarios.map(u => u.matricula === matricula ? { ...u, ativo: novoStatus } : u);
+    const matNorm = String(matricula).trim().toLowerCase();
+    if (!novoStatus && (matNorm === '1001' || (currentUser && String(currentUser.matricula).trim().toLowerCase() === matNorm))) {
+      showToast('O administrador logado e o administrador mestre (1001) não podem ser desativados.', 'Ação Bloqueada', true);
+      return false;
+    }
+
+    const newUsuariosList = usuarios.map(u =>
+      String(u.matricula).trim().toLowerCase() === matNorm ? { ...u, ativo: novoStatus } : u
+    );
     setUsuarios(newUsuariosList);
-    localStorage.setItem('bm_usuarios', JSON.stringify(newUsuariosList));
+    try { localStorage.setItem('bm_usuarios', JSON.stringify(newUsuariosList)); } catch {}
+
+    // Ao ativar novamente uma matrícula, garante que ela não conste como recusada localmente
+    if (novoStatus) {
+      try {
+        const rawRec = localStorage.getItem('bm_matriculas_recusadas');
+        if (rawRec) {
+          const parsedRec = JSON.parse(rawRec);
+          if (Array.isArray(parsedRec)) {
+            const filteredRec = parsedRec.filter((m: any) => String(m).trim().toLowerCase() !== matNorm);
+            localStorage.setItem('bm_matriculas_recusadas', JSON.stringify(filteredRec));
+          }
+        }
+      } catch {}
+    }
 
     setLogs(prev => [{
       dataHora: new Date().toISOString(),
@@ -4883,7 +6120,7 @@ ${renderAssinaturasHtmlWord()}
 
     if (useRealApi) {
       try {
-        await fetchWithTimeout(realApiUrl, {
+        const resp = await fetchWithTimeout(realApiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({
@@ -4893,13 +6130,124 @@ ${renderAssinaturasHtmlWord()}
             usuarioAdmin: currentUser?.nome || 'Admin',
             token: currentUser?.token || ''
           })
-        }, 8000);
+        }, 10000);
+        const text = await resp.text();
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && parsed.success === false && parsed.error) {
+            showToast(`Alterado localmente, mas a planilha retornou aviso: ${parsed.error}`, 'Aviso de Sincronização', true);
+            return true;
+          }
+        } catch {}
       } catch (err) {
         console.warn('Erro ao sincronizar status do servidor com o Google Sheets:', err);
+        showToast(`Status alterado localmente para ${novoStatus ? 'ATIVO' : 'INATIVO'}. Verifique a sincronização com a planilha.`, 'Aviso', true);
+        return true;
       }
     }
 
     showToast(`Acesso do servidor matrícula ${matricula} alterado para ${novoStatus ? 'ATIVO' : 'INATIVO'}.`);
+    return true;
+  };
+
+  const handleRecusarServidorInativo = async (matricula: string, motivo?: string): Promise<boolean> => {
+    if (currentUser?.nivel !== 'ADMIN') {
+      showToast('Apenas Administradores podem recusar cadastros pendentes.', 'Acesso Restrito', true);
+      return false;
+    }
+
+    const matClean = String(matricula || '').trim();
+    const matNorm = matClean.toLowerCase();
+    if (!matNorm || matNorm === '1001' || (currentUser && String(currentUser.matricula).trim().toLowerCase() === matNorm)) {
+      showToast('Esta matrícula protegida não pode ser recusada ou removida.', 'Ação Bloqueada', true);
+      return false;
+    }
+
+    const alvo = usuarios.find(u => String(u.matricula).trim().toLowerCase() === matNorm);
+    const nomeAlvo = alvo?.nome || `Matrícula ${matClean}`;
+    const motivoFinal = (motivo || '').trim() || 'Cadastro recusado pelo administrador';
+
+    // Remove o servidor inativo da lista local
+    const newUsuariosList = usuarios.filter(u => String(u.matricula).trim().toLowerCase() !== matNorm);
+    setUsuarios(newUsuariosList);
+    try { localStorage.setItem('bm_usuarios', JSON.stringify(newUsuariosList)); } catch {}
+
+    // Registra matrícula na lista local de recusados para evitar reaparecimento antes do GAS v4.5 excluir da planilha
+    try {
+      const rawRec = localStorage.getItem('bm_matriculas_recusadas');
+      const arrRec: string[] = rawRec ? JSON.parse(rawRec) : [];
+      const setRec = new Set(Array.isArray(arrRec) ? arrRec.map(m => String(m).trim().toLowerCase()).filter(Boolean) : []);
+      setRec.add(matNorm);
+      localStorage.setItem('bm_matriculas_recusadas', JSON.stringify(Array.from(setRec)));
+    } catch {}
+
+    // Cancela eventual solicitação pendente vinculada à mesma matrícula
+    setPedidosRecuperacao(prev => {
+      const hasMatch = prev.some(p => String(p.matricula).trim().toLowerCase() === matNorm && p.status === 'PENDENTE');
+      if (!hasMatch) return prev;
+      const updated = prev.map(p =>
+        String(p.matricula).trim().toLowerCase() === matNorm && p.status === 'PENDENTE'
+          ? { ...p, status: 'CANCELADO' as const, resolvidoPor: currentUser?.nome || 'Administrador' }
+          : p
+      );
+      try { localStorage.setItem('bm_pedidos_recuperacao', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+
+    setLogs(prev => [{
+      dataHora: new Date().toISOString(),
+      usuario: currentUser?.nome || 'Admin',
+      acao: 'RECUSAR_SERVIDOR',
+      docId: matClean,
+      detalhes: `Cadastro pendente de ${nomeAlvo} (Matrícula ${matClean}) recusado e removido. Motivo: ${motivoFinal}`
+    }, ...prev]);
+
+    if (useRealApi) {
+      try {
+        const resp = await fetchWithTimeout(realApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'EXCLUIR_USUARIO',
+            matricula: matClean,
+            motivo: motivoFinal,
+            usuarioAdmin: currentUser?.nome || 'Admin',
+            token: currentUser?.token || ''
+          })
+        }, 10000);
+        const text = await resp.text();
+        let parsed: any = null;
+        try { parsed = JSON.parse(text); } catch {}
+        if (parsed && parsed.success) {
+          // Excluído com sucesso na planilha: limpa da lista local de supressão
+          try {
+            const rawRec = localStorage.getItem('bm_matriculas_recusadas');
+            if (rawRec) {
+              const arrRec = JSON.parse(rawRec);
+              if (Array.isArray(arrRec)) {
+                localStorage.setItem(
+                  'bm_matriculas_recusadas',
+                  JSON.stringify(arrRec.filter((m: any) => String(m).trim().toLowerCase() !== matNorm))
+                );
+              }
+            }
+          } catch {}
+          showToast(`Cadastro de ${nomeAlvo} recusado e removido da planilha!`);
+          return true;
+        } else {
+          showToast(
+            `Cadastro de ${nomeAlvo} recusado e ocultado no painel. Para excluir a linha automaticamente na aba Usuarios, atualize o Apps Script para v4.5.`
+          );
+          return true;
+        }
+      } catch (err) {
+        console.warn('Recusa aplicada localmente (atualize o Apps Script para v4.5 para exclusão automática na planilha):', err);
+        showToast(`Cadastro de ${nomeAlvo} recusado localmente. Atualize o Apps Script para v4.5 para remover da planilha.`);
+        return true;
+      }
+    }
+
+    showToast(`Cadastro pendente de ${nomeAlvo} recusado e removido!`);
     return true;
   };
 
@@ -4915,6 +6263,385 @@ ${renderAssinaturasHtmlWord()}
     localStorage.setItem('bm_secretarias', JSON.stringify(updatedSecs));
     showToast(`Secretaria ${sec.sigla} salva com sucesso!`);
   };
+
+  // Chave composta determinística para identificar uma linha da aba Numeração
+  const getNumeracaoRowKey = (n: RegistroNumeracao): string =>
+    `${String(n.dataHora || '').trim()}||${String(n.tipoDocumento || '').trim().toUpperCase()}||${String(n.numero || '').trim()}||${String(n.secretaria || '').trim()}`;
+
+  // Persistência do Quadro Oficial Editável de Cargos e Funções (Anexos I, II e Efetivos)
+  const handleSaveFuncoesOficiais = (novaLista: CargoComissionadoOuFG[]) => {
+    setFuncoesOficiais(novaLista);
+    try {
+      localStorage.setItem('bm_funcoes_oficiais', JSON.stringify(novaLista));
+    } catch {}
+  };
+
+  const handleSaveCargosEfetivos = (novaLista: string[]) => {
+    setCargosEfetivos(novaLista);
+    try {
+      localStorage.setItem('bm_cargos_efetivos', JSON.stringify(novaLista));
+    } catch {}
+  };
+
+  // Abrir modal de Higienização (Excluir) ou Anulação de Numeração (Exclusivo ADMIN)
+  const handleAbrirModalHigienizacao = (alvos: RegistroNumeracao[], modoInicial: 'EXCLUIR' | 'ANULAR' = 'EXCLUIR') => {
+    if (currentUser?.nivel !== 'ADMIN') {
+      showToast('Apenas Administradores podem higienizar ou anular registros de numeração.', 'Acesso Restrito', true);
+      return;
+    }
+    if (!alvos || alvos.length === 0) return;
+    setHigienizarModalAlvos(alvos);
+    setHigienizarModo(alvos.length > 1 ? 'EXCLUIR' : modoInicial);
+    setHigienizarMotivo(alvos.length > 1 ? 'Higienização em lote (registros de teste/duplicidade)' : '');
+  };
+
+  // Executar Higienização (Excluir definitivo) ou Anulação (Manter no protocolo com [ANULADO])
+  const handleConfirmarHigienizacaoOuAnulacao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!higienizarModalAlvos || higienizarModalAlvos.length === 0) return;
+    if (currentUser?.nivel !== 'ADMIN') {
+      showToast('Ação restrita a Administradores.', 'Acesso Negado', true);
+      return;
+    }
+
+    const motivoFinal = higienizarMotivo.trim() || (
+      higienizarModo === 'EXCLUIR'
+        ? 'Higienização administrativa (teste/duplicidade)'
+        : 'Número anulado administrativamente'
+    );
+
+    const servidorIdentificado = currentUser
+      ? (currentUser.matricula ? `${currentUser.nome} (${currentUser.matricula})` : currentUser.nome)
+      : 'Administrador';
+
+    setIsProcessandoHigienizacao(true);
+    try {
+      if (higienizarModo === 'EXCLUIR') {
+        const keysToRemove = new Set(higienizarModalAlvos.map(getNumeracaoRowKey));
+        setNumeracoes(prev => prev.filter(item => !keysToRemove.has(getNumeracaoRowKey(item))));
+        setSelectedNumeracaoKeys(prev => prev.filter(k => !keysToRemove.has(k)));
+
+        const resumoNumeros = higienizarModalAlvos
+          .slice(0, 4)
+          .map(a => `${a.tipoDocumento} ${a.numero}`)
+          .join(', ') + (higienizarModalAlvos.length > 4 ? ` (+${higienizarModalAlvos.length - 4})` : '');
+
+        setLogs(prev => [{
+          dataHora: new Date().toISOString(),
+          usuario: servidorIdentificado,
+          acao: 'EXCLUIR_NUMERACAO',
+          docId: resumoNumeros,
+          detalhes: `Higienização: ${higienizarModalAlvos.length} registro(s) excluído(s). Motivo: ${motivoFinal}`
+        }, ...prev]);
+
+        let syncedCloud = false;
+        if (useRealApi) {
+          try {
+            const resp = await fetchWithTimeout(realApiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                action: 'EXCLUIR_NUMERACAO',
+                registros: higienizarModalAlvos.map(a => ({
+                  numero: a.numero,
+                  tipoDocumento: a.tipoDocumento,
+                  secretaria: a.secretaria || '',
+                  dataHora: a.dataHora || ''
+                })),
+                motivo: motivoFinal,
+                usuarioLogado: servidorIdentificado,
+                token: currentUser?.token || ''
+              })
+            }, 12000);
+            const json = JSON.parse(await resp.text());
+            if (json?.success) syncedCloud = true;
+          } catch (err) {
+            console.warn('Exclusão aplicada localmente (atualize o Apps Script para v4.4 para exclusão remota na planilha):', err);
+          }
+        }
+
+        showToast(
+          syncedCloud
+            ? `${higienizarModalAlvos.length} registro(s) excluído(s) da tela e da planilha Google Sheets!`
+            : `${higienizarModalAlvos.length} registro(s) removido(s) localmente e auditado(s) nos Logs.`
+        );
+      } else {
+        // ANULAR (1 registro — preserva a numeração sequencial com prefixo [ANULADO - motivo])
+        const alvo = higienizarModalAlvos[0];
+        const targetKey = getNumeracaoRowKey(alvo);
+        const assuntoLimpo = String(alvo.assunto || '').replace(/^\[ANULADO[^\]]*\]\s*/i, '');
+        const novoAssunto = `[ANULADO - ${motivoFinal}] ${assuntoLimpo}`;
+
+        setNumeracoes(prev =>
+          prev.map(item =>
+            getNumeracaoRowKey(item) === targetKey
+              ? { ...item, assunto: novoAssunto }
+              : item
+          )
+        );
+        setSelectedNumeracaoKeys(prev => prev.filter(k => k !== targetKey));
+
+        setLogs(prev => [{
+          dataHora: new Date().toISOString(),
+          usuario: servidorIdentificado,
+          acao: 'ANULAR_NUMERACAO',
+          docId: `${alvo.tipoDocumento} ${alvo.numero}`,
+          detalhes: `Número anulado (mantido no protocolo). Motivo: ${motivoFinal}`
+        }, ...prev]);
+
+        let syncedCloud = false;
+        if (useRealApi) {
+          try {
+            const resp = await fetchWithTimeout(realApiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                action: 'ANULAR_NUMERACAO',
+                numero: alvo.numero,
+                tipoDocumento: alvo.tipoDocumento,
+                secretaria: alvo.secretaria || '',
+                dataHora: alvo.dataHora || '',
+                motivo: motivoFinal,
+                usuarioLogado: servidorIdentificado,
+                token: currentUser?.token || ''
+              })
+            }, 12000);
+            const json = JSON.parse(await resp.text());
+            if (json?.success) syncedCloud = true;
+          } catch (err) {
+            console.warn('Anulação aplicada localmente (atualize o Apps Script para v4.4 para sincronização remota):', err);
+          }
+        }
+
+        showToast(
+          syncedCloud
+            ? `${alvo.tipoDocumento} nº ${alvo.numero} anulado no protocolo e sincronizado com o Google Sheets!`
+            : `${alvo.tipoDocumento} nº ${alvo.numero} marcado como [ANULADO] no Livro e auditado nos Logs.`
+        );
+      }
+
+      setHigienizarModalAlvos(null);
+      setHigienizarMotivo('');
+    } finally {
+      setIsProcessandoHigienizacao(false);
+    }
+  };
+
+  // Configuração de Regras Globais de Numeração (ex.: Decretos e Portarias em sequência única municipal)
+  const handleSalvarConfigNumeracao = async (novaConfig: ConfigNumeracaoMunicipal): Promise<boolean> => {
+    setConfigNumeracao(novaConfig);
+    try {
+      localStorage.setItem('bm_config_numeracao_v1', JSON.stringify(novaConfig));
+    } catch {}
+
+    const servidorIdentificado = currentUser
+      ? (currentUser.matricula ? `${currentUser.nome} (${currentUser.matricula})` : currentUser.nome)
+      : 'Administrador';
+
+    setLogs(prev => [{
+      dataHora: new Date().toISOString(),
+      usuario: servidorIdentificado,
+      acao: 'CONFIG_NUMERACAO',
+      docId: 'GLOBAL',
+      detalhes: `Sequência global municipal atualizada: ${novaConfig.tiposSequenciaGlobal.length > 0 ? novaConfig.tiposSequenciaGlobal.join(', ') : 'Nenhum (todos independentes por Secretaria)'}`
+    }, ...prev]);
+
+    if (useRealApi) {
+      try {
+        const resp = await fetchWithTimeout(realApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'SALVAR_CONFIG_NUMERACAO',
+            tiposSequenciaGlobal: novaConfig.tiposSequenciaGlobal,
+            usuarioLogado: servidorIdentificado,
+            token: currentUser?.token || ''
+          })
+        }, 8000);
+        const json = JSON.parse(await resp.text());
+        if (json?.success) {
+          showToast('Regras de sequência global municipal salvas e sincronizadas com o servidor!');
+          return true;
+        }
+      } catch (err) {
+        console.warn('Regras salvas localmente (atualize o Apps Script para v4.2 para sincronização na nuvem):', err);
+      }
+    }
+
+    showToast('Regras de numeração municipal salvas com sucesso!');
+    return true;
+  };
+
+  // Definição de Marco Zero (Carga Inicial de Numeração para Secretarias em Implantação)
+  const handleDefinirMarcoZero = async (payload: MarcoZeroPayload): Promise<boolean> => {
+    const secCanonica = resolveCanonicalSecretariaName(payload.secretaria, secretarias);
+    const siglaSec = getSecretariaSigla(secCanonica, secretarias);
+    const isGlobal = isTipoSequenciaGlobal(payload.tipoDocumento, configNumeracao);
+    const servidorIdentificado = currentUser
+      ? (currentUser.matricula ? `${currentUser.nome} (${currentUser.matricula})` : currentUser.nome)
+      : 'Administrador';
+
+    const numeroMarcoZero = formatNumeroOficialSequencial(
+      payload.ultimoNumero,
+      payload.ano,
+      payload.incluirSigla,
+      siglaSec,
+      isGlobal
+    );
+    const proximoNumero = formatNumeroOficialSequencial(
+      payload.ultimoNumero + 1,
+      payload.ano,
+      payload.incluirSigla,
+      siglaSec,
+      isGlobal
+    );
+    const assuntoFinal = `[MARCO ZERO DE IMPLANTAÇÃO] ${payload.observacao}`;
+
+    if (useRealApi) {
+      try {
+        const resp = await fetchWithTimeout(realApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'DEFINIR_MARCO_ZERO',
+            tipoDocumento: payload.tipoDocumento,
+            ultimoNumero: payload.ultimoNumero,
+            ano: payload.ano,
+            secretaria: secCanonica,
+            departamento: payload.departamento || 'Gabinete',
+            observacao: payload.observacao,
+            incluirSigla: payload.incluirSigla && !isGlobal,
+            sequenciaGlobal: isGlobal,
+            servidor: servidorIdentificado,
+            usuarioLogado: servidorIdentificado,
+            token: currentUser?.token || ''
+          })
+        }, 8000);
+        const json = JSON.parse(await resp.text());
+        if (json?.success && json?.numeroMarcoZero) {
+          const novoReg: RegistroNumeracao = {
+            dataHora: json.dataHora || new Date().toISOString(),
+            tipoDocumento: payload.tipoDocumento,
+            numero: json.numeroMarcoZero,
+            assunto: json.assunto || assuntoFinal,
+            usuario: servidorIdentificado,
+            servidor: servidorIdentificado,
+            destinatario: 'Livro Anterior / Carga Inicial',
+            secretaria: json.secretaria || secCanonica,
+            departamento: json.departamento || payload.departamento || 'Gabinete',
+            incluirSigla: payload.incluirSigla && !isGlobal
+          };
+          setNumeracoes(prev => [novoReg, ...prev]);
+          setLogs(prev => [{
+            dataHora: novoReg.dataHora,
+            usuario: servidorIdentificado,
+            acao: 'DEFINIR_MARCO_ZERO',
+            docId: json.numeroMarcoZero,
+            detalhes: `Marco Zero gravado no Google Sheets para ${payload.tipoDocumento} (${secCanonica}). Próximo nº oficial: ${json.proximoNumero || proximoNumero}`
+          }, ...prev]);
+          showToast(`Marco Zero ${json.numeroMarcoZero} gravado no Google Sheets! Próximo nº oficial: ${json.proximoNumero || proximoNumero}.`);
+          return true;
+        } else if (json?.error && !String(json.error).includes('não reconhecida')) {
+          showToast(json.error, 'Validação de Numeração', true);
+          return false;
+        }
+      } catch (err) {
+        console.warn('Contingência local ao gravar Marco Zero:', err);
+      }
+    }
+
+    // Validação e gravação local imediata (contingência ou modo offline / GAS anterior à v4.2)
+    const maiorAtual = getMaxSequentialForSecretaria(
+      numeracoes,
+      payload.tipoDocumento,
+      secCanonica,
+      payload.ano,
+      secretarias,
+      configNumeracao
+    );
+    if (payload.ultimoNumero <= maiorAtual) {
+      showToast(
+        `O número informado (${numeroMarcoZero}) precisa ser maior que o atual (${String(maiorAtual).padStart(3, '0')}/${payload.ano}).`,
+        'Validação de Numeração',
+        true
+      );
+      return false;
+    }
+
+    const nowIso = new Date().toISOString();
+    const novoReg: RegistroNumeracao = {
+      dataHora: nowIso,
+      tipoDocumento: payload.tipoDocumento,
+      numero: numeroMarcoZero,
+      assunto: assuntoFinal,
+      usuario: servidorIdentificado,
+      servidor: servidorIdentificado,
+      destinatario: 'Livro Anterior / Carga Inicial',
+      secretaria: secCanonica,
+      departamento: payload.departamento || 'Gabinete',
+      incluirSigla: payload.incluirSigla && !isGlobal
+    };
+    setNumeracoes(prev => [novoReg, ...prev]);
+    setLogs(prev => [{
+      dataHora: nowIso,
+      usuario: servidorIdentificado,
+      acao: 'DEFINIR_MARCO_ZERO',
+      docId: numeroMarcoZero,
+      detalhes: `Marco Zero registrado para ${payload.tipoDocumento} (${secCanonica}${isGlobal ? ' - Global Municipal' : ''}). Próximo nº oficial: ${proximoNumero}`
+    }, ...prev]);
+    showToast(`Marco Zero ${numeroMarcoZero} registrado! Próximo número no Redator: ${proximoNumero}.`);
+    return true;
+  };
+
+  // Prévia em tempo real do próximo número previsto no Redator Oficial
+  const redatorProximoNumeroInfo = useMemo(() => {
+    const anoAtual = String(new Date().getFullYear());
+    const userPrimarySec = resolveCanonicalSecretariaName(
+      currentUser?.secretaria || 'Secretaria Municipal de Administração (SMA)',
+      secretarias
+    );
+    const secBase = redatorSecretaria
+      ? resolveCanonicalSecretariaName(redatorSecretaria, secretarias)
+      : (activeSecretaria && activeSecretaria !== 'TODAS'
+          ? resolveCanonicalSecretariaName(activeSecretaria, secretarias)
+          : userPrimarySec);
+    const sigla = getSecretariaSigla(secBase, secretarias);
+    const isGlobal = isTipoSequenciaGlobal(redatorTipo, configNumeracao);
+    const maiorAtual = getMaxSequentialForSecretaria(
+      numeracoes,
+      redatorTipo,
+      secBase,
+      anoAtual,
+      secretarias,
+      configNumeracao
+    );
+    const proximoSeq = maiorAtual + 1;
+    const numeroPrevisto = formatNumeroOficialSequencial(
+      proximoSeq,
+      anoAtual,
+      incluirSiglaNoNumero,
+      sigla,
+      isGlobal
+    );
+    return {
+      anoAtual,
+      secBase,
+      sigla,
+      isGlobal,
+      maiorAtual,
+      proximoSeq,
+      numeroPrevisto
+    };
+  }, [
+    numeracoes,
+    redatorTipo,
+    redatorSecretaria,
+    activeSecretaria,
+    currentUser?.secretaria,
+    secretarias,
+    configNumeracao,
+    incluirSiglaNoNumero
+  ]);
 
   // Funções de Gestão de Pedidos de Recuperação de Senha e Autorização de Novos Servidores
   const handleCriarPedidoRecuperacao = (
@@ -5164,14 +6891,14 @@ ${renderAssinaturasHtmlWord()}
 
     return (
       <div
-        className={`min-h-screen w-full flex items-center justify-center p-4 transition-colors duration-200 ${isDarkMode ? 'dark text-slate-100' : 'text-slate-100'}`}
+        className={`min-h-[100dvh] w-full flex items-center justify-center p-3 sm:p-4 py-6 overflow-y-auto transition-colors duration-200 ${isDarkMode ? 'dark text-slate-100' : 'text-slate-100'}`}
         style={{
           background: isDarkMode
             ? `radial-gradient(circle at top, ${activePaletteMeta.headerBg} 0%, #020617 75%)`
             : `radial-gradient(circle at top, ${activePaletteMeta.headerBg} 0%, #0f172a 85%)`
         }}
       >
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 max-w-sm w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-slate-900 dark:text-slate-100">
+        <div className="sgep-themed-surface bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-8 max-w-sm w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-slate-900 dark:text-slate-100 my-auto">
           <div className="text-center mb-6">
             <img
               src={BRASAO_RIO_CLARO}
@@ -5328,7 +7055,7 @@ ${renderAssinaturasHtmlWord()}
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-all shadow-md active:scale-95 flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-60"
+                className="sgep-btn-primary w-full py-2.5 border rounded-lg text-sm font-semibold transition-all shadow-md active:scale-95 flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-60"
               >
                 {isLoggingIn ? (
                   <>
@@ -5460,6 +7187,8 @@ ${renderAssinaturasHtmlWord()}
             setLoginMatricula(matricula);
             showToast(`Matrícula ${matricula} pronta para login!`);
           }}
+          funcoesOficiais={funcoesOficiais}
+          cargosEfetivos={cargosEfetivos}
         />
 
         {/* Global Toast para a Tela de Login */}
@@ -5596,146 +7325,136 @@ ${renderAssinaturasHtmlWord()}
             }}
           >
             <div>
-              {/* Timbre Municipal Oficial de Rio Claro RJ */}
-              <div className="flex items-center gap-3.5 pb-4 border-b-2 border-[#002b82]/30 mb-4">
-                <img
-                  src={BRASAO_RIO_CLARO}
-                  onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
-                  alt="Brasão Oficial de Rio Claro RJ"
-                  width={60}
-                  height={70}
+              {/* Timbre Municipal Oficial de Rio Claro RJ (adaptável ao Perfil Visual do Setor) */}
+              {activeDocumentStyle.cabecalhoLayout === 'CENTRALIZADO' || activeDocumentStyle.cabecalhoLayout === 'SOLENE_DUPLO' ? (
+                <div
+                  className="flex flex-col items-center text-center gap-1.5 pb-3.5 mb-4"
                   style={{
-                    width: '60px',
-                    height: '70px',
-                    minWidth: '60px',
-                    minHeight: '70px',
-                    maxWidth: '60px',
-                    maxHeight: '70px',
-                    aspectRatio: '86 / 100',
-                    objectFit: 'contain',
-                    flexShrink: 0,
-                    display: 'block'
+                    borderBottom: activeDocumentStyle.cabecalhoLayout === 'SOLENE_DUPLO'
+                      ? `4px double ${activeDocumentStyle.corPrimaria}`
+                      : `2px solid ${activeDocumentStyle.corPrimaria}`
                   }}
-                  className="brasao-oficial-img object-contain shrink-0"
-                />
-                <div className="text-[#002b82] font-sans">
-                  <div className="font-extrabold text-[12px] tracking-wide uppercase leading-tight">
-                    ESTADO DO RIO DE JANEIRO
-                  </div>
-                  <div className="font-black text-[14px] tracking-tight uppercase leading-tight mt-0.5">
-                    PREFEITURA MUNICIPAL DE RIO CLARO
-                  </div>
-                  <div className="text-[10px] text-slate-600 font-medium leading-tight mt-0.5">
-                    Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68
-                  </div>
-                  <div className="font-bold text-[11px] text-[#002b82] uppercase leading-tight mt-0.5">
-                    {redatorSecretaria}
-                  </div>
-                  {redatorSetorOrigem && redatorSetorOrigem !== redatorSecretaria && (
-                    <div className="text-[10px] text-slate-600 font-medium leading-tight">
-                      {redatorSetorOrigem}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Layout Exclusivo para DECRETO */}
-              {redatorTipo === 'DECRETO' ? (
-                <div>
-                  {/* Epígrafe Centralizada */}
-                  <div className="text-center mb-4 pb-2 border-b border-slate-200">
-                    <h3 className="text-sm font-black text-[#002b82] tracking-wider uppercase">
-                      {getDocumentoPrefixo('DECRETO', redatorNumero)}
-                    </h3>
-                    <span className="text-[10px] text-slate-500 font-medium">Prefeitura Municipal de Rio Claro – RJ</span>
-                  </div>
-
-                  {/* Ementa Recuada à Direita */}
-                  {redatorAssunto && (
-                    <div className="ml-auto w-7/12 text-justify italic text-[10px] text-slate-800 leading-snug mb-5 pl-3 border-l-2 border-[#002b82]/40">
-                      {redatorAssunto}
-                    </div>
-                  )}
-
-                  {/* Dispositivo Articulado */}
-                  <div
-                    className="sgep-rich-doc leading-relaxed mb-6 pl-0"
-                    style={{
-                      fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : 'Georgia, "Times New Roman", serif',
-                      fontSize: redatorTamanhoFonte === '10pt' ? '11px' : redatorTamanhoFonte === '11pt' ? '12px' : '13px',
-                      textAlign: redatorAlinhamento
-                    }}
-                    dangerouslySetInnerHTML={{
-                      __html: converterTextoOficialHTML(redatorTexto, 'preview', redatorFonte, redatorTamanhoFonte, redatorAlinhamento)
-                    }}
+                >
+                  <img
+                    src={BRASAO_RIO_CLARO}
+                    onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
+                    alt="Brasão Oficial de Rio Claro RJ"
+                    width={52}
+                    height={60}
+                    style={{ width: '52px', height: '60px', objectFit: 'contain', display: 'block' }}
+                    className="brasao-oficial-img object-contain shrink-0"
                   />
-
-                  {/* Local e Data Solene */}
-                  <div className="mb-6 font-sans text-xs text-slate-800">
-                    <p className="font-medium">{redatorFecho || `Gabinete do Prefeito, Rio Claro – RJ, ${redatorData}.`}</p>
-                  </div>
-                </div>
-              ) : redatorTipo === 'PORTARIA' ? (
-                <div>
-                  {/* Epígrafe Centralizada */}
-                  <div className="text-center mb-4 pb-2 border-b border-slate-200">
-                    <h3 className="text-sm font-black text-[#002b82] tracking-wider uppercase">
-                      {getDocumentoPrefixo('PORTARIA', redatorNumero)}
-                    </h3>
-                    <span className="text-[10px] text-slate-500 font-medium">{redatorSecretaria}</span>
-                  </div>
-
-                  {/* Ementa Recuada à Direita */}
-                  {redatorAssunto && (
-                    <div className="ml-auto w-7/12 text-justify italic text-[10px] text-slate-800 leading-snug mb-4 pl-3 border-l-2 border-slate-300">
-                      {redatorAssunto}
+                  <div className="font-sans" style={{ color: activeDocumentStyle.corPrimaria }}>
+                    <div className="font-extrabold text-[11px] tracking-wider uppercase leading-tight">
+                      ESTADO DO RIO DE JANEIRO
                     </div>
-                  )}
-
-                  {/* Dispositivo Articulado */}
-                  <div
-                    className="sgep-rich-doc leading-relaxed mb-5 pl-0"
-                    style={{
-                      fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : 'Georgia, "Times New Roman", serif',
-                      fontSize: redatorTamanhoFonte === '10pt' ? '11px' : redatorTamanhoFonte === '11pt' ? '12px' : '13px',
-                      textAlign: redatorAlinhamento
-                    }}
-                    dangerouslySetInnerHTML={{
-                      __html: converterTextoOficialHTML(redatorTexto, 'preview', redatorFonte, redatorTamanhoFonte, redatorAlinhamento)
-                    }}
-                  />
-
-                  {/* Fecho Solene */}
-                  <div className="mb-6 font-sans text-xs text-slate-800">
-                    <p className="font-semibold">{redatorFecho || 'Dê-se ciência, registre-se, publique-se e cumpra-se.'}</p>
-                    <p className="text-[10px] text-slate-500 mt-1">{redatorData}</p>
+                    <div className="font-black text-[13.5px] tracking-tight uppercase leading-tight mt-0.5">
+                      PREFEITURA MUNICIPAL DE RIO CLARO
+                    </div>
+                    <div className="font-bold text-[11px] uppercase leading-tight mt-0.5">
+                      {activeDocumentStyle.cabecalhoSubtituloCustom || redatorSecretaria}
+                    </div>
+                    {redatorSetorOrigem && redatorSetorOrigem !== (activeDocumentStyle.cabecalhoSubtituloCustom || redatorSecretaria) && (
+                      <div className="text-[9.5px] text-slate-600 font-medium leading-tight mt-0.5">
+                        {redatorSetorOrigem}
+                      </div>
+                    )}
+                    <div className="text-[9px] text-slate-500 font-medium leading-tight mt-0.5">
+                      Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68
+                    </div>
                   </div>
                 </div>
-              ) : (redatorTipo === 'ATO' || redatorTipo === 'TERMO') ? (
+              ) : (
+                <div
+                  className="flex items-center gap-3.5 pb-4 mb-4"
+                  style={{ borderBottom: `2px solid ${activeDocumentStyle.corPrimaria}` }}
+                >
+                  <img
+                    src={BRASAO_RIO_CLARO}
+                    onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
+                    alt="Brasão Oficial de Rio Claro RJ"
+                    width={60}
+                    height={70}
+                    style={{
+                      width: '60px',
+                      height: '70px',
+                      minWidth: '60px',
+                      minHeight: '70px',
+                      maxWidth: '60px',
+                      maxHeight: '70px',
+                      aspectRatio: '86 / 100',
+                      objectFit: 'contain',
+                      flexShrink: 0,
+                      display: 'block'
+                    }}
+                    className="brasao-oficial-img object-contain shrink-0"
+                  />
+                  <div className="font-sans" style={{ color: activeDocumentStyle.corPrimaria }}>
+                    <div className="font-extrabold text-[12px] tracking-wide uppercase leading-tight">
+                      ESTADO DO RIO DE JANEIRO
+                    </div>
+                    <div className="font-black text-[14px] tracking-tight uppercase leading-tight mt-0.5">
+                      PREFEITURA MUNICIPAL DE RIO CLARO
+                    </div>
+                    <div className="text-[10px] text-slate-600 font-medium leading-tight mt-0.5">
+                      Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68
+                    </div>
+                    <div className="font-bold text-[11px] uppercase leading-tight mt-0.5" style={{ color: activeDocumentStyle.corPrimaria }}>
+                      {activeDocumentStyle.cabecalhoSubtituloCustom || redatorSecretaria}
+                    </div>
+                    {redatorSetorOrigem && redatorSetorOrigem !== (activeDocumentStyle.cabecalhoSubtituloCustom || redatorSecretaria) && (
+                      <div className="text-[10px] text-slate-600 font-medium leading-tight">
+                        {redatorSetorOrigem}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Layouts Institucionais por Gênero Documental (Solene, Jurídico PGM, Judicial, Notificação, Correspondência) */}
+              {getDocumentTypeDefinition(redatorTipo).layout === 'SOLENE' ? (
                 <div>
-                  {/* Epígrafe Centralizada */}
                   <div className="text-center mb-4 pb-2 border-b border-slate-200">
-                    <h3 className="text-sm font-black text-[#002b82] tracking-wider uppercase">
+                    <h3 className="text-sm font-black tracking-wider uppercase" style={{ color: activeDocumentStyle.corPrimaria }}>
                       {getDocumentoPrefixo(redatorTipo, redatorNumero)}
                     </h3>
                     <span className="text-[10px] text-slate-500 font-medium">
-                      {redatorTipo === 'TERMO' ? 'Compromisso de Ajustamento de Conduta (CAC / TAC)' : (redatorSecretaria || 'Comissão Processante')}
+                      {redatorTipo === 'DECRETO' || redatorTipo === 'PROJETO_LEI'
+                        ? getDocumentTypeDefinition(redatorTipo).subtitle
+                        : (redatorTipo === 'TERMO' || redatorTipo === 'CONTRATO'
+                          ? getDocumentTypeDefinition(redatorTipo).subtitle
+                          : redatorSecretaria)}
                     </span>
                   </div>
 
-                  {/* Ementa / Objeto Recuada à Direita */}
                   {redatorAssunto && (
-                    <div className="ml-auto w-8/12 text-justify italic text-[10px] text-slate-800 leading-snug mb-4 pl-3 border-l-2 border-[#002b82]/40">
+                    <div
+                      className={
+                        activeDocumentStyle.ementaEstilo === 'CAIXA_SOMBREADA'
+                          ? 'py-2 px-3 bg-slate-50 border border-slate-200 border-l-4 text-justify italic text-[10px] text-slate-800 leading-snug mb-5 rounded-r'
+                          : activeDocumentStyle.ementaEstilo === 'SIMPLES'
+                            ? 'text-justify italic text-[10px] text-slate-800 leading-snug mb-5'
+                            : activeDocumentStyle.ementaEstilo === 'DIREITA_SEM_BORDA'
+                              ? 'ml-auto w-7/12 text-justify italic text-[10px] text-slate-800 leading-snug mb-5'
+                              : 'ml-auto w-7/12 text-justify italic text-[10px] text-slate-800 leading-snug mb-5 pl-3 border-l-2'
+                      }
+                      style={{
+                        borderLeftColor: activeDocumentStyle.ementaEstilo === 'DIREITA_BORDA' || activeDocumentStyle.ementaEstilo === 'CAIXA_SOMBREADA'
+                          ? activeDocumentStyle.corPrimaria
+                          : undefined
+                      }}
+                    >
+                      {activeDocumentStyle.ementaEstilo === 'SIMPLES' && <strong className="not-italic">Ementa: </strong>}
                       {redatorAssunto}
                     </div>
                   )}
 
-                  {/* Dispositivo Articulado / Termo */}
                   <div
-                    className="sgep-rich-doc leading-relaxed mb-5 pl-0"
+                    className="sgep-rich-doc mb-6 pl-0"
                     style={{
                       fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : 'Georgia, "Times New Roman", serif',
                       fontSize: redatorTamanhoFonte === '10pt' ? '11px' : redatorTamanhoFonte === '11pt' ? '12px' : '13px',
+                      lineHeight: activeDocumentStyle.espacamentoLinhas || 1.5,
                       textAlign: redatorAlinhamento
                     }}
                     dangerouslySetInnerHTML={{
@@ -5743,16 +7462,100 @@ ${renderAssinaturasHtmlWord()}
                     }}
                   />
 
-                  {/* Local e Data */}
-                  <div className="mb-4 font-sans text-xs text-slate-800">
-                    <p className="font-semibold text-slate-700">Rio Claro – RJ, {redatorData}.</p>
+                  <div className="mb-6 font-sans text-xs text-slate-800">
+                    {redatorFecho && <p className="font-semibold">{redatorFecho}</p>}
+                    <p className="text-[10px] text-slate-500 mt-1">{formatarLocalDataSemDuplicar(redatorData)}</p>
+                  </div>
+                </div>
+              ) : getDocumentTypeDefinition(redatorTipo).layout === 'JUDICIAL' ? (
+                <div>
+                  <div className="flex justify-between items-baseline mb-3 pb-1.5 border-b border-slate-200 font-sans text-[10px] text-slate-500">
+                    <span className="font-bold uppercase text-rose-900">{getDocumentoPrefixo(redatorTipo, redatorNumero)}</span>
+                    <span>{redatorData}</span>
+                  </div>
+                  <div
+                    className="sgep-rich-doc mb-6 pl-0"
+                    style={{
+                      fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : 'Georgia, "Times New Roman", serif',
+                      fontSize: redatorTamanhoFonte === '10pt' ? '11px' : redatorTamanhoFonte === '11pt' ? '12px' : '13px',
+                      lineHeight: activeDocumentStyle.espacamentoLinhas || 1.5,
+                      textAlign: redatorAlinhamento
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: converterTextoOficialHTML(redatorTexto, 'preview', redatorFonte, redatorTamanhoFonte, redatorAlinhamento)
+                    }}
+                  />
+                  <div className="mb-6 font-sans text-xs text-slate-800">
+                    <p className="font-semibold">{redatorFecho || 'Termos em que, pede e espera deferimento.'}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">{formatarLocalDataSemDuplicar(redatorData)}</p>
+                  </div>
+                </div>
+              ) : getDocumentTypeDefinition(redatorTipo).layout === 'NOTIFICACAO' ? (
+                <div>
+                  <div className="text-center mb-3 pb-2 border-b-2 border-rose-700/40">
+                    <h3 className="text-sm font-black text-rose-900 tracking-wider uppercase">
+                      {getDocumentoPrefixo(redatorTipo, redatorNumero)}
+                    </h3>
+                    <span className="text-[10px] text-slate-500 font-medium">{getDocumentTypeDefinition(redatorTipo).subtitle}</span>
+                  </div>
+                  <div className="mb-4 p-2.5 bg-slate-50 border border-slate-200 rounded text-[11px] font-sans space-y-0.5 text-slate-800">
+                    <p><strong>NOTIFICANTE:</strong> Município de Rio Claro – RJ ({redatorSecretaria})</p>
+                    <p><strong>NOTIFICADO(A):</strong> {redatorDestinatario || '[NOME / RAZÃO SOCIAL]'}</p>
+                    {redatorReferenciaDoc && <p><strong>PROCESSO / REF.:</strong> {redatorReferenciaDoc}</p>}
+                    <p><strong>OBJETO:</strong> {redatorAssunto}</p>
+                  </div>
+                  <div
+                    className="sgep-rich-doc mb-6 pl-0"
+                    style={{
+                      fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : 'Georgia, "Times New Roman", serif',
+                      fontSize: redatorTamanhoFonte === '10pt' ? '11px' : redatorTamanhoFonte === '11pt' ? '12px' : '13px',
+                      lineHeight: activeDocumentStyle.espacamentoLinhas || 1.5,
+                      textAlign: redatorAlinhamento
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: converterTextoOficialHTML(redatorTexto, 'preview', redatorFonte, redatorTamanhoFonte, redatorAlinhamento)
+                    }}
+                  />
+                  <div className="mb-6 font-sans text-xs text-slate-800">
+                    <p className="font-medium">{redatorFecho}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">{formatarLocalDataSemDuplicar(redatorData)}</p>
+                  </div>
+                </div>
+              ) : getDocumentTypeDefinition(redatorTipo).layout === 'JURIDICO' ? (
+                <div>
+                  <div className="text-center mb-3 pb-2 border-b border-slate-300">
+                    <h3 className="text-sm font-black tracking-wider uppercase" style={{ color: activeDocumentStyle.corPrimaria }}>
+                      {getDocumentoPrefixo(redatorTipo, redatorNumero)}
+                    </h3>
+                    <span className="text-[10px] text-slate-500 font-medium">{getDocumentTypeDefinition(redatorTipo).subtitle}</span>
+                  </div>
+                  <div className="mb-4 pb-2 border-b border-slate-200 font-sans text-[11px] space-y-0.5 text-slate-800">
+                    {redatorDestinatario && <p><strong>Interessado / Destino:</strong> {redatorDestinatario}</p>}
+                    {redatorReferenciaDoc && <p><strong>Processo / Referência:</strong> {redatorReferenciaDoc}</p>}
+                    <p><strong>Assunto / Objeto:</strong> {redatorAssunto}</p>
+                  </div>
+                  <div
+                    className="sgep-rich-doc mb-6 pl-0"
+                    style={{
+                      fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : 'Georgia, "Times New Roman", serif',
+                      fontSize: redatorTamanhoFonte === '10pt' ? '11px' : redatorTamanhoFonte === '11pt' ? '12px' : '13px',
+                      lineHeight: activeDocumentStyle.espacamentoLinhas || 1.5,
+                      textAlign: redatorAlinhamento
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: converterTextoOficialHTML(redatorTexto, 'preview', redatorFonte, redatorTamanhoFonte, redatorAlinhamento)
+                    }}
+                  />
+                  <div className="mb-6 font-sans text-xs text-slate-800">
+                    <p className="font-medium">{redatorFecho}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">{formatarLocalDataSemDuplicar(redatorData)}</p>
                   </div>
                 </div>
               ) : (
                 <div>
                   {/* Número e Data */}
                   <div className="flex justify-between items-baseline mb-4 font-sans text-xs">
-                    <strong className="text-[#002b82] font-black text-xs sm:text-sm">
+                    <strong className="font-black text-xs sm:text-sm" style={{ color: activeDocumentStyle.corPrimaria }}>
                       {getDocumentoPrefixo(redatorTipo, redatorNumero)}
                     </strong>
                     <span className="text-slate-700 font-medium text-[10px]">{redatorData}</span>
@@ -5784,10 +7587,11 @@ ${renderAssinaturasHtmlWord()}
 
                   {/* Texto com recuo e formatação oficial */}
                   <div
-                    className="sgep-rich-doc leading-relaxed mb-6 pl-0"
+                    className="sgep-rich-doc mb-6 pl-0"
                     style={{
                       fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : 'Georgia, "Times New Roman", serif',
                       fontSize: redatorTamanhoFonte === '10pt' ? '11px' : redatorTamanhoFonte === '11pt' ? '12px' : '13px',
+                      lineHeight: activeDocumentStyle.espacamentoLinhas || 1.5,
                       textAlign: redatorAlinhamento
                     }}
                     dangerouslySetInnerHTML={{
@@ -5803,8 +7607,15 @@ ${renderAssinaturasHtmlWord()}
               )}
             </div>
 
-            {/* Assinatura Oficial Individual ou da Comissão */}
-            {renderAssinaturasJSX(false)}
+            {/* Assinatura Oficial Individual, Dupla/Referendo ou da Comissão */}
+            <div>
+              {renderAssinaturasJSX(false)}
+              {activeDocumentStyle.rodapeTexto && (
+                <div className="mt-5 pt-2 border-t border-slate-200 text-center font-sans text-[9px] text-slate-500">
+                  {activeDocumentStyle.rodapeTexto}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </>
@@ -6095,10 +7906,10 @@ ${renderAssinaturasHtmlWord()}
                 </div>
               </div>
 
-              {/* Faixa 2: Ações Operacionais, Pasta/Secretaria Ativa e Comandos Admin */}
+              {/* Faixa 2: Ações Operacionais (Desktop/Tablet) e Pasta Ativa (compacta no celular — ações principais ficam na barra inferior mobile) */}
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5 pt-2 border-t border-slate-800/80">
-                {/* Alternador Início / Banco de Modelos */}
-                <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-800/90 border border-slate-700/80 shrink-0">
+                {/* Alternador Início / Banco de Modelos (Desktop/Tablet — no celular fica na barra inferior) */}
+                <div className="hidden md:inline-flex items-center p-0.5 rounded-lg bg-slate-950/35 border border-white/15 shrink-0">
                   <button
                     type="button"
                     id="btn-nav-central-inicio"
@@ -6108,8 +7919,8 @@ ${renderAssinaturasHtmlWord()}
                     }}
                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
                       activeAppView === 'inicio'
-                        ? 'bg-slate-100 text-slate-900 shadow-xs'
-                        : 'text-slate-300 hover:text-white'
+                        ? 'sgep-btn-primary shadow-sm'
+                        : 'text-slate-200/85 hover:text-white hover:bg-white/10'
                     }`}
                     title="Voltar à Central de Início com acesso rápido a todos os módulos"
                   >
@@ -6125,8 +7936,8 @@ ${renderAssinaturasHtmlWord()}
                     }}
                     className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
                       activeAppView === 'modelos'
-                        ? 'bg-slate-100 text-slate-900 shadow-xs'
-                        : 'text-slate-300 hover:text-white'
+                        ? 'sgep-btn-primary shadow-sm'
+                        : 'text-slate-200/85 hover:text-white hover:bg-white/10'
                     }`}
                     title="Abrir o Banco de Modelos completo e Índice Temático"
                   >
@@ -6139,12 +7950,11 @@ ${renderAssinaturasHtmlWord()}
                   id="btn-abrir-redator"
                   data-tip="redator"
                   onClick={() => handleAbrirRedatorComTipo()}
-                  className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
+                  className="sgep-btn-primary hidden md:flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
                   title="Redigir Memorando ou Ofício com numeração sequencial automática"
                 >
                   <FilePen className="w-3.5 h-3.5 shrink-0" />
-                  <span className="sm:hidden">Redigir</span>
-                  <span className="hidden sm:inline">Redigir Memorando/Ofício</span>
+                  <span>Redigir Memorando/Ofício</span>
                 </button>
 
                 <button
@@ -6154,24 +7964,22 @@ ${renderAssinaturasHtmlWord()}
                     setActiveSheetTab('numeracao');
                     setIsSheetsDrawerOpen(true);
                   }}
-                  className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer border border-blue-400/30 shrink-0"
+                  className="hidden md:flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer border border-blue-400/30 shrink-0"
                   title="Abrir o Livro de Numeração Oficial com os registros da secretaria ativa"
                 >
                   <ListOrdered className="w-3.5 h-3.5 shrink-0" />
-                  <span className="sm:hidden">Livro ({numeracoesFiltradas.length})</span>
-                  <span className="hidden sm:inline">Livro de Numeração ({numeracoesFiltradas.length})</span>
+                  <span>Livro de Numeração ({numeracoesFiltradas.length})</span>
                 </button>
 
                 <button
                   type="button"
                   id="btn-importar-catalogar-docs"
                   onClick={() => setIsImportCatalogModalOpen(true)}
-                  className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer border border-sky-400/30 shrink-0"
-                  title="Enviar arquivos PDF ou DOCX (individual ou em lote) para reconhecimento automático e catalogação"
+                  className="hidden md:flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer border border-sky-400/30 shrink-0"
+                  title="Importar arquivos PDF, ODT (LibreOffice), DOC/DOCX, RTF, CSV ou fotos com OCR e proteção de assinatura digital"
                 >
                   <Upload className="w-3.5 h-3.5 shrink-0" />
-                  <span className="sm:hidden">Importar</span>
-                  <span className="hidden sm:inline">Importar PDF / DOCX</span>
+                  <span>Importar / OCR</span>
                 </button>
 
                 <div
@@ -6211,7 +8019,11 @@ ${renderAssinaturasHtmlWord()}
                     <button
                       id="btn-gestao-admin"
                       data-tip="admin"
-                      onClick={() => setIsAdminModalOpen(true)}
+                      onClick={() => {
+                        setAdminInitialTab(undefined);
+                        setAdminMarcoZeroContext(null);
+                        setIsAdminModalOpen(true);
+                      }}
                       className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-sm active:scale-95 border border-indigo-400/30 cursor-pointer"
                       title="Painel de Administração: Autorizações, Servidores, Senhas, Secretarias e Departamentos"
                     >
@@ -6291,7 +8103,11 @@ ${renderAssinaturasHtmlWord()}
                 }}
                 onIrParaModelos={handleIrParaModelos}
                 onAbrirImportacao={() => setIsImportCatalogModalOpen(true)}
-                onAbrirAdmin={() => setIsAdminModalOpen(true)}
+                onAbrirAdmin={() => {
+                  setAdminInitialTab(undefined);
+                  setAdminMarcoZeroContext(null);
+                  setIsAdminModalOpen(true);
+                }}
                 onAbrirGuia={() => setIsGuiaAjudaOpen(true)}
                 onAbrirPerfilSenha={() => {
                   setPasswordError('');
@@ -6308,7 +8124,7 @@ ${renderAssinaturasHtmlWord()}
             ) : (
               <>
                 {/* Dashboard Stats */}
-                <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2 flex-shrink-0">
+                <div className="sgep-themed-surface bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2 flex-shrink-0">
               <div className="grid grid-cols-4 lg:grid-cols-7 gap-1.5 sm:gap-2.5 text-center">
                 <div className="bg-slate-50 dark:bg-slate-800/40 p-1.5 sm:p-2 rounded-lg border border-slate-200 dark:border-slate-800">
                   <p className="text-[10px] text-slate-500 uppercase font-bold truncate">Total</p>
@@ -6352,9 +8168,9 @@ ${renderAssinaturasHtmlWord()}
             </div>
 
             {/* COMBO DE TODOS OS DOCUMENTOS E REGISTROS DA ABA NUMERAÇÃO */}
-            <div className="bg-gradient-to-r from-slate-50 via-emerald-50/20 to-slate-50 dark:from-slate-900/90 dark:via-emerald-950/20 dark:to-slate-900/90 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 text-xs flex-shrink-0">
+            <div className="sgep-themed-subtle border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2.5 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 text-xs flex-shrink-0">
               <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2.5 w-full lg:w-auto flex-1 min-w-0">
-                <div className="flex items-center space-x-1.5 text-emerald-700 dark:text-emerald-400 font-bold whitespace-nowrap shrink-0">
+                <div className="sgep-accent-text flex items-center space-x-1.5 font-bold whitespace-nowrap shrink-0">
                   <BookOpen className="w-4 h-4 flex-shrink-0" />
                   <span>Livro de Numeração (Combo Oficial):</span>
                 </div>
@@ -6458,27 +8274,27 @@ ${renderAssinaturasHtmlWord()}
             </div>
 
             {/* Workspace Area: Sidebar & Document Grid */}
-            <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden max-w-[1600px] w-full mx-auto p-3 sm:p-6 gap-4 lg:gap-6">
+            <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden max-w-[1600px] w-full mx-auto p-3 sm:p-6 pb-24 md:pb-6 gap-4 lg:gap-6">
               
               {/* Sidebar (Empilhada e retrátil em telas pequenas/celulares) */}
-              <aside className="w-full lg:w-72 flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+              <aside className="sgep-themed-surface w-full lg:w-72 flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setIsMobileSidebarOpen(prev => !prev)}
-                  className="lg:hidden w-full p-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between text-left cursor-pointer"
+                  className="sgep-themed-subtle lg:hidden w-full p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-left cursor-pointer"
                 >
                   <span className="font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                    <Filter className="w-3.5 h-3.5 text-emerald-500" />
+                    <Filter className="w-3.5 h-3.5 sgep-accent-text" />
                     <span>Filtros e Índice Temático</span>
                   </span>
-                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span className="sgep-accent-text flex items-center gap-1.5 text-[11px] font-semibold">
                     <span className="max-w-[140px] truncate">{selectedCategory || selectedType}</span>
                     <ChevronRight className={`w-4 h-4 transition-transform ${isMobileSidebarOpen ? 'rotate-90' : ''}`} />
                   </span>
                 </button>
 
                 <div className={`${isMobileSidebarOpen ? 'flex flex-col' : 'hidden lg:flex lg:flex-col'} flex-1 overflow-hidden`}>
-                  <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 hidden lg:flex items-center justify-between">
+                  <div className="sgep-themed-subtle p-3.5 border-b border-slate-100 dark:border-slate-800 hidden lg:flex items-center justify-between">
                     <h2 className="font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">Tipos de Documento</h2>
                   </div>
                   
@@ -6488,44 +8304,43 @@ ${renderAssinaturasHtmlWord()}
                     data-tip="tipos"
                     className="p-2.5 space-y-1 overflow-y-auto border-b border-slate-100 dark:border-slate-800 max-h-48"
                   >
-                    {['TODOS', 'FAVORITOS', 'ATO', 'TERMO', 'PORTARIA', 'DECISAO', 'DESPACHO', 'EMAIL', 'OFICIO', 'PARECER', 'MEMORANDO', 'CHECKLIST'].map(t => {
-                      const isSelected = selectedType === t;
-                      const count = t === 'TODOS' ? modelos.length :
-                                   t === 'FAVORITOS' ? favoritos.length :
-                                   modelos.filter(m => (m.TipoDocumento || '').toUpperCase() === t).length;
-                      const label = t === 'TODOS' ? 'Todos os Modelos' :
-                                    t === 'FAVORITOS' ? 'Favoritos' :
-                                    t === 'ATO' ? 'Atos / PAD' :
-                                    t === 'TERMO' ? 'Termos / TAC' :
-                                    t === 'PORTARIA' ? 'Portarias' :
-                                    t === 'DECISAO' ? 'Decisões' :
-                                    t === 'DESPACHO' ? 'Despachos' :
-                                    t === 'EMAIL' ? 'E-mails' :
-                                    t === 'OFICIO' ? 'Ofícios' :
-                                    t === 'PARECER' ? 'Pareceres' :
-                                    t === 'MEMORANDO' ? 'Memorandos' :
-                                    t === 'CHECKLIST' ? 'Checklists' :
-                                    t.charAt(0) + t.slice(1).toLowerCase();
-                      return (
-                        <button
-                          key={t}
-                          onClick={() => { setSelectedType(t); setSelectedCategory(null); setIsMobileSidebarOpen(false); }}
-                          className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                            isSelected
-                              ? 'bg-emerald-600 text-white shadow-sm'
-                              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                          }`}
-                        >
-                          <span>{label}</span>
-                          <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${isSelected ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
-                            {count}
-                          </span>
-                        </button>
+                    {(() => {
+                      const tiposComModelos = DOCUMENT_TYPE_DEFINITIONS.filter(def =>
+                        modelos.some(m => (m.TipoDocumento || '').toUpperCase() === def.code) ||
+                        ['MEMORANDO', 'OFICIO', 'DESPACHO', 'PORTARIA', 'PARECER', 'PETICAO', 'CONTRATO', 'NOTIFICACAO', 'ATO', 'TERMO', 'DECISAO', 'CHECKLIST', 'EMAIL'].includes(def.code)
                       );
-                    })}
+                      const items = [
+                        { code: 'TODOS', label: 'Todos os Modelos', count: modelos.length },
+                        { code: 'FAVORITOS', label: 'Favoritos', count: favoritos.length },
+                        ...tiposComModelos.map(def => ({
+                          code: def.code,
+                          label: def.pluralLabel,
+                          count: modelos.filter(m => (m.TipoDocumento || '').toUpperCase() === def.code).length
+                        }))
+                      ];
+                      return items.map(item => {
+                        const isSelected = selectedType === item.code;
+                        return (
+                          <button
+                            key={item.code}
+                            onClick={() => { setSelectedType(item.code); setSelectedCategory(null); setIsMobileSidebarOpen(false); }}
+                            className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'sgep-btn-primary shadow-sm'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            <span className="truncate">{item.label}</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
+                              {item.count}
+                            </span>
+                          </button>
+                        );
+                      });
+                    })()}
                   </div>
 
-                  <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
+                  <div className="sgep-themed-subtle p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                     <h2 className="font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">Índice Temático</h2>
                   </div>
 
@@ -6542,14 +8357,14 @@ ${renderAssinaturasHtmlWord()}
                         <button
                           key={cat}
                           onClick={() => { setSelectedCategory(isSelected ? null : cat); setIsMobileSidebarOpen(false); }}
-                          className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-colors truncate ${
+                          className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-colors truncate cursor-pointer ${
                             isSelected
-                              ? 'bg-emerald-600 text-white shadow-sm'
+                              ? 'sgep-btn-primary shadow-sm'
                               : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                           }`}
                         >
                           <span className="truncate text-left mr-2" title={cat}>{cat}</span>
-                          <span className={`text-[10px] px-1.5 py-0.2 rounded flex-shrink-0 ${isSelected ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded flex-shrink-0 ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
                             {count}
                           </span>
                         </button>
@@ -6955,13 +8770,13 @@ ${renderAssinaturasHtmlWord()}
       {/* MODAL 1: VARIÁVEIS COM DATALISTS & GERADOR OFICIAL INTELIGENTE           */}
       {/* ========================================================================= */}
       {isVariableModalOpen && activeModelo && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) setIsVariableModalOpen(false); }}>
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setIsVariableModalOpen(false); }}>
+          <div className="bg-white dark:bg-slate-900 border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-2xl sm:rounded-2xl w-full sm:w-[95vw] sm:max-w-5xl xl:max-w-6xl shadow-2xl overflow-hidden flex flex-col max-h-[96dvh] sm:max-h-[92dvh]">
             
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
-              <div>
-                <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Personalizar: {activeModelo.Titulo}</h3>
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800/50 shrink-0">
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100 truncate">Personalizar: {activeModelo.Titulo}</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Preencha os campos abaixo. O sistema sugere histórico municipal para destinatários e assuntos.
                 </p>
@@ -6969,7 +8784,7 @@ ${renderAssinaturasHtmlWord()}
 
               <button
                 onClick={() => setIsVariableModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
               >
                 ✕
               </button>
@@ -6989,7 +8804,7 @@ ${renderAssinaturasHtmlWord()}
             </datalist>
 
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
+            <div className="p-4 sm:p-6 pb-safe overflow-y-auto overscroll-contain grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6 flex-1">
               
               {/* Column 1: Form Fields */}
               <div className="space-y-4">
@@ -7180,30 +8995,30 @@ ${renderAssinaturasHtmlWord()}
       {/* MODAL 2: ADMIN CRUD (Criar ou Editar Modelo)                             */}
       {/* ========================================================================= */}
       {isCrudModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) setIsCrudModalOpen(false); }}>
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
-            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/30">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-sm">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setIsCrudModalOpen(false); }}>
+          <div className="bg-white dark:bg-slate-900 border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-2xl sm:rounded-2xl w-full sm:w-[94vw] sm:max-w-4xl xl:max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[96dvh] sm:max-h-[92dvh]">
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 bg-emerald-50 dark:bg-emerald-950/30 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-sm shrink-0">
                   <FilePen className="w-4 h-4" />
                 </div>
-                <div>
-                  <h3 className="font-bold text-base text-emerald-900 dark:text-emerald-300">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-sm sm:text-base text-emerald-900 dark:text-emerald-300 truncate">
                     {editingModelo.ID ? `Editar Modelo (${editingModelo.ID})` : 'Criar Novo Modelo Oficial'}
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Salva diretamente na aba "Modelos" da planilha da prefeitura.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">Salva diretamente na aba "Modelos" da planilha da prefeitura.</p>
                 </div>
               </div>
               <button
                 onClick={() => setIsCrudModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-lg shrink-0"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveCrud} className="flex flex-col overflow-hidden">
-              <div className="p-6 overflow-y-auto space-y-4 flex-1">
+            <form onSubmit={handleSaveCrud} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain space-y-4 flex-1">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Tipo de Documento *</label>
@@ -7218,6 +9033,11 @@ ${renderAssinaturasHtmlWord()}
                       <option value="EMAIL">EMAIL</option>
                       <option value="OFICIO">OFICIO</option>
                       <option value="MEMORANDO">MEMORANDO</option>
+                      <option value="CIRCULAR">CIRCULAR</option>
+                      <option value="PORTARIA">PORTARIA</option>
+                      <option value="DECRETO">DECRETO</option>
+                      <option value="ATO">ATO</option>
+                      <option value="TERMO">TERMO</option>
                       <option value="CHECKLIST">CHECKLIST</option>
                       <option value="CERTIDAO">CERTIDAO</option>
                       <option value="NOTIFICACAO">NOTIFICACAO</option>
@@ -7225,15 +9045,55 @@ ${renderAssinaturasHtmlWord()}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Categoria (Índice) *</label>
-                    <input
-                      type="text"
-                      value={editingModelo.Categoria || ''}
-                      onChange={e => setEditingModelo({ ...editingModelo, Categoria: e.target.value })}
-                      placeholder="Ex: 1. Recursos Humanos"
-                      required
-                      className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">Categoria (Índice) *</label>
+                      {isModeloCatManual && (
+                        <button
+                          type="button"
+                          onClick={() => setIsModeloCatManual(false)}
+                          className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                        >
+                          Voltar para lista
+                        </button>
+                      )}
+                    </div>
+                    {!isModeloCatManual ? (
+                      <select
+                        value={editingModelo.Categoria || ''}
+                        onChange={e => {
+                          if (e.target.value === '__NOVA__') {
+                            setIsModeloCatManual(true);
+                            setEditingModelo({ ...editingModelo, Categoria: '' });
+                          } else {
+                            setEditingModelo({ ...editingModelo, Categoria: e.target.value });
+                          }
+                        }}
+                        required
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      >
+                        <option value="">Selecione a categoria...</option>
+                        {editingModelo.Categoria &&
+                          !categories.some(cat => cat.toLowerCase() === (editingModelo.Categoria || '').trim().toLowerCase()) && (
+                            <option value={editingModelo.Categoria}>{editingModelo.Categoria} (atual)</option>
+                          )}
+                        {categories.map(cat => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                        <option value="__NOVA__">➕ Nova categoria (digitar manualmente)...</option>
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={editingModelo.Categoria || ''}
+                        onChange={e => setEditingModelo({ ...editingModelo, Categoria: e.target.value })}
+                        placeholder="Ex: 1. Recursos Humanos"
+                        required
+                        autoFocus
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-emerald-400 dark:border-emerald-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -7258,7 +9118,7 @@ ${renderAssinaturasHtmlWord()}
                       <input
                         ref={crudFileInputRef}
                         type="file"
-                        accept=".pdf,.txt,.docx,.doc,.html,.htm,.md"
+                        accept={SUPPORTED_DOCUMENT_ACCEPT}
                         onChange={handleUploadDocumentoParaModelo}
                         className="hidden"
                       />
@@ -7267,10 +9127,10 @@ ${renderAssinaturasHtmlWord()}
                         disabled={isUploadingSingleFile}
                         onClick={() => crudFileInputRef.current?.click()}
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[11px] font-semibold cursor-pointer transition-colors disabled:opacity-50"
-                        title="Carregar PDF (até 10 MB) ou Word/TXT (.docx, .doc, .txt até 5 MB) com reconhecimento automático de categoria e campos"
+                        title="Carregar PDF/Foto (até 10 MB) ou ODT, DOCX, DOC, RTF, CSV, TXT (até 5 MB) com OCR e reconhecimento automático"
                       >
                         <Upload className="w-3 h-3" />
-                        <span>{isUploadingSingleFile ? 'Reconhecendo...' : 'Upload PDF / DOCX / TXT'}</span>
+                        <span>{isUploadingSingleFile ? 'Reconhecendo...' : 'Upload PDF / ODT / DOC / RTF / CSV'}</span>
                       </button>
                       <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
                         Ex: [DESTINATÁRIO], [ASSUNTO], [NUMERO_MEMORANDO]
@@ -7312,17 +9172,17 @@ ${renderAssinaturasHtmlWord()}
                 </div>
               </div>
 
-              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex justify-end space-x-3">
+              <div className="p-4 pb-safe border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsCrudModalOpen(false)}
-                  className="px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all shadow-sm"
+                  className="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-sm"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>Salvar na Planilha Oficial</span>
@@ -7337,9 +9197,9 @@ ${renderAssinaturasHtmlWord()}
       {/* MODAL 3: MEU PERFIL (NOME) E ALTERAÇÃO DE SENHA DO USUÁRIO               */}
       {/* ========================================================================= */}
       {isPasswordModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) setIsPasswordModalOpen(false); }}>
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 shrink-0">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setIsPasswordModalOpen(false); }}>
+          <div className="bg-white dark:bg-slate-900 border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-2xl sm:rounded-2xl w-full sm:w-[92vw] sm:max-w-lg max-h-[94dvh] sm:max-h-[92dvh] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 shrink-0">
               <div className="flex items-center space-x-2.5">
                 <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
                   <Key className="w-5 h-5" />
@@ -7351,13 +9211,13 @@ ${renderAssinaturasHtmlWord()}
               </div>
               <button
                 onClick={() => setIsPasswordModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-lg"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleChangePassword} className="p-6 space-y-4 overflow-y-auto">
+            <form onSubmit={handleChangePassword} className="p-4 sm:p-6 pb-safe space-y-4 overflow-y-auto overscroll-contain">
               <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/80 flex items-center justify-between gap-2 text-xs">
                 <div className="min-w-0">
                   <span className="text-slate-400 block text-[10px] uppercase font-bold">Lotação & Escopo Ativo:</span>
@@ -7470,37 +9330,36 @@ ${renderAssinaturasHtmlWord()}
         <div
           id="modal-redator-oficial"
           className={`fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center no-print transition-all duration-200 ${
-            isRedatorFullscreen ? 'p-0' : 'p-3 sm:p-5'
+            isRedatorFullscreen || isCompactViewport ? 'p-0' : 'p-3 lg:p-4'
           }`}
-          onClick={(e) => {
-            if (isResizingRedatorModal || isDraggingRedatorModal) return;
-            if (e.target === e.currentTarget) setIsRedatorModalOpen(false);
-          }}
         >
           <div
             ref={redatorModalRef}
             style={
-              !isRedatorFullscreen
+              !isRedatorFullscreen && !isCompactViewport
                 ? {
                     ...(redatorModalPos
                       ? { position: 'fixed', left: `${redatorModalPos.x}px`, top: `${redatorModalPos.y}px` }
                       : {}),
                     ...(redatorModalSize
-                      ? { width: `${redatorModalSize.width}px`, height: `${redatorModalSize.height}px` }
+                      ? {
+                          width: `${Math.min(Math.max(REDATOR_MIN_WIDTH, redatorModalSize.width), Math.max(REDATOR_MIN_WIDTH, viewportSize.width - 16))}px`,
+                          height: `${Math.min(Math.max(REDATOR_MIN_HEIGHT, redatorModalSize.height), Math.max(REDATOR_MIN_HEIGHT, viewportSize.height - 16))}px`,
+                        }
                       : {}),
                   }
                 : undefined
             }
-            className={`relative bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col ${
+            className={`sgep-themed-surface relative bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col ${
               isResizingRedatorModal || isDraggingRedatorModal
-                ? 'transition-none ring-4 ring-emerald-500/30 select-none'
+                ? 'transition-none ring-4 ring-blue-500/30 select-none'
                 : 'animate-in fade-in zoom-in-95 duration-200'
             } ${
-              isRedatorFullscreen
-                ? 'w-screen h-screen max-w-none max-h-none rounded-none border-0'
+              isRedatorFullscreen || isCompactViewport
+                ? 'w-screen h-[100dvh] max-w-none max-h-none rounded-none border-0'
                 : redatorModalSize
-                ? 'border rounded-2xl max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)]'
-                : 'border rounded-2xl max-w-6xl w-full max-h-[95vh]'
+                ? 'border rounded-2xl max-w-[calc(100vw-16px)] max-h-[calc(100dvh-16px)]'
+                : 'border rounded-2xl w-[min(96vw,1440px)] h-[min(94dvh,960px)] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)]'
             }`}
           >
             {/* Header (Arrastável quando não estiver em tela toda; duplo clique restaura/expande) */}
@@ -7515,7 +9374,7 @@ ${renderAssinaturasHtmlWord()}
                   ? 'Duplo clique para restaurar o tamanho da janela'
                   : 'Arraste para mover a janela ou arraste qualquer borda/canto para redimensionar (duplo clique para restaurar/expandir)'
               }
-              className={`p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800/50 flex-shrink-0 select-none ${
+              className={`sgep-themed-subtle p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 flex-shrink-0 select-none ${
                 isRedatorFullscreen
                   ? ''
                   : isDraggingRedatorModal
@@ -7524,7 +9383,7 @@ ${renderAssinaturasHtmlWord()}
               }`}
             >
               <div className="flex items-center space-x-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white flex items-center justify-center shadow-sm shrink-0">
+                <div className="sgep-btn-primary w-10 h-10 rounded-xl flex items-center justify-center shadow-sm shrink-0">
                   <FilePen className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
@@ -7532,7 +9391,7 @@ ${renderAssinaturasHtmlWord()}
                     <h3 className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100 truncate">
                       Redator Oficial de Memorando e Ofício
                     </h3>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                    <span className="sgep-accent-soft px-2 py-0.5 rounded text-[10px] font-bold border">
                       Numeração Sequencial Automática
                     </span>
                     {redatorDraftSavedAt && !redatorNumero && (
@@ -7563,7 +9422,7 @@ ${renderAssinaturasHtmlWord()}
                     onClick={() => toggleRedatorModoAvancado(false)}
                     className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
                       !redatorModoAvancado
-                        ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-2xs font-bold'
+                        ? 'sgep-btn-primary shadow-2xs font-bold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                     }`}
                   >
@@ -7574,7 +9433,7 @@ ${renderAssinaturasHtmlWord()}
                     onClick={() => toggleRedatorModoAvancado(true)}
                     className={`px-2.5 py-1 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
                       redatorModoAvancado
-                        ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-2xs font-bold'
+                        ? 'sgep-btn-primary shadow-2xs font-bold'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                     }`}
                   >
@@ -7599,27 +9458,42 @@ ${renderAssinaturasHtmlWord()}
                   <span>{isFloatingPreview ? '📌 Prévia Flutuante (Ativa)' : 'Prévia Flutuante'}</span>
                 </button>
 
-                <button
-                  id="btn-redator-fullscreen"
-                  type="button"
-                  onClick={() => setIsRedatorFullscreen(prev => !prev)}
-                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
-                    isRedatorFullscreen
-                      ? 'bg-emerald-100 dark:bg-emerald-950/80 border-emerald-400 text-emerald-800 dark:text-emerald-200 shadow-2xs'
-                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                  }`}
-                  title={isRedatorFullscreen ? 'Restaurar tamanho normal da janela' : 'Expandir Redator Oficial para tela toda'}
-                  aria-label={isRedatorFullscreen ? 'Restaurar tamanho normal do Redator' : 'Expandir Redator para tela toda'}
-                >
-                  {isRedatorFullscreen ? (
-                    <Minimize2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  ) : (
-                    <Maximize2 className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
-                  )}
-                  <span className="hidden sm:inline">{isRedatorFullscreen ? 'Restaurar' : 'Tela Toda'}</span>
-                </button>
+                {!isCompactViewport && !isRedatorFullscreen && (redatorModalSize || redatorModalPos) && (
+                  <button
+                    type="button"
+                    onClick={resetRedatorResponsiveLayout}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 hover:bg-amber-100 cursor-pointer"
+                    title="Voltar ao tamanho automático responsivo ajustado à sua tela"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span className="hidden md:inline">Ajustar à Tela</span>
+                  </button>
+                )}
+
+                {!isCompactViewport && (
+                  <button
+                    id="btn-redator-fullscreen"
+                    type="button"
+                    onClick={() => setIsRedatorFullscreen(prev => !prev)}
+                    className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
+                      isRedatorFullscreen
+                        ? 'bg-emerald-100 dark:bg-emerald-950/80 border-emerald-400 text-emerald-800 dark:text-emerald-200 shadow-2xs'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
+                    title={isRedatorFullscreen ? 'Restaurar tamanho normal da janela' : 'Expandir Redator Oficial para tela toda'}
+                    aria-label={isRedatorFullscreen ? 'Restaurar tamanho normal do Redator' : 'Expandir Redator para tela toda'}
+                  >
+                    {isRedatorFullscreen ? (
+                      <Minimize2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <Maximize2 className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
+                    )}
+                    <span className="hidden sm:inline">{isRedatorFullscreen ? 'Restaurar' : 'Tela Toda'}</span>
+                  </button>
+                )}
 
                 <button
+                  type="button"
                   onClick={() => setIsRedatorModalOpen(false)}
                   className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                   title="Fechar Redator Oficial"
@@ -7631,7 +9505,7 @@ ${renderAssinaturasHtmlWord()}
             </div>
 
             {/* Body: Split View (Editor Form & Timbrado Preview) */}
-            <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-6 p-5 sm:p-6">
+            <div className="flex-1 overflow-y-auto overscroll-contain grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 p-3.5 sm:p-6 pb-safe">
               
               {/* Form Controls (Col 7 ou Col 12 quando flutuante) */}
               <div className={`${isFloatingPreview ? 'lg:col-span-12' : 'lg:col-span-7'} space-y-4`}>
@@ -7693,117 +9567,129 @@ ${renderAssinaturasHtmlWord()}
                 {/* Tipo de Documento & Numeração Automática Header Card */}
                 <div className="p-4 bg-gradient-to-br from-slate-50 to-emerald-50/40 dark:from-slate-800/60 dark:to-emerald-950/20 border border-emerald-200/80 dark:border-emerald-900/60 rounded-xl space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase tracking-wider">
-                        Tipo de Documento:
-                      </label>
-                      <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                        {(['MEMORANDO', 'OFICIO', 'DESPACHO', 'CIRCULAR', 'PORTARIA', 'DECRETO', 'ATO', 'TERMO', 'EMAIL'] as const)
-                          .filter(t => redatorModoAvancado || ['MEMORANDO', 'OFICIO', 'DESPACHO', 'CIRCULAR', 'PORTARIA', 'EMAIL'].includes(t) || redatorTipo === t)
-                          .map(t => (
-                          <button
-                            key={t}
-                            type="button"
-                            onClick={() => {
-                              setRedatorTipo(t);
-                              setRedatorNumero('');
-                              if (t === 'DECRETO') {
-                                if (currentUser?.nivel === 'ADMIN' || isUserAuthorizedForSecretaria(currentUser, 'Gabinete do Prefeito', secretarias)) {
-                                  setRedatorSecretaria('Secretaria de Governo e Gabinete do Prefeito (SEGOV)');
-                                  setRedatorSetorOrigem('Gabinete do Prefeito');
-                                  setRedatorSignatario('Prefeito Municipal de Rio Claro');
-                                  setRedatorCargo('Prefeito Municipal');
-                                } else {
-                                  showToast('Minuta de Decreto carregada mantendo a emissão vinculada à sua Secretaria autorizada.', 'Escopo Mantido');
-                                }
-                                setRedatorDestinatario('Poder Executivo Municipal e Órgãos da Administração Direta e Indireta');
-                                setRedatorFecho('Gabinete do Prefeito, Rio Claro – RJ, na data de sua publicação.');
-                                if (!redatorTexto.trim() || redatorTexto.includes('Cumprimentando-o cordialmente') || redatorTexto.includes('Prezado(a)') || redatorTexto.includes('RESOLVE:') || redatorTexto.includes('COMPROMISSO')) {
-                                  setRedatorAssunto('Declara ponto facultativo nas repartições públicas municipais e dá outras providências');
-                                  setRedatorTexto(
-                                    'O PREFEITO MUNICIPAL DE RIO CLARO, Estado do Rio de Janeiro, no uso das atribuições legais que lhe confere a Lei Orgânica do Município de Rio Claro, e\n\nCONSIDERANDO a conveniência administrativa e as festividades oficiais no Município;\n\nDECRETA:\n\nArt. 1º É declarado ponto facultativo no âmbito de todos os órgãos e repartições da Administração Pública Municipal Direta e Indireta no dia [DATA].\n\nArt. 2º Os serviços essenciais de urgência e emergência em saúde, defesa civil e coleta de resíduos funcionarão em regime de plantão.\n\nArt. 3º Este Decreto entra em vigor na data de sua publicação.'
-                                  );
-                                }
-                              } else if (t === 'PORTARIA') {
-                                setRedatorFecho('Dê-se ciência, registre-se, publique-se e cumpra-se.');
-                                if (!redatorTexto.trim() || redatorTexto.includes('Cumprimentando-o cordialmente') || redatorTexto.includes('Prezado(a)') || redatorTexto.includes('DECRETA:') || redatorTexto.includes('COMPROMISSO')) {
-                                  setRedatorAssunto('Designa servidores para comissão de processo administrativo disciplinar (PAD)');
-                                  setRedatorTexto(
-                                    'O PREFEITO MUNICIPAL DE RIO CLARO, Estado do Rio de Janeiro, no uso de suas atribuições legais e em conformidade com o Estatuto dos Servidores Públicos Municipais,\n\nRESOLVE:\n\nArt. 1º Designar os seguintes servidores estáveis para, sob a presidência do primeiro, comporem a Comissão de Processo Administrativo Disciplinar referente aos autos nº [NÚMERO DO PROCESSO]/[ANO]:\nI - Presidente: [NOME], cargo [CARGO], matrícula nº [MATRÍCULA];\nII - Vogal: [NOME], cargo [CARGO], matrícula nº [MATRÍCULA];\nIII - Secretário: [NOME], cargo [CARGO], matrícula nº [MATRÍCULA].\n\nArt. 2º A Comissão terá o prazo de 60 (sessenta) dias para a conclusão da instrução probatória.\n\nArt. 3º Esta Portaria entra em vigor na data de sua publicação.'
-                                  );
-                                }
-                              } else if (t === 'ATO') {
-                                setRedatorFecho('Comissão de Processo Administrativo Disciplinar / Sindicância');
-                                if (!redatorTexto.trim() || redatorTexto.includes('Cumprimentando-o cordialmente') || redatorTexto.includes('Prezado(a)') || redatorTexto.includes('DECRETA:') || redatorTexto.includes('RESOLVE:') || redatorTexto.includes('COMPROMISSO')) {
-                                  setRedatorAssunto('Ata e Deliberações da Comissão de Processo Administrativo Disciplinar');
-                                  setRedatorTexto(
-                                    'PROCESSO ADMINISTRATIVO DISCIPLINAR Nº [NÚMERO DO PAD]/[ANO]\n\nA COMISSÃO PROCESSANTE DA PREFEITURA MUNICIPAL DE RIO CLARO – RJ, reunida formalmente nesta data, no exercício de suas prerrogativas legais, delibera:\n\n1. Proceder à juntada dos documentos e certidões recebidas do Departamento de Recursos Humanos;\n2. Determinar a expedição de Mandado de Citação e Intimação ao(à) servidor(a) investigado(a) para audiência de instrução;\n3. Cientificar as testemunhas arroladas para comparecimento perante esta comissão, asseguradas as garantias constitucionais do contraditório e da ampla defesa.'
-                                  );
-                                }
-                              } else if (t === 'TERMO') {
-                                setRedatorFecho('E, por estarem plenamente acordados, firmam o presente termo em 3 (três) vias de igual teor.');
-                                if (!redatorTexto.trim() || redatorTexto.includes('Cumprimentando-o cordialmente') || redatorTexto.includes('Prezado(a)') || redatorTexto.includes('DECRETA:') || redatorTexto.includes('RESOLVE:')) {
-                                  setRedatorAssunto('Compromisso de Ajustamento de Conduta Funcional (CAC / TAC)');
-                                  setRedatorTexto(
-                                    'COMPROMISSO DE AJUSTAMENTO DE CONDUTA FUNCIONAL (CAC) Nº [NÚMERO]/[ANO]\nPROCESSO ADMINISTRATIVO DISCIPLINAR Nº [NÚMERO DO PAD]/[ANO]\n\nCOMPROMITENTE: MUNICÍPIO DE RIO CLARO – RJ, representado pela autoridade competente.\nCOMPROMISSÁRIO(A): Servidor(a) [NOME DO SERVIDOR], matrícula nº [MATRÍCULA], cargo [CARGO].\n\nAs partes celebram o presente Compromisso de Ajustamento de Conduta (CAC), com fundamento nos arts. 20 e 21 do Decreto-Lei nº 4.657/1942 (LINDB) e normas do Estatuto Municipal, mediante as seguintes cláusulas:\n\nCLÁUSULA 1ª - O presente compromisso fundamenta-se nas apurações procedidas no PAD nº [NÚMERO], visando à solução consensual e saneadora.\nCLÁUSULA 2ª - O servidor compromissário assume a obrigação de jamais repetir a conduta e apresentar, em 60 dias, Plano Operacional de Aperfeiçoamento de Gestão.\nCLÁUSULA 3ª - O Município de Rio Claro – RJ compromete-se a suspender a tramitação punitiva, com arquivamento definitivo após a conclusão satisfatória das metas assumidas.'
-                                  );
-                                }
-                              } else if (t === 'EMAIL') {
-                                if (!redatorTexto.trim() || redatorTexto.includes('sirvo-me do presente para encaminhar a Vossa Senhoria') || redatorTexto.includes('DECRETA:') || redatorTexto.includes('RESOLVE:') || redatorTexto.includes('COMPROMISSO')) {
-                                  setRedatorTexto(
-                                    `Prezado(a) ${redatorDestinatario || 'Servidor(a)'},\n\nEscrevo em nome da ${redatorSecretaria} da Prefeitura Municipal de Rio Claro – RJ, referente ao assunto "${redatorAssunto || 'Processo Administrativo'}".\n\nSolicitamos a gentileza de analisar as informações apresentadas e acusar o recebimento desta mensagem, bem como adotar as providências administrativas cabíveis no âmbito de sua competência.\n\nPermanecemos à disposição para prestar quaisquer esclarecimentos complementares.\n\nAtenciosamente,\n\n${redatorSignatario}\n${redatorCargo}\n${redatorSecretaria}\nPrefeitura Municipal de Rio Claro – RJ`
-                                  );
-                                }
-                              } else {
-                                if (redatorTexto.includes('DECRETA:') || redatorTexto.includes('RESOLVE:') || redatorTexto.includes('Escrevo em nome da') || redatorTexto.includes('COMPROMISSO')) {
-                                  setRedatorTexto('Cumprimentando-o cordialmente, sirvo-me do presente para solicitar a Vossa Senhoria as informações e levantamentos administrativos pertinentes a ' + (redatorAssunto || 'este processo') + ', em atendimento às diretrizes institucionais vigentes.\n\nAs providências visam a assegurar a máxima celeridade, conformidade legal e transparência aos atos da administração de Rio Claro – RJ.\n\nPermanecemos à disposição para prestar quaisquer esclarecimentos complementares.');
-                                  setRedatorFecho('Permanecemos à disposição para eventuais esclarecimentos adicionais.');
-                                }
-                              }
-                            }}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                              redatorTipo === t
-                                ? t === 'EMAIL'
-                                  ? 'bg-purple-600 text-white shadow-sm'
-                                  : t === 'DECRETO'
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                          Tipo de Documento:
+                        </label>
+                        <div className="flex items-center flex-wrap gap-1">
+                          {([
+                            { id: 'PRINCIPAIS', label: 'Principais', count: DOCUMENT_TYPE_DEFINITIONS.filter(d => d.principais).length },
+                            { id: 'EXPEDIENTE', label: 'Expediente', count: DOCUMENT_TYPE_DEFINITIONS.filter(d => d.group === 'EXPEDIENTE').length },
+                            { id: 'NORMATIVO', label: 'Normativos & PAD', count: DOCUMENT_TYPE_DEFINITIONS.filter(d => d.group === 'NORMATIVO').length },
+                            { id: 'PGM', label: 'Procuradoria (PGM)', count: DOCUMENT_TYPE_DEFINITIONS.filter(d => d.group === 'PGM').length },
+                            { id: 'TODOS', label: 'Todos', count: DOCUMENT_TYPE_DEFINITIONS.length }
+                          ] as const).map(grp => (
+                            <button
+                              key={grp.id}
+                              type="button"
+                              onClick={() => setRedatorTipoGrupo(grp.id)}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 ${
+                                redatorTipoGrupo === grp.id
+                                  ? grp.id === 'PGM'
+                                    ? 'bg-violet-600 text-white shadow-xs'
+                                    : 'bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 shadow-xs'
+                                  : grp.id === 'PGM'
+                                    ? 'bg-violet-100/80 dark:bg-violet-950/60 text-violet-800 dark:text-violet-300 hover:bg-violet-200/80 border border-violet-200 dark:border-violet-800'
+                                    : 'bg-white/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              {grp.id === 'PGM' && <Scale className="w-2.5 h-2.5" />}
+                              <span>{grp.label}</span>
+                              <span className="opacity-75 font-mono text-[9px]">({grp.count})</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center flex-wrap gap-1.5">
+                        {DOCUMENT_TYPE_DEFINITIONS
+                          .filter(def => {
+                            if (def.code === redatorTipo) return true;
+                            if (redatorTipoGrupo === 'TODOS') return true;
+                            if (redatorTipoGrupo === 'PRINCIPAIS') return Boolean(def.principais);
+                            return def.group === redatorTipoGrupo;
+                          })
+                          .map(def => {
+                            const isActive = redatorTipo === def.code;
+                            const activeClasses =
+                              def.badgeTone === 'purple'
+                                ? 'bg-purple-600 text-white shadow-sm ring-2 ring-purple-300 dark:ring-purple-800'
+                                : def.badgeTone === 'amber'
                                   ? 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-300 dark:ring-amber-800'
-                                  : t === 'PORTARIA'
-                                  ? 'bg-sky-600 text-white shadow-sm'
-                                  : t === 'ATO'
-                                  ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300 dark:ring-indigo-800'
-                                  : t === 'TERMO'
-                                  ? 'bg-teal-600 text-white shadow-sm ring-2 ring-teal-300 dark:ring-teal-800'
-                                  : 'bg-emerald-600 text-white shadow-sm'
-                                : t === 'EMAIL'
+                                  : def.badgeTone === 'sky'
+                                    ? 'bg-sky-600 text-white shadow-sm ring-2 ring-sky-300 dark:ring-sky-800'
+                                    : def.badgeTone === 'indigo'
+                                      ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300 dark:ring-indigo-800'
+                                      : def.badgeTone === 'teal'
+                                        ? 'bg-teal-600 text-white shadow-sm ring-2 ring-teal-300 dark:ring-teal-800'
+                                        : def.badgeTone === 'violet'
+                                          ? 'bg-violet-600 text-white shadow-sm ring-2 ring-violet-300 dark:ring-violet-800'
+                                          : def.badgeTone === 'rose'
+                                            ? 'bg-rose-600 text-white shadow-sm ring-2 ring-rose-300 dark:ring-rose-800'
+                                            : def.badgeTone === 'slate'
+                                              ? 'bg-slate-700 text-white shadow-sm ring-2 ring-slate-300 dark:ring-slate-700'
+                                              : 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300 dark:ring-emerald-800';
+
+                            const idleClasses =
+                              def.badgeTone === 'purple'
                                 ? 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800 hover:bg-purple-100'
-                                : t === 'DECRETO'
-                                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-100'
-                                : t === 'PORTARIA'
-                                ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-800 hover:bg-sky-100'
-                                : t === 'ATO'
-                                ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100'
-                                : t === 'TERMO'
-                                ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-300 dark:border-teal-800 hover:bg-teal-100'
-                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
-                            }`}
-                          >
-                            {t === 'EMAIL' && <Mail className="w-3.5 h-3.5 text-white" />}
-                            {t === 'DECRETO' && <Landmark className="w-3.5 h-3.5" />}
-                            {t === 'PORTARIA' && <FileText className="w-3.5 h-3.5" />}
-                            {t === 'ATO' && <FileCheck2 className="w-3.5 h-3.5" />}
-                            {t === 'TERMO' && <ShieldCheck className="w-3.5 h-3.5" />}
-                            <span>{t === 'EMAIL' ? 'E-MAIL' : t === 'ATO' ? 'ATO / PAD' : t === 'TERMO' ? 'TERMO / TAC' : t}</span>
-                          </button>
-                        ))}
+                                : def.badgeTone === 'amber'
+                                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-100'
+                                  : def.badgeTone === 'sky'
+                                    ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-800 hover:bg-sky-100'
+                                    : def.badgeTone === 'indigo'
+                                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100'
+                                      : def.badgeTone === 'teal'
+                                        ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-300 dark:border-teal-800 hover:bg-teal-100'
+                                        : def.badgeTone === 'violet'
+                                          ? 'bg-violet-50 dark:bg-violet-950/50 text-violet-800 dark:text-violet-300 border border-violet-300 dark:border-violet-800 hover:bg-violet-100'
+                                          : def.badgeTone === 'rose'
+                                            ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 hover:bg-rose-100'
+                                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700';
+
+                            return (
+                              <button
+                                key={def.code}
+                                type="button"
+                                onClick={() => handleSelecionarTipoRedator(def.code)}
+                                title={`${def.label} — ${def.description}`}
+                                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${isActive ? activeClasses : idleClasses}`}
+                              >
+                                {def.code === 'EMAIL' && <Mail className="w-3.5 h-3.5" />}
+                                {(def.code === 'DECRETO' || def.code === 'PROJETO_LEI') && <Landmark className="w-3.5 h-3.5" />}
+                                {(def.code === 'PORTARIA' || def.code === 'RESOLUCAO' || def.code === 'EDITAL') && <FileText className="w-3.5 h-3.5" />}
+                                {(def.code === 'ATO' || def.code === 'DECISAO' || def.code === 'CHECKLIST') && <FileCheck2 className="w-3.5 h-3.5" />}
+                                {(def.code === 'TERMO' || def.code === 'CONTRATO') && <ShieldCheck className="w-3.5 h-3.5" />}
+                                {(def.group === 'PGM' && def.code !== 'CONTRATO' && def.code !== 'CHECKLIST') && <Scale className="w-3.5 h-3.5" />}
+                                <span>{def.shortLabel}</span>
+                              </button>
+                            );
+                          })}
+                      </div>
+
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400 flex items-center gap-1.5 pt-0.5">
+                        <span className="font-bold text-slate-700 dark:text-slate-200">{getDocumentTypeDefinition(redatorTipo).label}:</span>
+                        <span className="truncate">{getDocumentTypeDefinition(redatorTipo).description}</span>
                       </div>
                     </div>
 
                     {/* Status da Numeração Oficial (Apenas para Documentos Físicos) */}
                     {redatorTipo !== 'EMAIL' && (
                       <div className="text-left sm:text-right space-y-1.5">
-                        <span className="block text-[10px] text-slate-500 uppercase font-bold">
-                          Número Oficial ({getSecretariaSigla(redatorSecretaria || activeSecretaria, secretarias)}):
-                        </span>
+                        <div className="flex items-center sm:justify-end gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-slate-500 uppercase font-bold">
+                            {redatorProximoNumeroInfo.isGlobal
+                              ? 'Sequência Global Municipal:'
+                              : `Número Oficial (${redatorProximoNumeroInfo.sigla}):`}
+                          </span>
+                          {redatorProximoNumeroInfo.isGlobal && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              <Globe className="w-2.5 h-2.5" />
+                              Prefeitura
+                            </span>
+                          )}
+                        </div>
                         {redatorNumero ? (
                           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 text-white font-mono text-sm font-bold shadow-xs">
                             <CheckCircle2 className="w-4 h-4" />
@@ -7811,13 +9697,34 @@ ${renderAssinaturasHtmlWord()}
                           </div>
                         ) : (
                           <div className="flex flex-col sm:items-end gap-1.5 mt-1">
+                            {/* Prévia ao vivo do Próximo Número Previsto antes de reservar */}
+                            <div
+                              data-tip="proximonum"
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold ${
+                                redatorProximoNumeroInfo.maiorAtual === 0
+                                  ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
+                                  : 'bg-white dark:bg-slate-800/90 border-blue-200 dark:border-blue-800 text-slate-700 dark:text-slate-200'
+                              }`}
+                              title="Estimativa calculada a partir do maior número registrado no Livro; a numeração definitiva é reservada atomicamente via LockService ao clicar no botão abaixo."
+                            >
+                              <span>Próximo nº previsto:</span>
+                              <strong className="font-mono font-extrabold text-blue-700 dark:text-blue-300">
+                                {redatorProximoNumeroInfo.numeroPrevisto}
+                              </strong>
+                              <HelpTooltip
+                                tone="blue"
+                                title="Como o Número é Calculado"
+                                content="Calculado automaticamente a partir do último número registrado no ano para esta secretaria (ou na sequência única municipal para Decretos e Portarias). O número só é reservado oficialmente quando você clica em 'Gerar e Reservar Número Agora'."
+                              />
+                            </div>
+
                             <button
                               id="btn-redator-gerar-num"
                               data-tip="gerarnum"
                               type="button"
                               disabled={isRedatorGeneratingNumber}
                               onClick={handleGerarNumeroNoRedator}
-                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-sm active:scale-95 cursor-pointer"
+                              className="sgep-btn-primary px-3 py-1.5 border rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-sm active:scale-95 cursor-pointer"
                             >
                               {isRedatorGeneratingNumber ? (
                                 <>
@@ -7832,30 +9739,264 @@ ${renderAssinaturasHtmlWord()}
                               )}
                             </button>
 
-                            {/* Opção para Incluir Sigla da Secretaria no Número (Regra Solicitada pelo Usuário) */}
-                            <label 
-                              data-tip="siglanumero"
-                              className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer select-none"
-                            >
-                              <input
-                                id="chk-incluir-sigla"
-                                type="checkbox"
-                                checked={incluirSiglaNoNumero}
-                                onChange={e => {
-                                  setIncluirSiglaNoNumero(e.target.checked);
-                                  localStorage.setItem('bm_incluir_sigla', e.target.checked ? 'true' : 'false');
-                                }}
-                                className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500"
-                              />
-                              <span>
-                                Incluir sigla da pasta (ex: <strong>{getSecretariaSigla(redatorSecretaria || activeSecretaria, secretarias)}</strong>)
+                            {/* Opção para Incluir Sigla da Secretaria no Número (somente para atos por Secretaria) */}
+                            {redatorProximoNumeroInfo.isGlobal ? (
+                              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 font-medium">
+                                Ato em sequência única municipal (sem sigla de pasta)
                               </span>
-                            </label>
+                            ) : (
+                              <label 
+                                data-tip="siglanumero"
+                                className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer select-none"
+                              >
+                                <input
+                                  id="chk-incluir-sigla"
+                                  type="checkbox"
+                                  checked={incluirSiglaNoNumero}
+                                  onChange={e => {
+                                    setIncluirSiglaNoNumero(e.target.checked);
+                                    localStorage.setItem('bm_incluir_sigla', e.target.checked ? 'true' : 'false');
+                                  }}
+                                  className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500"
+                                />
+                                <span>
+                                  Incluir sigla da pasta (ex: <strong>{redatorProximoNumeroInfo.sigla}</strong>)
+                                </span>
+                              </label>
+                            )}
                           </div>
                         )}
                       </div>
                     )}
                   </div>
+
+                  {/* Barra de Perfil Visual & Timbrado por Setor (Clonador de PDF/DOCX + Perfis Oficiais) */}
+                  {redatorTipo !== 'EMAIL' && (
+                    <div className="pt-2.5 border-t border-emerald-200/70 dark:border-emerald-900/50 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-[230px]">
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-white shadow-xs shrink-0"
+                            style={{ backgroundColor: activeDocumentStyle.corPrimaria }}
+                            title={`Cor institucional ativa: ${activeDocumentStyle.corPrimaria}`}
+                          />
+                          <Palette className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                            Estilo do Setor:
+                          </span>
+                          <select
+                            value={activeDocumentStyle.id}
+                            onChange={e => {
+                              const found = allDocumentStyles.find(s => s.id === e.target.value);
+                              if (found) aplicarPerfilEstiloDocumental(found);
+                            }}
+                            className="flex-1 min-w-[170px] px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-[11px] font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
+                          >
+                            <optgroup label="Perfis Oficiais por Setor">
+                              {allDocumentStyles.filter(s => s.origem === 'NATIVO').map(st => (
+                                <option key={st.id} value={st.id}>{st.nome}</option>
+                              ))}
+                            </optgroup>
+                            {customDocumentStyles.length > 0 && (
+                              <optgroup label="Estilos Clonados / Personalizados">
+                                {customDocumentStyles.map(st => (
+                                  <option key={st.id} value={st.id}>★ {st.nome}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                          {activeDocumentStyle.origem !== 'NATIVO' && (
+                            <button
+                              type="button"
+                              onClick={() => handleExcluirEstiloCustom(activeDocumentStyle.id)}
+                              className="p-1 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-md cursor-pointer"
+                              title="Excluir este estilo personalizado"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={abrirEditorEstiloAtual}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border flex items-center gap-1 cursor-pointer transition-all ${
+                              isEstiloEditorOpen
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/60'
+                            }`}
+                            title="Ajustar cabeçalho, cor, ementa e rodapé ou salvar como estilo reutilizável do setor"
+                          >
+                            <Sliders className="w-3 h-3" />
+                            <span>{isEstiloEditorOpen ? 'Fechar Ajustes' : 'Personalizar'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setIsImportCatalogModalOpen(true)}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/60 flex items-center gap-1 cursor-pointer transition-all"
+                            title="Suba um PDF, DOCX ou ODT de qualquer setor para clonar automaticamente o layout, fonte, margens e cabeçalho"
+                          >
+                            <Upload className="w-3 h-3" />
+                            <span>Clonar de PDF/DOCX</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {isEstiloEditorOpen && (
+                        <div className="p-3 bg-white dark:bg-slate-900/90 border border-indigo-200 dark:border-indigo-800 rounded-xl space-y-2.5 shadow-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold text-indigo-900 dark:text-indigo-200">
+                              Personalizar e Salvar Estilo Visual para o Setor
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              Herda fonte ({redatorFonte} {redatorTamanhoFonte}) e margens atuais
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5">
+                                Nome do Perfil de Estilo:
+                              </label>
+                              <input
+                                type="text"
+                                value={estiloEditNome}
+                                onChange={e => setEstiloEditNome(e.target.value)}
+                                placeholder="Ex: Gabinete — Decreto Oficial"
+                                className="w-full px-2.5 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5">
+                                Layout do Timbrado:
+                              </label>
+                              <select
+                                value={estiloEditCabecalho}
+                                onChange={e => setEstiloEditCabecalho(e.target.value as CabecalhoLayoutEstilo)}
+                                className="w-full px-2.5 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
+                              >
+                                <option value="LATERAL">Brasão à Esquerda (Padrão)</option>
+                                <option value="CENTRALIZADO">Brasão Centralizado</option>
+                                <option value="SOLENE_DUPLO">Solene Centralizado (Borda Dupla)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5">
+                                Estilo da Ementa (Atos Solenes):
+                              </label>
+                              <select
+                                value={estiloEditEmenta}
+                                onChange={e => setEstiloEditEmenta(e.target.value as EmentaEstiloVisual)}
+                                className="w-full px-2.5 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
+                              >
+                                <option value="DIREITA_BORDA">Recuada à Direita c/ Borda</option>
+                                <option value="DIREITA_SEM_BORDA">Recuada à Direita (Sem Borda)</option>
+                                <option value="CAIXA_SOMBREADA">Caixa Institucional Sombreada</option>
+                                <option value="SIMPLES">Ementa Corrida Simples</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                            <div className="sm:col-span-3">
+                              <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5">
+                                Cor Institucional:
+                              </label>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={estiloEditCor}
+                                  onChange={e => setEstiloEditCor(e.target.value)}
+                                  className="w-7 h-7 p-0.5 bg-white border border-slate-300 rounded cursor-pointer shrink-0"
+                                />
+                                {['#002b82', '#1e293b', '#312e81', '#0f766e', '#065f46', '#7f1d1d'].map(hex => (
+                                  <button
+                                    key={hex}
+                                    type="button"
+                                    onClick={() => setEstiloEditCor(hex)}
+                                    className={`w-5 h-5 rounded-full border cursor-pointer ${estiloEditCor === hex ? 'ring-2 ring-offset-1 ring-indigo-500 border-white' : 'border-slate-300'}`}
+                                    style={{ backgroundColor: hex }}
+                                    title={hex}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                            <div className="sm:col-span-4">
+                              <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5">
+                                Subtítulo / Órgão no Timbrado (opcional):
+                              </label>
+                              <input
+                                type="text"
+                                value={estiloEditSubtitulo}
+                                onChange={e => setEstiloEditSubtitulo(e.target.value)}
+                                placeholder="Ex: GABINETE DO PREFEITO"
+                                className="w-full px-2.5 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
+                              />
+                            </div>
+                            <div className="sm:col-span-5">
+                              <label className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400 mb-0.5">
+                                Rodapé Institucional (endereço, telefone, e-mail):
+                              </label>
+                              <input
+                                type="text"
+                                value={estiloEditRodape}
+                                onChange={e => setEstiloEditRodape(e.target.value)}
+                                placeholder="Av. João Batista Portugal, nº 230 • Rio Claro – RJ"
+                                className="w-full px-2.5 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setIsEstiloEditorOpen(false)}
+                              className="px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSalvarEstiloPersonalizadoAtual}
+                              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                            >
+                              <Save className="w-3 h-3" />
+                              <span>Salvar Estilo p/ o Setor</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Aviso de Implantação quando a pasta/tipo ainda não possui numeração em 2026 */}
+                  {redatorTipo !== 'EMAIL' && !redatorNumero && redatorProximoNumeroInfo.maiorAtual === 0 && (
+                    <div className="pt-2.5 border-t border-amber-200/80 dark:border-amber-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-amber-900 dark:text-amber-200">
+                      <div className="flex items-start sm:items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+                        <span>
+                          Ainda não há registro de <strong>{redatorTipo}</strong> em <strong>{redatorProximoNumeroInfo.anoAtual}</strong> para {redatorProximoNumeroInfo.isGlobal ? 'a sequência global municipal' : redatorProximoNumeroInfo.secBase} (iniciará em <strong className="font-mono">{redatorProximoNumeroInfo.numeroPrevisto}</strong>). Caso já exista numeração anterior neste ano, defina o <strong>Marco Zero</strong>.
+                        </span>
+                      </div>
+                      {currentUser?.nivel === 'ADMIN' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdminInitialTab('numeracao');
+                            setAdminMarcoZeroContext({
+                              secretaria: redatorProximoNumeroInfo.secBase,
+                              tipoDocumento: redatorTipo
+                            });
+                            setIsAdminModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-bold text-[10px] shrink-0 self-start sm:self-center cursor-pointer transition-colors shadow-2xs"
+                        >
+                          Configurar Marco Zero
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {/* Barra de Modelos Prontos para Comissões de PAD, Sindicância e CAC/TAC */}
                   {(redatorTipo === 'ATO' || redatorTipo === 'TERMO' || redatorTipo === 'PORTARIA') && (
@@ -7950,6 +10091,133 @@ ${renderAssinaturasHtmlWord()}
                         </option>
                       ))}
                     </select>
+                  </div>
+                )}
+
+                {/* Local e Data do Documento (Modo Avançado ou quando personalizado — Opcional além do Automático) */}
+                {(redatorModoAvancado || redatorDataModo === 'PERSONALIZADO') && (
+                  <div
+                    data-tip="localdata"
+                    className="p-3.5 bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 rounded-xl space-y-2.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        <span>Local e Data do Documento (Opcional):</span>
+                        <HelpTooltip
+                          tone="indigo"
+                          title="Local e Data Flexíveis"
+                          content="No modo Automático, o documento usa 'Rio Claro-RJ' com a data de hoje. Clique em 'Digitar / Personalizar' se precisar emitir com outra data ou distrito (ex: Passa Três, Lídice)."
+                        />
+                      </label>
+
+                      <div className="inline-flex items-center rounded-lg bg-slate-200/80 dark:bg-slate-900/80 p-0.5 border border-slate-300/70 dark:border-slate-700 text-[11px] font-semibold">
+                        <button
+                          type="button"
+                          onClick={ativarLocalDataAutomatico}
+                          className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                            redatorDataModo === 'AUTOMATICO'
+                              ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-2xs font-bold'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          Automático (Hoje)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRedatorDataModo('PERSONALIZADO')}
+                          className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                            redatorDataModo === 'PERSONALIZADO'
+                              ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-2xs font-bold'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          Digitar / Personalizar
+                        </button>
+                      </div>
+                    </div>
+
+                    {redatorDataModo === 'AUTOMATICO' ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 rounded-lg text-xs">
+                        <span className="text-slate-700 dark:text-slate-200 font-medium flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>{redatorData}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setRedatorDataModo('PERSONALIZADO')}
+                          className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                        >
+                          Alterar local/data
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                              Local (Cidade / Distrito):
+                            </label>
+                            <div className="relative">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              <input
+                                type="text"
+                                value={redatorLocalPersonalizado}
+                                onChange={e => {
+                                  const novoLocal = e.target.value;
+                                  setRedatorLocalPersonalizado(novoLocal);
+                                  setRedatorData(formatarLocalDataExtenso(novoLocal, redatorDataIsoPersonalizada));
+                                }}
+                                placeholder="Ex: Rio Claro-RJ ou Passa Três – Rio Claro-RJ"
+                                className="w-full pl-8 pr-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                              Selecionar Data (Calendário):
+                            </label>
+                            <input
+                              type="date"
+                              value={redatorDataIsoPersonalizada}
+                              onChange={e => {
+                                const novaIso = e.target.value;
+                                setRedatorDataIsoPersonalizada(novaIso);
+                                if (novaIso) {
+                                  setRedatorData(formatarLocalDataExtenso(redatorLocalPersonalizado, novaIso));
+                                }
+                              }}
+                              className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                              Texto final exibido no documento (edição livre):
+                            </label>
+                            <button
+                              type="button"
+                              onClick={ativarLocalDataAutomatico}
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 cursor-pointer"
+                              title="Restaurar para Rio Claro-RJ com a data de hoje"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>Restaurar hoje</span>
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={redatorData}
+                            onChange={e => setRedatorData(e.target.value)}
+                            placeholder="Ex: Rio Claro-RJ, 19 de novembro de 2026"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -8059,15 +10327,9 @@ ${renderAssinaturasHtmlWord()}
                           if (mod.SetorDestino && (!redatorDestinatario || redatorDestinatario === 'Secretaria Municipal de Saúde')) {
                             setRedatorDestinatario(mod.SetorDestino);
                           }
-                          const tipoMod = (mod.TipoDocumento || '').toUpperCase();
-                          if (['MEMORANDO', 'OFICIO', 'DESPACHO', 'CIRCULAR', 'PORTARIA', 'DECRETO', 'ATO', 'TERMO', 'EMAIL'].includes(tipoMod)) {
-                            setRedatorTipo(tipoMod as any);
-                          } else if (tipoMod === 'DECISAO') {
-                            setRedatorTipo('ATO');
-                          }
-                          if ((mod.Area || '').toLowerCase().includes('disciplin') || tipoMod === 'ATO' || tipoMod === 'TERMO') {
-                            handleCarregarModeloNoRedator(mod.ID);
-                          }
+                          const tipoMod = normalizeDocumentTypeCode(mod.TipoDocumento);
+                          setRedatorTipo(tipoMod);
+                          handleCarregarModeloNoRedator(mod.ID);
                         } else {
                           setRedatorAssunto(val);
                         }
@@ -8137,24 +10399,38 @@ ${renderAssinaturasHtmlWord()}
                       <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                         <FilePen className="w-3.5 h-3.5 text-blue-600" />
                         <span>Texto do Documento (Redação Oficial):</span>
+                        <HelpTooltip
+                          tone="blue"
+                          title="Editor Visual em Tempo Real"
+                          content="Digite normalmente e use os botões da barra (Negrito, Itálico, Listas) vendo a formatação na hora — sem códigos. Seu rascunho é salvo automaticamente enquanto você escreve."
+                        />
                       </label>
-                      <button
-                        type="button"
-                        onClick={() => setIsAiHelperOpen(prev => !prev)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all shadow-xs cursor-pointer ${
-                          isAiHelperOpen
-                            ? 'bg-purple-600 text-white ring-2 ring-purple-400'
-                            : 'bg-linear-to-r from-purple-600 to-indigo-600 text-white hover:opacity-90 active:scale-95'
-                        }`}
-                        title="Abrir o Assistente de Inteligência Artificial para gerar ou ajustar a redação"
-                      >
-                        <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
-                        <span>✨ Redigir com IA</span>
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          id="btn-redator-ia"
+                          data-tip="ia"
+                          type="button"
+                          onClick={() => setIsAiHelperOpen(prev => !prev)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all shadow-xs cursor-pointer ${
+                            isAiHelperOpen
+                              ? 'bg-purple-600 text-white ring-2 ring-purple-400'
+                              : 'bg-linear-to-r from-purple-600 to-indigo-600 text-white hover:opacity-90 active:scale-95'
+                          }`}
+                          title="Abrir o Assistente de Inteligência Artificial gratuito (com proteção LGPD)"
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
+                          <span>✨ Redigir com IA</span>
+                        </button>
+                        <HelpTooltip
+                          tone="violet"
+                          title="Assistente de IA Gratuito & LGPD"
+                          content="100% gratuito para os servidores. Usa motor híbrido (NVIDIA NIM + Gemini + contingência local) e mascara CPFs e e-mails automaticamente antes de qualquer envio externo."
+                        />
+                      </div>
                       <input
                         ref={redatorFileInputRef}
                         type="file"
-                        accept=".pdf,.txt,.docx,.doc,.html,.htm,.md"
+                        accept={SUPPORTED_DOCUMENT_ACCEPT}
                         onChange={handleUploadDocumentoParaRedator}
                         className="hidden"
                       />
@@ -8164,10 +10440,10 @@ ${renderAssinaturasHtmlWord()}
                           disabled={isUploadingSingleFile}
                           onClick={() => redatorFileInputRef.current?.click()}
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-800 transition-all shadow-xs active:scale-95 cursor-pointer disabled:opacity-50"
-                          title="Importar documento PDF (digital ou escaneado), DOCX ou TXT para padronizar no Timbrado Oficial"
+                          title="Importar documento PDF, ODT, DOCX, DOC, RTF, CSV, TXT ou foto (OCR) para padronizar no Timbrado Oficial"
                         >
                           <Upload className="w-3 h-3" />
-                          <span>{isUploadingSingleFile ? 'Reconhecendo...' : 'Importar PDF / DOCX / TXT'}</span>
+                          <span>{isUploadingSingleFile ? 'Reconhecendo...' : 'Importar PDF / ODT / DOC / RTF / CSV'}</span>
                         </button>
                       ) : (
                         <button
@@ -8272,40 +10548,7 @@ ${renderAssinaturasHtmlWord()}
                       {/* Chips Rápidos de Intenção do Documento */}
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[10px] font-bold text-purple-900 dark:text-purple-300">Modelos Rápidos:</span>
-                        {(redatorTipo === 'DECRETO' ? [
-                          { label: '🏛️ Ponto Facultativo em Feriado', prompt: 'Redigir Decreto Municipal declarando ponto facultativo nas repartições públicas municipais, ressalvando serviços essenciais de saúde, defesa civil e limpeza pública.' },
-                          { label: '💰 Abertura de Crédito Suplementar', prompt: 'Redigir Decreto Municipal autorizando a abertura de crédito adicional suplementar no orçamento vigente, indicando a anulação parcial de dotações e a fundamentação legal.' },
-                          { label: '📜 Regulamentação de Lei Municipal', prompt: 'Redigir Decreto regulamentando dispositivos de Lei Municipal, estabelecendo prazos, procedimentos e competências das secretarias.' },
-                          { label: '🚨 Situação de Emergência / Defesa Civil', prompt: 'Redigir Decreto declarando situação de emergência em áreas do município afetadas por desastres climáticos, autorizando medidas administrativas de resposta rápida.' },
-                          { label: '👤 Nomeação de Cargo em Comissão (1º Escalão)', prompt: 'Redigir Decreto nomeando autoridade para exercer cargo de provimento em comissão de Secretário Municipal.' }
-                        ] : redatorTipo === 'PORTARIA' ? [
-                          { label: '📋 Fiscal de Contrato (Lei 14.133/21)', prompt: 'Redigir Portaria designando gestor, fiscal titular e substituto para acompanhamento do Contrato Administrativo nº [NÚMERO/ANO], conforme Art. 117 da Lei 14.133/21.' },
-                          { label: '⚖️ Comissão de Sindicância / PAD', prompt: 'Redigir Portaria constituindo comissão de sindicância investigativa ou processo administrativo disciplinar (PAD) com 3 servidores estáveis e prazo de 30 dias.' },
-                          { label: '🏖️ Concessão de Licença / Afastamento', prompt: 'Redigir Portaria concedendo licença-prêmio por assiduidade ou licença para capacitação a servidor público efetivo com base no estatuto dos servidores.' },
-                          { label: '🔄 Substituição de Chefia em Férias', prompt: 'Redigir Portaria designando servidor para responder interinamente pelas atribuições do cargo de chefia durante as férias regulamentares do titular.' },
-                          { label: '📑 Instrução Normativa da Pasta', prompt: 'Redigir Portaria estabelecendo diretrizes procedimentais internas para padronização de rotinas e atendimento ao público.' }
-                        ] : redatorTipo === 'ATO' ? [
-                          { label: '⚖️ Ata de Instalação (PAD / Sindicância)', prompt: 'Redigir Ata de Instalação e Início dos Trabalhos de Comissão Processante de PAD ou Sindicância com designação de secretário e diligências iniciais.' },
-                          { label: '📄 Mandado de Citação e Intimação', prompt: 'Redigir Mandado de Citação Inicial de servidor investigado assegurando ampla defesa, contraditório, prazo de defesa prévia e rol de testemunhas.' },
-                          { label: '🏛️ Termo de Indiciação Formal', prompt: 'Redigir Termo de Indiciação detalhando fatos apurados, provas colhidas, tipificação estatutária e abertura de prazo de 10 dias para defesa escrita.' },
-                          { label: '🎙️ Termo de Oitiva / Interrogatório', prompt: 'Redigir Termo de Oitiva de testemunha ou Interrogatório de servidor investigado com perguntas, respostas e encerramento formal.' },
-                          { label: '📊 Relatório Final Conclusivo (PAD / Sind.)', prompt: 'Redigir Relatório Final Conclusivo de PAD ou Sindicância analisando provas, teses defensivas, motivação LINDB e proposição conclusiva.' }
-                        ] : redatorTipo === 'TERMO' ? [
-                          { label: '🤝 Compromisso de Ajustamento (CAC / TAC)', prompt: 'Redigir Termo de Compromisso de Ajustamento de Conduta Funcional (CAC/TAC) com base nos arts. 20 e 21 da LINDB, obrigações, prazos e suspensão punitiva.' },
-                          { label: '✅ Certidão de Cumprimento de TAC', prompt: 'Redigir Termo de Encerramento e Certidão de Cumprimento Integral das obrigações assumidas em CAC/TAC com proposição de arquivamento.' },
-                          { label: '🔎 Termo de Revelia e Defensor Dativo', prompt: 'Redigir Termo de Declaração de Revelia do servidor indiciado com pedido de nomeação de defensor dativo para garantir a ampla defesa.' }
-                        ] : redatorTipo === 'EMAIL' ? [
-                          { label: 'E-mail Formal Completo', prompt: 'Redigir e-mail institucional convocando formalmente para reunião de alinhamento com pauta, prazo e solicitação de confirmação.' },
-                          { label: 'Cobrança Urgente de Prazo', prompt: 'Cobrar formalmente e em caráter urgente a resposta e envio de informações de ofício anterior com prazo esgotado.' },
-                          { label: 'Encaminhamento com Anexos', prompt: 'Encaminhar documentação técnica em anexo solicitando providências, ciência e retorno tempestivo.' },
-                          { label: 'Resposta a Solicitação', prompt: 'Prestar esclarecimentos formais em resposta à demanda recebida, detalhando as providências adotadas pela pasta.' }
-                        ] : [
-                          { label: 'Solicitar Informações / Relatório', prompt: 'Solicitar envio urgente de relatório e informações detalhadas sobre a execução das atividades no prazo de 5 dias úteis.' },
-                          { label: 'Encaminhamento p/ Parecer Jurídico', prompt: 'Encaminhar os autos à Procuradoria-Geral do Município (PGM) para análise jurídica de legalidade e emissão de parecer.' },
-                          { label: 'Comunicação de Prazos e Providências', prompt: 'Comunicar formalmente a abertura de prazo impreterível para cumprimento de diligências e providências administrativas.' },
-                          { label: 'Resposta a Memorando Anterior', prompt: 'Em resposta à solicitação anterior, prestar os devidos esclarecimentos operacionais e certificar o andamento das medidas.' },
-                          { label: 'Solicitação de Material / Contratação', prompt: 'Solicitar a abertura de processo administrativo de aquisição de insumos essenciais à continuidade dos serviços públicos.' }
-                        ]).map((chip, idx) => (
+                        {getDocumentTypeDefinition(redatorTipo).aiChips.map((chip, idx) => (
                           <button
                             key={idx}
                             type="button"
@@ -8322,28 +10565,33 @@ ${renderAssinaturasHtmlWord()}
 
                       {/* Campo de Instruções Customizadas */}
                       <div className="space-y-1.5">
-                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                          Instruções específicas para a IA (opcional):
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                          <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                            Instruções específicas para a IA (opcional):
+                          </label>
+                          <span className="text-[10px] text-purple-700/80 dark:text-purple-300/80">
+                            Enter quebra linha • Ctrl+Enter gera
+                          </span>
+                        </div>
+                        <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                          <textarea
+                            rows={3}
                             value={aiPromptInput}
                             onChange={e => setAiPromptInput(e.target.value)}
                             onKeyDown={e => {
-                              if (e.key === 'Enter') {
+                              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                                 e.preventDefault();
                                 handleGerarTextoComIA('NOVO_TEXTO');
                               }
                             }}
-                            placeholder="Ex.: Solicitar justificativa de ausência no plantão da UPA ou detalhar prorrogação de contrato..."
-                            className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-800 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 shadow-xs"
+                            placeholder="Ex.: Solicitar justificativa de ausência no plantão da UPA, detalhar prorrogação de contrato ou listar pontos obrigatórios que devem constar no documento..."
+                            className="w-full sm:flex-1 min-h-[76px] px-3 py-2 bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-800 rounded-lg text-xs leading-relaxed text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-purple-500 shadow-xs resize-y"
                           />
                           <button
                             type="button"
                             disabled={isGeneratingAiText}
                             onClick={() => handleGerarTextoComIA('NOVO_TEXTO')}
-                            className="px-3.5 py-1.5 bg-linear-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition-all inline-flex items-center gap-1.5 disabled:opacity-60 whitespace-nowrap"
+                            className="w-full sm:w-auto justify-center px-3.5 py-2 bg-linear-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 transition-all inline-flex items-center gap-1.5 disabled:opacity-60 whitespace-nowrap shrink-0"
                           >
                             {isGeneratingAiText ? (
                               <>
@@ -8406,8 +10654,12 @@ ${renderAssinaturasHtmlWord()}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => aplicarFormatacaoSelecao('**', '**', 'texto em negrito')}
-                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-bold text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer"
-                        title="Negrito (**texto**)"
+                        className={`p-1.5 rounded font-bold text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer ${
+                          redatorFormatosAtivos.bold
+                            ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 ring-1 ring-blue-300 dark:ring-blue-700'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                        title="Negrito (Ctrl+B)"
                       >
                         <Bold className="w-3.5 h-3.5" />
                       </button>
@@ -8415,8 +10667,12 @@ ${renderAssinaturasHtmlWord()}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => aplicarFormatacaoSelecao('*', '*', 'texto em itálico')}
-                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded italic text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer"
-                        title="Itálico (*texto*)"
+                        className={`p-1.5 rounded italic text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer ${
+                          redatorFormatosAtivos.italic
+                            ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 ring-1 ring-blue-300 dark:ring-blue-700'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                        title="Itálico (Ctrl+I)"
                       >
                         <Italic className="w-3.5 h-3.5" />
                       </button>
@@ -8424,8 +10680,12 @@ ${renderAssinaturasHtmlWord()}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => aplicarFormatacaoSelecao('<u>', '</u>', 'texto sublinhado')}
-                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded underline text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer"
-                        title="Sublinhado (<u>texto</u>)"
+                        className={`p-1.5 rounded underline text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer ${
+                          redatorFormatosAtivos.underline
+                            ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 ring-1 ring-blue-300 dark:ring-blue-700'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                        title="Sublinhado (Ctrl+U)"
                       >
                         <Underline className="w-3.5 h-3.5" />
                       </button>
@@ -8433,8 +10693,12 @@ ${renderAssinaturasHtmlWord()}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => aplicarFormatacaoSelecao('~~', '~~', 'texto tachado')}
-                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded line-through text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer"
-                        title="Tachado (~~texto~~)"
+                        className={`p-1.5 rounded line-through text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer ${
+                          redatorFormatosAtivos.strike
+                            ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 ring-1 ring-blue-300 dark:ring-blue-700'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                        title="Tachado"
                       >
                         <Strikethrough className="w-3.5 h-3.5" />
                       </button>
@@ -8442,8 +10706,12 @@ ${renderAssinaturasHtmlWord()}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => aplicarFormatacaoSelecao('<mark>', '</mark>', 'texto destacado')}
-                        className="p-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer"
-                        title="Marca-texto / Destaque Amarelo (<mark>texto</mark>)"
+                        className={`p-1.5 rounded text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer ${
+                          redatorFormatosAtivos.mark
+                            ? 'bg-amber-200 dark:bg-amber-900/70 text-amber-900 dark:text-amber-200 ring-1 ring-amber-400 dark:ring-amber-600'
+                            : 'hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                        }`}
+                        title="Marca-texto / Destaque Amarelo"
                       >
                         <Highlighter className="w-3.5 h-3.5" />
                       </button>
@@ -8552,8 +10820,12 @@ ${renderAssinaturasHtmlWord()}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => aplicarPrefixoLinha('- ', 'Item da lista')}
-                        className="px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                        title="Lista com Marcadores (- item)"
+                        className={`px-1.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                          redatorFormatosAtivos.ul
+                            ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 ring-1 ring-blue-300 dark:ring-blue-700'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                        title="Lista com Marcadores"
                       >
                         <List className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">Marcadores</span>
@@ -8562,8 +10834,12 @@ ${renderAssinaturasHtmlWord()}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => aplicarPrefixoLinha('1. ', 'Item numerado')}
-                        className="px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                        title="Lista Numerada Sequencial (1. item)"
+                        className={`px-1.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+                          redatorFormatosAtivos.ol
+                            ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 ring-1 ring-blue-300 dark:ring-blue-700'
+                            : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                        title="Lista Numerada Sequencial"
                       >
                         <ListOrdered className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">1. 2. 3.</span>
@@ -8592,8 +10868,12 @@ ${renderAssinaturasHtmlWord()}
                             type="button"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => aplicarPrefixoLinha('> ', 'Transcrição de artigo de lei ou parecer')}
-                            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer"
-                            title="Recuo de Citação / Ementa (> texto)"
+                            className={`p-1.5 rounded text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer ${
+                              redatorFormatosAtivos.quote
+                                ? 'bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 ring-1 ring-blue-300 dark:ring-blue-700'
+                                : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                            title="Recuo de Citação / Ementa"
                           >
                             <Quote className="w-3.5 h-3.5" />
                           </button>
@@ -8602,7 +10882,7 @@ ${renderAssinaturasHtmlWord()}
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => aplicarPrefixoLinha('---')}
                             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-xs w-7 h-7 flex items-center justify-center transition-colors cursor-pointer"
-                            title="Linha Divisória Horizontal (---)"
+                            title="Inserir Linha Divisória Horizontal"
                           >
                             <Minus className="w-3.5 h-3.5" />
                           </button>
@@ -9250,52 +11530,33 @@ ${renderAssinaturasHtmlWord()}
                     </div>
                   )}
 
-                  {/* Campo Textarea com Indicador de Carregamento da IA */}
-                  <div className="relative">
-                    <textarea
-                      ref={redatorTextareaRef}
-                      rows={8}
+                  {/* Editor Visual em Tempo Real (WYSIWYG) com Indicador de Carregamento da IA */}
+                  <div className="relative" data-tip="wysiwyg">
+                    <RedatorRichEditor
+                      ref={redatorRichEditorRef}
+                      textareaFallbackRef={redatorTextareaRef}
                       value={redatorTexto}
-                      onChange={e => {
-                        salvarHistorico(e.target.value);
-                      }}
-                      onPaste={(e) => {
-                        const pasted = e.clipboardData?.getData('text/plain');
-                        if (pasted !== undefined) {
-                          e.preventDefault();
-                          const ta = e.currentTarget;
-                          const start = ta.selectionStart;
-                          const end = ta.selectionEnd;
-                          const limpo = sanitizarTextoSemTabulacaoResidual(pasted);
-                          const novoTexto = ta.value.substring(0, start) + limpo + ta.value.substring(end);
-                          salvarHistorico(novoTexto);
-                          setTimeout(() => {
-                            ta.focus();
-                            const pos = start + limpo.length;
-                            ta.setSelectionRange(pos, pos);
-                          }, 10);
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Tab') {
-                          e.preventDefault();
-                          handleTabularTexto(e.shiftKey ? 'diminuir' : 'aumentar');
-                        }
-                      }}
-                      style={{
-                        tabSize: 4,
-                        MozTabSize: 4
-                      }}
-                      className={`w-full px-3.5 py-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-b-xl rounded-t-none border-t-0 text-xs font-sans leading-relaxed text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-emerald-500 shadow-sm transition-opacity ${
-                        isGeneratingAiText ? 'opacity-40 pointer-events-none' : ''
-                      }`}
+                      onChange={salvarHistorico}
+                      fonte={redatorFonte}
+                      tamanhoFonte={redatorTamanhoFonte}
+                      alinhamento={redatorAlinhamento}
+                      recuoPrimeiraLinha={redatorRecuoParagrafo}
+                      recuoSegundaLinha={redatorRecuoSegundaLinha}
+                      margemEsquerda={redatorMargemEsquerda}
+                      margemDireita={redatorMargemDireita}
+                      disabled={isGeneratingAiText}
+                      mode={redatorEditorModo}
+                      onModeChange={setRedatorEditorModo}
+                      onTabular={handleTabularTexto}
+                      sanitizarTexto={sanitizarTextoSemTabulacaoResidual}
+                      onActiveFormatsChange={setRedatorFormatosAtivos}
                       placeholder="Digite o teor do documento oficial ou utilize a barra de ferramentas de formatação e régua de parágrafos acima..."
                     />
                     {isGeneratingAiText && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xs rounded-xl z-10 space-y-2">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/70 dark:bg-slate-900/70 backdrop-blur-2xs rounded-b-xl z-10 space-y-2">
                         <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-full shadow-lg animate-pulse">
                           <Bot className="w-4 h-4 animate-spin" />
-                          <span>Redigindo documento oficial com IA Gemini...</span>
+                          <span>Redigindo documento oficial com IA Híbrida (LGPD)...</span>
                         </div>
                         <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
                           Aplicando Manual de Redação e Padrão Rio Claro – RJ
@@ -9306,7 +11567,7 @@ ${renderAssinaturasHtmlWord()}
                 </div>
 
                 {/* FECHO & ESTRUTURA DE ASSINATURAS (INDIVIDUAL OU COMISSÕES DE PAD / SINDICÂNCIA / TAC) */}
-                <div className="space-y-3.5 p-3.5 bg-purple-50/40 dark:bg-purple-950/25 border border-purple-200/80 dark:border-purple-900/60 rounded-xl">
+                <div data-tip="assinaturas" className="space-y-3.5 p-3.5 bg-purple-50/40 dark:bg-purple-950/25 border border-purple-200/80 dark:border-purple-900/60 rounded-xl">
                   {/* Seletor de Modo de Assinatura: Individual vs Colegiada */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-200/60 dark:border-purple-900/40 pb-2.5">
                     <div className="flex items-center gap-1.5">
@@ -9314,18 +11575,50 @@ ${renderAssinaturasHtmlWord()}
                       <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                         {redatorModoAvancado ? 'Estrutura de Assinaturas:' : 'Assinatura & Órgão Emissor:'}
                       </span>
+                      <HelpTooltip
+                        tone="violet"
+                        title="Assinatura Inteligente"
+                        content="Se o seu cadastro possuir Cargo em Comissão (Anexo I) ou Função Gratificada (Anexo II), ele é preenchido automaticamente aqui. No Modo Avançado você também pode montar assinaturas em trio para Comissões de PAD, Sindicância ou TAC/CAC."
+                      />
                     </div>
 
-                    {!redatorModoAvancado && redatorModoAssinatura === 'INDIVIDUAL' ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleRedatorModoAvancado(true)}
-                        className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-950/60 transition-all cursor-pointer flex items-center gap-1 self-start sm:self-auto"
-                        title="Ativar Modo Avançado para configurar Comissões de PAD, Sindicância ou TAC/CAC"
-                      >
-                        <Scale className="w-3 h-3" />
-                        <span>Usar Comissão / PAD (Modo Avançado)</span>
-                      </button>
+                    {!redatorModoAvancado && (redatorModoAssinatura === 'INDIVIDUAL' || redatorModoAssinatura === 'DUPLA_REFERENDO') ? (
+                      <div className="flex items-center gap-1.5 flex-wrap self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => mudarModoAssinatura('INDIVIDUAL')}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                            redatorModoAssinatura === 'INDIVIDUAL'
+                              ? 'bg-purple-600 text-white shadow-xs font-bold'
+                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <UserCheck className="w-3 h-3" />
+                          <span>Individual</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => mudarModoAssinatura('DUPLA_REFERENDO')}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                            redatorModoAssinatura === 'DUPLA_REFERENDO'
+                              ? 'bg-purple-600 text-white shadow-xs font-bold'
+                              : 'bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-950/60'
+                          }`}
+                          title="Assinatura conjunta de 2 autoridades (ex.: Prefeito Municipal + Secretário ou Procurador-Geral)"
+                        >
+                          <Users className="w-3 h-3" />
+                          <span>Dupla / Referendo</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleRedatorModoAvancado(true)}
+                          className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer flex items-center gap-1"
+                          title="Ativar Modo Avançado para configurar Comissões de PAD, Sindicância ou TAC/CAC"
+                        >
+                          <Scale className="w-3 h-3" />
+                          <span>Comissão / PAD</span>
+                        </button>
+                      </div>
                     ) : (
                     <div className="flex items-center gap-1 flex-wrap">
                       <button
@@ -9340,6 +11633,20 @@ ${renderAssinaturasHtmlWord()}
                       >
                         <UserCheck className="w-3 h-3" />
                         <span>Individual</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => mudarModoAssinatura('DUPLA_REFERENDO')}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                          redatorModoAssinatura === 'DUPLA_REFERENDO'
+                            ? 'bg-purple-600 text-white shadow-xs font-bold'
+                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                        }`}
+                        title="Assinatura conjunta de 2 autoridades (Prefeito + Secretário / Procurador-Geral)"
+                      >
+                        <Users className="w-3 h-3" />
+                        <span>Dupla / Referendo</span>
                       </button>
 
                       <button
@@ -9428,8 +11735,8 @@ ${renderAssinaturasHtmlWord()}
                     </div>
                   </div>
 
-                  {/* CASO 1: ASSINATURA INDIVIDUAL */}
-                  {redatorModoAssinatura === 'INDIVIDUAL' && (
+                  {/* CASO 1: ASSINATURA INDIVIDUAL OU DUPLA / REFERENDO */}
+                  {(redatorModoAssinatura === 'INDIVIDUAL' || redatorModoAssinatura === 'DUPLA_REFERENDO') && (
                     <div className="space-y-3 pt-1">
                       {/* COMBO 3: Signatário / Cargo da Base Municipal */}
                       <div className="space-y-1">
@@ -9645,11 +11952,81 @@ ${renderAssinaturasHtmlWord()}
                           )}
                         </div>
                       </div>
+                      {redatorModoAssinatura === 'DUPLA_REFERENDO' && (
+                        <div className="p-3 bg-white/85 dark:bg-slate-900/70 border border-purple-300/80 dark:border-purple-800/70 rounded-xl space-y-2.5 mt-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                              <span>2ª Autoridade / Referendo (Assinatura Conjunta lado a lado)</span>
+                            </span>
+                            <select
+                              value={listaSignatariosBase.find(s => s.nome === redatorSegundoSignatario)?.matricula || ''}
+                              onChange={e => {
+                                const found = listaSignatariosBase.find(s => s.matricula === e.target.value);
+                                if (found) {
+                                  setRedatorSegundoSignatario(found.nome);
+                                  setRedatorSegundoCargo(found.cargo);
+                                  setRedatorSegundaSecretaria(found.secretaria);
+                                }
+                              }}
+                              className="px-2 py-1 bg-purple-50 dark:bg-slate-800 border border-purple-200 dark:border-purple-800 rounded-lg text-[11px] font-medium text-slate-700 dark:text-slate-200"
+                            >
+                              <option value="">⚡ Preencher 2ª Autoridade da Base...</option>
+                              {listaSignatariosBase.map(sig => (
+                                <option key={sig.matricula} value={sig.matricula}>
+                                  {sig.nome} — {sig.cargo}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                              <label className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block mb-0.5">
+                                Nome da 2ª Autoridade:
+                              </label>
+                              <input
+                                type="text"
+                                list="react-datalist-signatarios"
+                                value={redatorSegundoSignatario}
+                                onChange={e => setRedatorSegundoSignatario(e.target.value)}
+                                placeholder="Ex: Secretário(a) / Procurador-Geral"
+                                className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block mb-0.5">
+                                Cargo / Referendo:
+                              </label>
+                              <input
+                                type="text"
+                                list="react-datalist-cargos"
+                                value={redatorSegundoCargo}
+                                onChange={e => setRedatorSegundoCargo(e.target.value)}
+                                placeholder="Ex: Secretário Municipal de Administração"
+                                className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block mb-0.5">
+                                Secretaria / Órgão do Referendo:
+                              </label>
+                              <input
+                                type="text"
+                                value={redatorSegundaSecretaria}
+                                onChange={e => setRedatorSegundaSecretaria(e.target.value)}
+                                placeholder="Ex: Procuradoria-Geral do Município (PGM)"
+                                className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {/* CASO 2: ASSINATURA COLEGIADA / COMISSÃO DE SINDICÂNCIA, PAD OU TAC/CAC */}
-                  {redatorModoAssinatura !== 'INDIVIDUAL' && (
+                  {redatorModoAssinatura !== 'INDIVIDUAL' && redatorModoAssinatura !== 'DUPLA_REFERENDO' && (
                     <div className="space-y-3 pt-1">
                       {/* Barra de Ações da Comissão */}
                       <div className="flex flex-wrap items-center justify-between gap-2 bg-white/70 dark:bg-slate-900/60 p-2.5 rounded-lg border border-purple-200/70 dark:border-purple-900/50">
@@ -9779,7 +12156,7 @@ ${renderAssinaturasHtmlWord()}
                                   if (s) {
                                     handleAtualizarMembro(m.id, 'nome', s.nome);
                                     handleAtualizarMembro(m.id, 'matricula', s.matricula);
-                                    handleAtualizarMembro(m.id, 'cargoEfetivo', s.cargo);
+                                    handleAtualizarMembro(m.id, 'cargoEfetivo', s.cargoEfetivo || s.cargo);
                                   }
                                 }}
                                 defaultValue=""
@@ -9801,6 +12178,7 @@ ${renderAssinaturasHtmlWord()}
                               </label>
                               <input
                                 type="text"
+                                list="react-datalist-papeis-comissao"
                                 value={m.funcao}
                                 onChange={e => handleAtualizarMembro(m.id, 'funcao', e.target.value)}
                                 placeholder="Ex: Presidente da Comissão, Secretária, Vogal"
@@ -9887,15 +12265,37 @@ ${renderAssinaturasHtmlWord()}
                 </datalist>
 
                 <datalist id="react-datalist-cargos">
-                  {Array.from(new Set(listaSignatariosBase.map(s => s.cargo))).map((c, i) => (
-                    <option key={i} value={c} />
-                  ))}
+                  {Array.from(
+                    new Set([
+                      ...funcoesOficiais.map(f => f.nome),
+                      ...cargosEfetivos,
+                      ...listaSignatariosBase.map(s => s.cargo).filter(Boolean)
+                    ])
+                  )
+                    .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+                    .map((c, i) => (
+                      <option key={i} value={c} />
+                    ))}
                 </datalist>
 
                 <datalist id="react-datalist-secretarias">
                   {listaSecretariasBase.map((sec, i) => (
                     <option key={i} value={sec} />
                   ))}
+                </datalist>
+
+                <datalist id="react-datalist-papeis-comissao">
+                  <option value="Presidente da Comissão" />
+                  <option value="Presidente" />
+                  <option value="Vice-Presidente" />
+                  <option value="Secretário(a)" />
+                  <option value="Membro / Vogal" />
+                  <option value="Relator(a)" />
+                  <option value="Suplente" />
+                  <option value="Gestor do Contrato" />
+                  <option value="Fiscal do Contrato" />
+                  <option value="Pregoeiro(a)" />
+                  <option value="Equipe de Apoio" />
                 </datalist>
               </div>
 
@@ -9926,7 +12326,7 @@ ${renderAssinaturasHtmlWord()}
             </div>
 
             {/* Footer Actions */}
-            <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+            <div className="sgep-themed-subtle p-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
               <span className="text-xs text-slate-500 hidden md:inline">
                 A numeração é controlada pelo LockService do Apps Script para evitar duplicidade entre secretarias.
               </span>
@@ -9948,16 +12348,24 @@ ${renderAssinaturasHtmlWord()}
                       navigator.clipboard.writeText(emailCompleto);
                       showToast('E-mail institucional completo copiado para a área de transferência!');
                     } else {
+                      const defAtual = getDocumentTypeDefinition(redatorTipo);
+                      const assinaturaTxt = redatorModoAssinatura === 'DUPLA_REFERENDO'
+                        ? `${redatorSignatario}\n${redatorCargo}\n${redatorSecretaria}\n\n${redatorSegundoSignatario}\n${redatorSegundoCargo}\n${redatorSegundaSecretaria || redatorSecretaria}`
+                        : redatorModoAssinatura === 'INDIVIDUAL'
+                          ? `${redatorSignatario}\n${redatorCargo}\n${redatorSecretaria}`
+                          : redatorMembrosComissao.map(m => `${m.nome}\n${m.funcao}${m.matricula ? ` (Mat. ${m.matricula})` : ''}`).join('\n\n');
                       let textoFormatado = '';
-                      if (redatorTipo === 'DECRETO') {
-                        textoFormatado = `DECRETO Nº ${redatorNumero || '____/2026'}\n\n${redatorAssunto ? `EMENTA: ${redatorAssunto}\n\n` : ''}${redatorTexto}\n\n${redatorFecho || `Gabinete do Prefeito, Rio Claro – RJ, ${redatorData}.`}\n\n${redatorSignatario}\nPrefeito Municipal de Rio Claro – RJ`;
-                      } else if (redatorTipo === 'PORTARIA') {
-                        textoFormatado = `PORTARIA Nº ${redatorNumero || '____/2026'}\n\n${redatorAssunto ? `EMENTA: ${redatorAssunto}\n\n` : ''}${redatorTexto}\n\n${redatorFecho || 'Dê-se ciência, registre-se, publique-se e cumpra-se.'}\n\n${redatorData}\n\n${redatorSignatario}\n${redatorCargo}\n${redatorSecretaria}`;
+                      if (defAtual.layout === 'SOLENE') {
+                        textoFormatado = `${getDocumentoPrefixo(redatorTipo, redatorNumero)}\n\n${redatorAssunto ? `EMENTA: ${redatorAssunto}\n\n` : ''}${redatorTexto}\n\n${redatorFecho || defAtual.defaultFecho}\n${redatorData}\n\n${assinaturaTxt}`;
+                      } else if (defAtual.layout === 'JUDICIAL') {
+                        textoFormatado = `${redatorTexto}\n\n${redatorFecho || 'Termos em que, pede e espera deferimento.'}\n${redatorData}\n\n${assinaturaTxt}`;
+                      } else if (defAtual.layout === 'JURIDICO' || defAtual.layout === 'NOTIFICACAO') {
+                        textoFormatado = `${getDocumentoPrefixo(redatorTipo, redatorNumero)}\n${redatorData}\n${redatorDestinatario ? `Interessado/Destinatário: ${redatorDestinatario}\n` : ''}${redatorReferenciaDoc ? `Processo/Ref.: ${redatorReferenciaDoc}\n` : ''}Assunto: ${redatorAssunto}\n\n${redatorTexto}\n\n${redatorFecho}\n\n${assinaturaTxt}\nPrefeitura Municipal de Rio Claro – RJ`;
                       } else {
-                        textoFormatado = `${redatorTipo} Nº ${redatorNumero || '____/2026'}\n${redatorData}\n\nÓrgão Expedidor: ${redatorSecretaria}\nDestinatário: ${redatorDestinatario}\nAssunto: ${redatorAssunto}\n\n${redatorTexto}\n\n${redatorFecho}\n\n${redatorSignatario}\n${redatorCargo}\n${redatorSecretaria}\nPrefeitura Municipal de Rio Claro – RJ`;
+                        textoFormatado = `${getDocumentoPrefixo(redatorTipo, redatorNumero)}\n${redatorData}\n\nÓrgão Expedidor: ${redatorSecretaria}\nDestinatário: ${redatorDestinatario}\nAssunto: ${redatorAssunto}\n\n${redatorTexto}\n\n${redatorFecho}\n\n${assinaturaTxt}\nPrefeitura Municipal de Rio Claro – RJ`;
                       }
                       navigator.clipboard.writeText(textoFormatado);
-                      showToast(`Texto do ${redatorTipo} copiado para a área de transferência!`);
+                      showToast(`Texto de ${defAtual.label} copiado para a área de transferência!`);
                     }
                   }}
                   className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-1.5 cursor-pointer"
@@ -10338,8 +12746,8 @@ ${renderAssinaturasHtmlWord()}
       {/* MODAL 5: DOCUMENTO OFICIAL TIMBRADO IMPRESSÃO (RIO CLARO – RJ)             */}
       {/* ========================================================================= */}
       {isRedatorLetterheadOpen && (
-        <div id="modal-timbrado-container" className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto modal-timbrado-backdrop" onClick={(e) => { if (e.target === e.currentTarget) handleFecharTimbrado(); }}>
-          <div id="modal-timbrado-card" className="bg-white text-slate-900 rounded-2xl max-w-3xl w-full shadow-2xl overflow-hidden my-auto border border-slate-300 modal-timbrado-card">
+        <div id="modal-timbrado-container" className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto modal-timbrado-backdrop" onClick={(e) => { if (e.target === e.currentTarget) handleFecharTimbrado(); }}>
+          <div id="modal-timbrado-card" className="bg-white text-slate-900 rounded-xl sm:rounded-2xl w-full sm:w-[94vw] sm:max-w-4xl shadow-2xl overflow-hidden my-auto border border-slate-300 modal-timbrado-card">
             {/* Top Toolbar */}
             <div className="p-3 sm:p-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2.5 no-print">
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
@@ -10417,77 +12825,140 @@ ${renderAssinaturasHtmlWord()}
                 boxSizing: 'border-box'
               }}
             >
-              {/* Brasão Oficial e Cabeçalho DRH Rio Claro */}
-              <div id="cabecalho-timbrado" className="cabecalho-timbrado avoid-break flex items-center gap-5 pb-5 border-b-2 border-[#002b82] mb-8" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-                <img
-                  src={BRASAO_RIO_CLARO}
-                  onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
-                  alt="Brasão Oficial da Prefeitura Municipal de Rio Claro RJ"
-                  width={83}
-                  height={96}
+              {/* Brasão Oficial e Cabeçalho Institucional (adaptado ao Perfil Visual do Setor) */}
+              {activeDocumentStyle.cabecalhoLayout === 'CENTRALIZADO' || activeDocumentStyle.cabecalhoLayout === 'SOLENE_DUPLO' ? (
+                <div
+                  id="cabecalho-timbrado"
+                  className="cabecalho-timbrado avoid-break flex flex-col items-center text-center gap-2 pb-5 mb-8"
                   style={{
-                    width: '83px',
-                    height: '96px',
-                    minWidth: '83px',
-                    minHeight: '96px',
-                    maxWidth: '83px',
-                    maxHeight: '96px',
-                    aspectRatio: '86 / 100',
-                    objectFit: 'contain',
-                    flexShrink: 0,
-                    display: 'block'
+                    breakInside: 'avoid',
+                    pageBreakInside: 'avoid',
+                    borderBottom: activeDocumentStyle.cabecalhoLayout === 'SOLENE_DUPLO'
+                      ? `4px double ${activeDocumentStyle.corPrimaria}`
+                      : `2px solid ${activeDocumentStyle.corPrimaria}`
                   }}
-                  className="brasao-oficial-img object-contain shrink-0"
-                />
-                <div className="text-[#002b82] font-sans">
-                  <div className="font-extrabold text-sm sm:text-base tracking-wide uppercase leading-tight">
-                    ESTADO DO RIO DE JANEIRO
-                  </div>
-                  <div className="font-black text-base sm:text-lg tracking-tight uppercase leading-tight mt-0.5">
-                    PREFEITURA MUNICIPAL DE RIO CLARO
-                  </div>
-                  <div className="text-xs text-slate-600 font-medium leading-tight mt-1">
-                    Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68
-                  </div>
-                  <div className="font-bold text-xs sm:text-sm text-[#002b82] uppercase leading-tight mt-1">
-                    {redatorSecretaria}
-                  </div>
-                  {redatorSetorOrigem && redatorSetorOrigem !== redatorSecretaria && (
-                    <div className="text-[11px] text-slate-700 font-medium leading-tight mt-0.5">
-                      {redatorSetorOrigem}
+                >
+                  <img
+                    src={BRASAO_RIO_CLARO}
+                    onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
+                    alt="Brasão Oficial da Prefeitura Municipal de Rio Claro RJ"
+                    width={68}
+                    height={79}
+                    style={{ width: '68px', height: '79px', objectFit: 'contain', display: 'block' }}
+                    className="brasao-oficial-img object-contain shrink-0"
+                  />
+                  <div className="font-sans" style={{ color: activeDocumentStyle.corPrimaria }}>
+                    <div className="font-extrabold text-xs sm:text-sm tracking-widest uppercase leading-tight">
+                      ESTADO DO RIO DE JANEIRO
                     </div>
-                  )}
+                    <div className="font-black text-base sm:text-lg tracking-tight uppercase leading-tight mt-0.5">
+                      PREFEITURA MUNICIPAL DE RIO CLARO
+                    </div>
+                    <div className="font-bold text-xs sm:text-sm uppercase leading-tight mt-1">
+                      {activeDocumentStyle.cabecalhoSubtituloCustom || redatorSecretaria}
+                    </div>
+                    {redatorSetorOrigem && redatorSetorOrigem !== (activeDocumentStyle.cabecalhoSubtituloCustom || redatorSecretaria) && (
+                      <div className="text-[11px] text-slate-700 font-medium leading-tight mt-0.5">
+                        {redatorSetorOrigem}
+                      </div>
+                    )}
+                    <div className="text-[11px] text-slate-600 font-medium leading-tight mt-1">
+                      Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div
+                  id="cabecalho-timbrado"
+                  className="cabecalho-timbrado avoid-break flex items-center gap-5 pb-5 mb-8"
+                  style={{
+                    breakInside: 'avoid',
+                    pageBreakInside: 'avoid',
+                    borderBottom: `2px solid ${activeDocumentStyle.corPrimaria}`
+                  }}
+                >
+                  <img
+                    src={BRASAO_RIO_CLARO}
+                    onError={e => { (e.target as HTMLImageElement).src = BRASAO_RIO_CLARO; }}
+                    alt="Brasão Oficial da Prefeitura Municipal de Rio Claro RJ"
+                    width={83}
+                    height={96}
+                    style={{
+                      width: '83px',
+                      height: '96px',
+                      minWidth: '83px',
+                      minHeight: '96px',
+                      maxWidth: '83px',
+                      maxHeight: '96px',
+                      aspectRatio: '86 / 100',
+                      objectFit: 'contain',
+                      flexShrink: 0,
+                      display: 'block'
+                    }}
+                    className="brasao-oficial-img object-contain shrink-0"
+                  />
+                  <div className="font-sans" style={{ color: activeDocumentStyle.corPrimaria }}>
+                    <div className="font-extrabold text-sm sm:text-base tracking-wide uppercase leading-tight">
+                      ESTADO DO RIO DE JANEIRO
+                    </div>
+                    <div className="font-black text-base sm:text-lg tracking-tight uppercase leading-tight mt-0.5">
+                      PREFEITURA MUNICIPAL DE RIO CLARO
+                    </div>
+                    <div className="text-xs text-slate-600 font-medium leading-tight mt-1">
+                      Av. João Batista Portugal, nº 230 • CNPJ: 29.051.216/0001-68
+                    </div>
+                    <div className="font-bold text-xs sm:text-sm uppercase leading-tight mt-1" style={{ color: activeDocumentStyle.corPrimaria }}>
+                      {activeDocumentStyle.cabecalhoSubtituloCustom || redatorSecretaria}
+                    </div>
+                    {redatorSetorOrigem && redatorSetorOrigem !== (activeDocumentStyle.cabecalhoSubtituloCustom || redatorSecretaria) && (
+                      <div className="text-[11px] text-slate-700 font-medium leading-tight mt-0.5">
+                        {redatorSetorOrigem}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
-              {/* Conteúdo: Distinção entre Atos Solenes (DECRETO, PORTARIA, ATO, TERMO) e Correspondências (MEMORANDO, OFÍCIO, ETC.) */}
-              {(redatorTipo === 'DECRETO' || redatorTipo === 'PORTARIA' || redatorTipo === 'ATO' || redatorTipo === 'TERMO') ? (
+              {/* Conteúdo: Distinção entre Solene, Judicial, Notificação, Jurídico PGM e Correspondência */}
+              {getDocumentTypeDefinition(redatorTipo).layout === 'SOLENE' ? (
                 <div>
-                  {/* Epígrafe Centralizada */}
-                  <div className="text-center mb-6 pb-2 border-b-2 border-[#002b82]/30">
-                    <h3 className="text-base sm:text-lg font-black text-[#002b82] tracking-wider uppercase">
+                  <div className="text-center mb-6 pb-2 border-b-2" style={{ borderColor: `${activeDocumentStyle.corPrimaria}4D` }}>
+                    <h3 className="text-base sm:text-lg font-black tracking-wider uppercase" style={{ color: activeDocumentStyle.corPrimaria }}>
                       {getDocumentoPrefixo(redatorTipo, redatorNumero)}
                     </h3>
                     <span className="text-xs text-slate-600 font-medium">
-                      {redatorTipo === 'TERMO' 
-                        ? 'Compromisso de Ajustamento de Conduta (CAC / TAC) • LINDB art. 26' 
-                        : (redatorTipo === 'DECRETO' ? 'Prefeitura Municipal de Rio Claro – RJ' : redatorSecretaria)}
+                      {getDocumentTypeDefinition(redatorTipo).subtitle}
                     </span>
                   </div>
 
-                  {/* Ementa / Objeto Recuada à Direita */}
                   {redatorAssunto && (
-                    <div className="ml-auto w-7/12 text-justify italic text-xs text-slate-800 leading-snug mb-6 pl-4 border-l-2 border-[#002b82]">
+                    <div
+                      className={
+                        activeDocumentStyle.ementaEstilo === 'CAIXA_SOMBREADA'
+                          ? 'py-2.5 px-4 bg-slate-50 border border-slate-300 border-l-4 text-justify italic text-xs text-slate-800 leading-snug mb-6 rounded-r'
+                          : activeDocumentStyle.ementaEstilo === 'SIMPLES'
+                            ? 'text-justify italic text-xs text-slate-800 leading-snug mb-6'
+                            : activeDocumentStyle.ementaEstilo === 'DIREITA_SEM_BORDA'
+                              ? 'ml-auto w-7/12 text-justify italic text-xs text-slate-800 leading-snug mb-6'
+                              : 'ml-auto w-7/12 text-justify italic text-xs text-slate-800 leading-snug mb-6 pl-4 border-l-2'
+                      }
+                      style={{
+                        borderLeftColor: activeDocumentStyle.ementaEstilo === 'DIREITA_BORDA' || activeDocumentStyle.ementaEstilo === 'CAIXA_SOMBREADA'
+                          ? activeDocumentStyle.corPrimaria
+                          : undefined
+                      }}
+                    >
+                      {activeDocumentStyle.ementaEstilo === 'SIMPLES' && <strong className="not-italic">Ementa: </strong>}
                       {redatorAssunto}
                     </div>
                   )}
 
-                  {/* Corpo do Documento */}
                   <div
-                    className="sgep-rich-doc leading-relaxed mb-10 pl-0"
+                    className="sgep-rich-doc mb-10 pl-0"
                     style={{
                       fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : '"Times New Roman", Times, serif',
                       fontSize: redatorTamanhoFonte === '10pt' ? '12px' : redatorTamanhoFonte === '11pt' ? '13px' : '14px',
+                      lineHeight: activeDocumentStyle.espacamentoLinhas || 1.5,
                       textAlign: redatorAlinhamento
                     }}
                     dangerouslySetInnerHTML={{
@@ -10495,14 +12966,95 @@ ${renderAssinaturasHtmlWord()}
                     }}
                   />
 
-                  {/* Fecho e Data Solene */}
                   <div className="mb-14 font-sans text-xs sm:text-sm text-slate-800">
                     <p className="font-semibold text-slate-800">
-                      {redatorFecho || (redatorTipo === 'PORTARIA' ? 'Dê-se ciência, registre-se, publique-se e cumpra-se.' : `Rio Claro – RJ, ${redatorData}.`)}
+                      {redatorFecho || getDocumentTypeDefinition(redatorTipo).defaultFecho}
                     </p>
-                    {redatorTipo === 'PORTARIA' && (
-                      <p className="text-xs text-slate-600 mt-1">Rio Claro – RJ, {redatorData}.</p>
-                    )}
+                    <p className="text-xs text-slate-600 mt-1">{formatarLocalDataSemDuplicar(redatorData)}</p>
+                  </div>
+                </div>
+              ) : getDocumentTypeDefinition(redatorTipo).layout === 'JUDICIAL' ? (
+                <div>
+                  <div className="flex justify-between items-baseline mb-5 pb-2 border-b border-slate-200 font-sans text-xs text-slate-500">
+                    <span className="font-bold uppercase text-rose-900">{getDocumentoPrefixo(redatorTipo, redatorNumero)}</span>
+                    <span>{redatorData}</span>
+                  </div>
+                  <div
+                    className="sgep-rich-doc mb-10 pl-0"
+                    style={{
+                      fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : '"Times New Roman", Times, serif',
+                      fontSize: redatorTamanhoFonte === '10pt' ? '12px' : redatorTamanhoFonte === '11pt' ? '13px' : '14px',
+                      lineHeight: activeDocumentStyle.espacamentoLinhas || 1.5,
+                      textAlign: redatorAlinhamento
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: converterTextoOficialHTML(redatorTexto, 'print', redatorFonte, redatorTamanhoFonte, redatorAlinhamento)
+                    }}
+                  />
+                  <div className="mb-14 font-sans text-xs sm:text-sm text-slate-800">
+                    <p className="font-semibold">{redatorFecho || 'Termos em que, pede e espera deferimento.'}</p>
+                    <p className="text-xs text-slate-600 mt-1">{formatarLocalDataSemDuplicar(redatorData)}</p>
+                  </div>
+                </div>
+              ) : getDocumentTypeDefinition(redatorTipo).layout === 'NOTIFICACAO' ? (
+                <div>
+                  <div className="text-center mb-5 pb-2 border-b-2 border-rose-700/40">
+                    <h3 className="text-base sm:text-lg font-black text-rose-900 tracking-wider uppercase">
+                      {getDocumentoPrefixo(redatorTipo, redatorNumero)}
+                    </h3>
+                    <span className="text-xs text-slate-600 font-medium">{getDocumentTypeDefinition(redatorTipo).subtitle}</span>
+                  </div>
+                  <div className="mb-6 p-3.5 bg-slate-50 border border-slate-300 rounded font-sans text-xs sm:text-sm space-y-1 text-slate-900">
+                    <p><strong>NOTIFICANTE:</strong> Município de Rio Claro – RJ ({redatorSecretaria})</p>
+                    <p><strong>NOTIFICADO(A):</strong> {redatorDestinatario || '[NOME / RAZÃO SOCIAL]'}</p>
+                    {redatorReferenciaDoc && <p><strong>PROCESSO / REF.:</strong> {redatorReferenciaDoc}</p>}
+                    <p><strong>OBJETO:</strong> {redatorAssunto}</p>
+                  </div>
+                  <div
+                    className="sgep-rich-doc mb-10 pl-0"
+                    style={{
+                      fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : '"Times New Roman", Times, serif',
+                      fontSize: redatorTamanhoFonte === '10pt' ? '12px' : redatorTamanhoFonte === '11pt' ? '13px' : '14px',
+                      lineHeight: activeDocumentStyle.espacamentoLinhas || 1.5,
+                      textAlign: redatorAlinhamento
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: converterTextoOficialHTML(redatorTexto, 'print', redatorFonte, redatorTamanhoFonte, redatorAlinhamento)
+                    }}
+                  />
+                  <div className="mb-14 font-sans text-xs sm:text-sm text-slate-800">
+                    <p className="font-medium">{redatorFecho}</p>
+                    <p className="text-xs text-slate-600 mt-1">{formatarLocalDataSemDuplicar(redatorData)}</p>
+                  </div>
+                </div>
+              ) : getDocumentTypeDefinition(redatorTipo).layout === 'JURIDICO' ? (
+                <div>
+                  <div className="text-center mb-5 pb-2 border-b-2" style={{ borderColor: `${activeDocumentStyle.corPrimaria}4D` }}>
+                    <h3 className="text-base sm:text-lg font-black tracking-wider uppercase" style={{ color: activeDocumentStyle.corPrimaria }}>
+                      {getDocumentoPrefixo(redatorTipo, redatorNumero)}
+                    </h3>
+                    <span className="text-xs text-slate-600 font-medium">{getDocumentTypeDefinition(redatorTipo).subtitle}</span>
+                  </div>
+                  <div className="mb-6 pb-2.5 border-b border-slate-300 font-sans text-xs sm:text-sm space-y-1 text-slate-900">
+                    {redatorDestinatario && <p><strong>Interessado / Destino:</strong> {redatorDestinatario}</p>}
+                    {redatorReferenciaDoc && <p><strong>Processo / Referência:</strong> {redatorReferenciaDoc}</p>}
+                    <p><strong>Assunto / Objeto:</strong> {redatorAssunto}</p>
+                  </div>
+                  <div
+                    className="sgep-rich-doc mb-10 pl-0"
+                    style={{
+                      fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : '"Times New Roman", Times, serif',
+                      fontSize: redatorTamanhoFonte === '10pt' ? '12px' : redatorTamanhoFonte === '11pt' ? '13px' : '14px',
+                      lineHeight: activeDocumentStyle.espacamentoLinhas || 1.5,
+                      textAlign: redatorAlinhamento
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: converterTextoOficialHTML(redatorTexto, 'print', redatorFonte, redatorTamanhoFonte, redatorAlinhamento)
+                    }}
+                  />
+                  <div className="mb-14 font-sans text-xs sm:text-sm text-slate-800">
+                    <p className="font-medium">{redatorFecho}</p>
+                    <p className="text-xs text-slate-600 mt-1">{formatarLocalDataSemDuplicar(redatorData)}</p>
                   </div>
                 </div>
               ) : (
@@ -10510,7 +13062,7 @@ ${renderAssinaturasHtmlWord()}
                   {/* Número e Data */}
                   <div className="flex justify-between items-baseline mb-6 font-sans text-xs sm:text-sm">
                     <div>
-                      <strong className="text-base font-black text-[#002b82]">
+                      <strong className="text-base font-black" style={{ color: activeDocumentStyle.corPrimaria }}>
                         {redatorTipo === 'EMAIL' ? 'COMUNICAÇÃO ELETRÔNICA INSTITUCIONAL (E-MAIL)' : getDocumentoPrefixo(redatorTipo, redatorNumero)}
                       </strong>
                       {redatorReferenciaDoc && redatorTipo !== 'EMAIL' && (
@@ -10556,10 +13108,11 @@ ${renderAssinaturasHtmlWord()}
 
                   {/* Corpo do Documento */}
                   <div
-                    className="sgep-rich-doc leading-relaxed mb-10 pl-0"
+                    className="sgep-rich-doc mb-10 pl-0"
                     style={{
                       fontFamily: redatorFonte === 'Arial' ? 'Arial, sans-serif' : redatorFonte === 'Calibri' ? 'Calibri, sans-serif' : '"Times New Roman", Times, serif',
                       fontSize: redatorTamanhoFonte === '10pt' ? '12px' : redatorTamanhoFonte === '11pt' ? '13px' : '14px',
+                      lineHeight: activeDocumentStyle.espacamentoLinhas || 1.5,
                       textAlign: redatorAlinhamento
                     }}
                     dangerouslySetInnerHTML={{
@@ -10574,8 +13127,14 @@ ${renderAssinaturasHtmlWord()}
                 </div>
               )}
 
-              {/* Assinatura Oficial Individual ou de Comissão */}
+              {/* Assinatura Oficial Individual, Dupla/Referendo ou de Comissão */}
               {renderAssinaturasJSX(true)}
+
+              {activeDocumentStyle.rodapeTexto && (
+                <div className="mt-8 pt-2.5 border-t border-slate-300 text-center font-sans text-[10px] text-slate-500">
+                  {activeDocumentStyle.rodapeTexto}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -10594,7 +13153,7 @@ ${renderAssinaturasHtmlWord()}
             className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-out animate-in slide-in-from-bottom sm:zoom-in-95 ${
               isSheetsMaximized
                 ? 'w-full h-full rounded-none sm:rounded-2xl'
-                : 'w-full sm:max-w-5xl md:max-w-6xl h-[92vh] sm:h-[86vh] max-h-[96vh] rounded-t-2xl sm:rounded-2xl'
+                : 'w-full sm:w-[96vw] sm:max-w-[1440px] h-[95dvh] sm:h-[92dvh] max-h-[96dvh] rounded-t-2xl sm:rounded-2xl'
             }`}
           >
             {/* Barra de Toque e Deslize para Mobile */}
@@ -10802,10 +13361,80 @@ ${renderAssinaturasHtmlWord()}
                         </p>
                       </div>
                     </div>
-                    <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-slate-700 shrink-0">
-                      {numeracoesFiltradas.length} visíveis
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="font-mono text-xs font-bold px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-slate-700">
+                        {numeracoesFiltradas.length} visíveis
+                      </span>
+                      {currentUser?.nivel === 'ADMIN' && (
+                        <HelpTooltip
+                          tone="rose"
+                          title="Higienização vs. Anulação (Admin)"
+                          content="Como Administrador, você pode marcar várias linhas de teste para excluir em lote (Higienização) ou usar 'Anular' em uma linha oficial para manter o número reservado no protocolo com [ANULADO - motivo]."
+                        />
+                      )}
+                    </div>
                   </div>
+
+                  {/* Barra de Higienização em Lote (Exclusivo ADMIN) */}
+                  {currentUser?.nivel === 'ADMIN' && numeracoesFiltradas.length > 0 && (() => {
+                    const visibleKeys = numeracoesFiltradas.map(getNumeracaoRowKey);
+                    const selectedVisibleItems = numeracoesFiltradas.filter(item =>
+                      selectedNumeracaoKeys.includes(getNumeracaoRowKey(item))
+                    );
+                    const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every(k => selectedNumeracaoKeys.includes(k));
+
+                    return (
+                      <div
+                        data-tip="higienizarnum"
+                        className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs transition-all ${
+                          selectedVisibleItems.length > 0
+                            ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800'
+                            : 'bg-slate-50/80 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/80'
+                        }`}
+                      >
+                        <label className="inline-flex items-center gap-2 cursor-pointer select-none font-semibold text-slate-700 dark:text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={allVisibleSelected}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setSelectedNumeracaoKeys(prev => Array.from(new Set([...prev, ...visibleKeys])));
+                              } else {
+                                const visSet = new Set(visibleKeys);
+                                setSelectedNumeracaoKeys(prev => prev.filter(k => !visSet.has(k)));
+                              }
+                            }}
+                            className="w-3.5 h-3.5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                          />
+                          <span>
+                            {selectedVisibleItems.length > 0
+                              ? `${selectedVisibleItems.length} registro(s) selecionado(s) para higienização`
+                              : `Higienização (Admin): selecionar todos visíveis (${numeracoesFiltradas.length})`}
+                          </span>
+                        </label>
+
+                        {selectedVisibleItems.length > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedNumeracaoKeys([])}
+                              className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-[11px] font-semibold hover:bg-slate-100 cursor-pointer"
+                            >
+                              Limpar seleção
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirModalHigienizacao(selectedVisibleItems, 'EXCLUIR')}
+                              className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Excluir selecionados ({selectedVisibleItems.length})</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Barra de Filtros Departamentais e Busca do Livro */}
                   <div className="flex flex-wrap items-center justify-between gap-2.5 p-2.5 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/80 text-xs">
@@ -11051,20 +13680,54 @@ ${renderAssinaturasHtmlWord()}
                           const siglaDoc = getSecretariaSigla(secDoc, secretarias);
                           const deptoDoc = n.departamento || (siglaDoc === 'SMA' ? 'Departamento de Recursos Humanos' : 'Gabinete');
                           const servDoc = n.servidor || n.usuario || 'Servidor Municipal';
+                          const rowKey = getNumeracaoRowKey(n);
+                          const isSelected = selectedNumeracaoKeys.includes(rowKey);
+                          const isAnulado = /^\[ANULADO/i.test(String(n.assunto || '').trim());
 
                           return (
-                            <div key={i} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 hover:border-blue-300 dark:hover:border-blue-700 transition-all shadow-xs flex flex-col justify-between gap-3">
+                            <div
+                              key={rowKey + '_' + i}
+                              className={`p-3.5 rounded-xl border transition-all shadow-xs flex flex-col justify-between gap-3 ${
+                                isSelected
+                                  ? 'border-rose-400 dark:border-rose-700 bg-rose-50/40 dark:bg-rose-950/20'
+                                  : isAnulado
+                                  ? 'border-amber-300 dark:border-amber-800/80 bg-amber-50/30 dark:bg-amber-950/15'
+                                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 hover:border-blue-300 dark:hover:border-blue-700'
+                              }`}
+                            >
                               <div>
                                 {/* Header do Card */}
                                 <div className="flex items-center justify-between gap-2 mb-2">
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                    n.tipoDocumento === 'MEMORANDO' ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800' :
-                                    n.tipoDocumento === 'OFICIO' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' :
-                                    n.tipoDocumento === 'DESPACHO' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800' :
-                                    'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-800'
-                                  }`}>
-                                    {n.tipoDocumento}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    {currentUser?.nivel === 'ADMIN' && (
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={e => {
+                                          if (e.target.checked) {
+                                            setSelectedNumeracaoKeys(prev => (prev.includes(rowKey) ? prev : [...prev, rowKey]));
+                                          } else {
+                                            setSelectedNumeracaoKeys(prev => prev.filter(k => k !== rowKey));
+                                          }
+                                        }}
+                                        title="Selecionar este registro para higienização em lote"
+                                        className="w-3.5 h-3.5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                                      />
+                                    )}
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                      n.tipoDocumento === 'MEMORANDO' ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800' :
+                                      n.tipoDocumento === 'OFICIO' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' :
+                                      n.tipoDocumento === 'DESPACHO' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800' :
+                                      'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                                    }`}>
+                                      {n.tipoDocumento}
+                                    </span>
+                                    {isAnulado && (
+                                      <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                        ANULADO
+                                      </span>
+                                    )}
+                                  </div>
 
                                   <span className="font-mono text-[11px] text-slate-400">
                                     {formatDataHoraExibicao(n.dataHora, true)}
@@ -11074,7 +13737,7 @@ ${renderAssinaturasHtmlWord()}
                                 {/* Número Oficial e Assunto */}
                                 <div className="mb-2">
                                   <div className="flex items-center justify-between gap-2">
-                                    <h4 className="font-mono font-bold text-sm text-blue-600 dark:text-blue-400">
+                                    <h4 className={`font-mono font-bold text-sm ${isAnulado ? 'line-through text-amber-700 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>
                                       {n.numero}
                                     </h4>
                                     <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
@@ -11123,6 +13786,7 @@ ${renderAssinaturasHtmlWord()}
                                 </button>
                                 <button
                                   type="button"
+                                  data-tip="usarbase"
                                   onClick={() => handleUsarDocumentoComoBase(n)}
                                   className="flex-1 py-1.5 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
                                   title="Duplicar dados deste documento no Redator para emitir um novo com numeração sequencial limpa"
@@ -11152,6 +13816,17 @@ ${renderAssinaturasHtmlWord()}
                                   <Reply className="w-3.5 h-3.5" />
                                   <span>Responder</span>
                                 </button>
+                                {currentUser?.nivel === 'ADMIN' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAbrirModalHigienizacao([n], 'EXCLUIR')}
+                                    className="py-1.5 px-2.5 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-600 text-rose-700 hover:text-white dark:text-rose-300 dark:hover:bg-rose-600 rounded-lg text-xs font-semibold border border-rose-200 dark:border-rose-800 flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                                    title="Higienizar (excluir) ou Anular este registro de numeração (Exclusivo Admin)"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Excluir</span>
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -11168,6 +13843,28 @@ ${renderAssinaturasHtmlWord()}
                       <table className="w-full text-left text-xs">
                         <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
                           <tr>
+                            {currentUser?.nivel === 'ADMIN' && (
+                              <th className="p-2.5 text-center w-8">
+                                <input
+                                  type="checkbox"
+                                  checked={
+                                    numeracoesFiltradas.length > 0 &&
+                                    numeracoesFiltradas.every(item => selectedNumeracaoKeys.includes(getNumeracaoRowKey(item)))
+                                  }
+                                  onChange={e => {
+                                    const visKeys = numeracoesFiltradas.map(getNumeracaoRowKey);
+                                    if (e.target.checked) {
+                                      setSelectedNumeracaoKeys(prev => Array.from(new Set([...prev, ...visKeys])));
+                                    } else {
+                                      const visSet = new Set(visKeys);
+                                      setSelectedNumeracaoKeys(prev => prev.filter(k => !visSet.has(k)));
+                                    }
+                                  }}
+                                  title="Selecionar todos visíveis para higienização"
+                                  className="w-3.5 h-3.5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                                />
+                              </th>
+                            )}
                             <th
                               onClick={() => setFiltroLivroOrdemData(prev => prev === 'desc' ? 'asc' : 'desc')}
                               aria-sort={filtroLivroOrdemData === 'asc' ? 'ascending' : 'descending'}
@@ -11208,7 +13905,7 @@ ${renderAssinaturasHtmlWord()}
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                           {numeracoesFiltradas.length === 0 ? (
                             <tr>
-                              <td colSpan={9} className="py-12 text-center text-slate-400">
+                              <td colSpan={currentUser?.nivel === 'ADMIN' ? 10 : 9} className="py-12 text-center text-slate-400">
                                 <ListOrdered className="w-8 h-8 mx-auto mb-2 opacity-30" />
                                 <p className="font-medium text-xs">Nenhum documento encontrado para os filtros selecionados.</p>
                               </td>
@@ -11219,8 +13916,37 @@ ${renderAssinaturasHtmlWord()}
                               const siglaDoc = getSecretariaSigla(secDoc, secretarias);
                               const deptoDoc = n.departamento || (siglaDoc === 'SMA' ? 'Departamento de Recursos Humanos' : 'Gabinete');
                               const servDoc = n.servidor || n.usuario || 'Servidor Municipal';
+                              const rowKey = getNumeracaoRowKey(n);
+                              const isSelected = selectedNumeracaoKeys.includes(rowKey);
+                              const isAnulado = /^\[ANULADO/i.test(String(n.assunto || '').trim());
+
                               return (
-                                <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                                <tr
+                                  key={rowKey + '_' + i}
+                                  className={`transition-colors ${
+                                    isSelected
+                                      ? 'bg-rose-50/70 dark:bg-rose-950/25'
+                                      : isAnulado
+                                      ? 'bg-amber-50/40 dark:bg-amber-950/15 hover:bg-amber-50/70'
+                                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                                  }`}
+                                >
+                                  {currentUser?.nivel === 'ADMIN' && (
+                                    <td className="p-2.5 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={e => {
+                                          if (e.target.checked) {
+                                            setSelectedNumeracaoKeys(prev => (prev.includes(rowKey) ? prev : [...prev, rowKey]));
+                                          } else {
+                                            setSelectedNumeracaoKeys(prev => prev.filter(k => k !== rowKey));
+                                          }
+                                        }}
+                                        className="w-3.5 h-3.5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                                      />
+                                    </td>
+                                  )}
                                   <td className="p-2.5 font-mono text-[11px] text-slate-400 whitespace-nowrap">
                                     {formatDataHoraExibicao(n.dataHora, true)}
                                   </td>
@@ -11234,10 +13960,15 @@ ${renderAssinaturasHtmlWord()}
                                       {n.tipoDocumento}
                                     </span>
                                   </td>
-                                  <td className="p-2.5 font-mono font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                                  <td className={`p-2.5 font-mono font-bold whitespace-nowrap ${isAnulado ? 'line-through text-amber-700 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>
                                     {n.numero}
                                   </td>
                                   <td className="p-2.5 bg-blue-50/20 dark:bg-blue-950/10 max-w-xs truncate" title={n.assunto}>
+                                    {isAnulado && (
+                                      <span className="mr-1.5 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                        ANULADO
+                                      </span>
+                                    )}
                                     <span className="font-medium text-slate-800 dark:text-slate-200">{n.assunto}</span>
                                   </td>
                                   <td className="p-2.5 bg-amber-50/20 dark:bg-amber-950/10 whitespace-nowrap">
@@ -11276,6 +14007,7 @@ ${renderAssinaturasHtmlWord()}
                                       </button>
                                       <button
                                         type="button"
+                                        data-tip="usarbase"
                                         onClick={() => handleUsarDocumentoComoBase(n)}
                                         className="px-2 py-1 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded text-[10px] font-semibold border border-indigo-200 dark:border-indigo-800 flex items-center gap-1 cursor-pointer transition-colors"
                                         title="Duplicar dados deste documento no Redator para gerar um novo ato com nova numeração"
@@ -11305,6 +14037,17 @@ ${renderAssinaturasHtmlWord()}
                                         <Reply className="w-3 h-3" />
                                         <span>Responder</span>
                                       </button>
+                                      {currentUser?.nivel === 'ADMIN' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAbrirModalHigienizacao([n], 'EXCLUIR')}
+                                          className="px-2 py-1 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-600 text-rose-700 hover:text-white dark:text-rose-300 dark:hover:bg-rose-600 rounded text-[10px] font-semibold border border-rose-200 dark:border-rose-800 flex items-center gap-1 cursor-pointer transition-colors"
+                                          title="Higienizar (excluir) ou Anular este registro (Exclusivo Admin)"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                          <span>Excluir</span>
+                                        </button>
+                                      )}
                                     </div>
                                   </td>
                                 </tr>
@@ -11415,7 +14158,172 @@ ${renderAssinaturasHtmlWord()}
         </div>
       )}
 
-      {/* Painel Administrativo de Servidores, Senhas, Secretarias e Departamentos */}
+      {/* Modal de Confirmação: Higienização (Excluir) vs. Anulação de Numeração (Exclusivo ADMIN) */}
+      {higienizarModalAlvos && higienizarModalAlvos.length > 0 && currentUser?.nivel === 'ADMIN' && (
+        <div
+          className="fixed inset-0 z-[95] bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={e => {
+            if (e.target === e.currentTarget && !isProcessandoHigienizacao) {
+              setHigienizarModalAlvos(null);
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-slate-900 border-t sm:border border-slate-200 dark:border-slate-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
+            <div className={`p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between ${
+              higienizarModo === 'EXCLUIR'
+                ? 'bg-rose-50/80 dark:bg-rose-950/30'
+                : 'bg-amber-50/80 dark:bg-amber-950/30'
+            }`}>
+              <div className="flex items-center gap-2">
+                {higienizarModo === 'EXCLUIR' ? (
+                  <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                ) : (
+                  <Ban className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                )}
+                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  {higienizarModalAlvos.length > 1
+                    ? `Higienização em Lote (${higienizarModalAlvos.length} registros)`
+                    : 'Higienizar ou Anular Registro de Numeração'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                disabled={isProcessandoHigienizacao}
+                onClick={() => setHigienizarModalAlvos(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmarHigienizacaoOuAnulacao} className="p-4 sm:p-5 space-y-4 text-xs">
+              {/* Resumo dos alvos selecionados */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 max-h-32 overflow-y-auto space-y-1">
+                {higienizarModalAlvos.map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="font-mono font-bold text-blue-700 dark:text-blue-300 shrink-0">
+                      {item.tipoDocumento} {item.numero}
+                    </span>
+                    <span className="truncate text-slate-600 dark:text-slate-300">{item.assunto}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Escolha do modo (quando 1 registro) */}
+              {higienizarModalAlvos.length === 1 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setHigienizarModo('EXCLUIR')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      higienizarModo === 'EXCLUIR'
+                        ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-500 ring-1 ring-rose-500'
+                        : 'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-rose-700 dark:text-rose-300 mb-1">
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Excluir Definitivamente</span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-600 dark:text-slate-400 leading-snug">
+                      Remove a linha da aba <b>Numeração</b> (ideal para higienização de testes e duplicidades).
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHigienizarModo('ANULAR')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      higienizarModo === 'ANULAR'
+                        ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-500 ring-1 ring-amber-500'
+                        : 'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-amber-700 dark:text-amber-300 mb-1">
+                      <Ban className="w-3.5 h-3.5" />
+                      <span>Anular / Cancelar Número</span>
+                    </div>
+                    <p className="text-[10.5px] text-slate-600 dark:text-slate-400 leading-snug">
+                      Mantém o número reservado no protocolo e grava <code>[ANULADO]</code> no assunto.
+                    </p>
+                  </button>
+                </div>
+              )}
+
+              {/* Justificativa obrigatória para auditoria */}
+              <div className="space-y-1.5">
+                <label className="block font-bold text-slate-700 dark:text-slate-300">
+                  Justificativa para Auditoria (gravada nos Logs) *
+                </label>
+                <div className="flex flex-wrap gap-1">
+                  {[
+                    'Registro de teste / implantação',
+                    'Lançamento duplicado',
+                    'Erro de secretaria ou tipo documental',
+                    'Ato cancelado antes da expedição'
+                  ].map(sug => (
+                    <button
+                      key={sug}
+                      type="button"
+                      onClick={() => setHigienizarMotivo(sug)}
+                      className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                    >
+                      {sug}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={higienizarMotivo}
+                  onChange={e => setHigienizarMotivo(e.target.value)}
+                  placeholder="Informe o motivo da higienização ou anulação..."
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={isProcessandoHigienizacao}
+                  onClick={() => setHigienizarModalAlvos(null)}
+                  className="px-3.5 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessandoHigienizacao}
+                  className={`px-4 py-2 text-white rounded-lg font-bold shadow-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60 ${
+                    higienizarModo === 'EXCLUIR'
+                      ? 'bg-rose-600 hover:bg-rose-500'
+                      : 'bg-amber-600 hover:bg-amber-500'
+                  }`}
+                >
+                  {isProcessandoHigienizacao ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Processando...</span>
+                    </>
+                  ) : higienizarModo === 'EXCLUIR' ? (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Confirmar Exclusão ({higienizarModalAlvos.length})</span>
+                    </>
+                  ) : (
+                    <>
+                      <Ban className="w-3.5 h-3.5" />
+                      <span>Confirmar Anulação no Protocolo</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Painel Administrativo de Servidores, Senhas, Secretarias, Marco Zero e Departamentos */}
       {currentUser && currentUser.nivel === 'ADMIN' && (
         <AdminManagementModal
           isOpen={isAdminModalOpen}
@@ -11424,6 +14332,7 @@ ${renderAssinaturasHtmlWord()}
           usuarios={usuarios}
           onSaveUsuario={handleSaveUsuario}
           onToggleStatusUsuario={handleToggleStatusUsuario}
+          onRecusarServidorInativo={handleRecusarServidorInativo}
           secretarias={secretarias}
           onSaveSecretaria={handleSaveSecretaria}
           realApiUrl={realApiUrl}
@@ -11432,6 +14341,17 @@ ${renderAssinaturasHtmlWord()}
           pedidosRecuperacao={pedidosRecuperacao}
           onAprovarPedidoRecuperacao={handleAprovarPedidoRecuperacao}
           onCancelarPedidoRecuperacao={handleCancelarPedidoRecuperacao}
+          numeracoes={numeracoes}
+          configNumeracao={configNumeracao}
+          onDefinirMarcoZero={handleDefinirMarcoZero}
+          onSalvarConfigNumeracao={handleSalvarConfigNumeracao}
+          initialTab={adminInitialTab}
+          onTabChange={setAdminInitialTab}
+          initialMarcoZeroContext={adminMarcoZeroContext}
+          funcoesOficiais={funcoesOficiais}
+          onSaveFuncoesOficiais={handleSaveFuncoesOficiais}
+          cargosEfetivos={cargosEfetivos}
+          onSaveCargosEfetivos={handleSaveCargosEfetivos}
         />
       )}
 
@@ -11441,6 +14361,9 @@ ${renderAssinaturasHtmlWord()}
         onClose={() => setIsGuiaAjudaOpen(false)}
         onReiniciarDicas={() => (window as any).reiniciarDicas?.()}
         isLoggedIn={!!currentUser}
+        userRole={currentUser?.nivel || 'EDITOR'}
+        activeSecretaria={activeSecretaria}
+        userName={currentUser?.nome || ''}
       />
 
       {/* Modal 5: Recuperação de Senha Esquecida & Cadastro Inicial de Servidor */}
@@ -11460,6 +14383,8 @@ ${renderAssinaturasHtmlWord()}
           setLoginMatricula(matricula);
           showToast(`Matrícula ${matricula} pronta para login!`);
         }}
+        funcoesOficiais={funcoesOficiais}
+        cargosEfetivos={cargosEfetivos}
       />
 
       {/* Modal 6: Seletor Responsivo de Tema, Paleta de Cores e Formulários */}
@@ -11481,17 +14406,36 @@ ${renderAssinaturasHtmlWord()}
         }}
       />
 
-      {/* Modal 7: Central de Importação e Catalogação Inteligente (PDF / DOCX) */}
+      {/* Modal 7: Central de Importação e Catalogação Inteligente (PDF / DOCX / OCR) */}
       <ImportarCatalogarModal
         isOpen={isImportCatalogModalOpen}
         onClose={() => setIsImportCatalogModalOpen(false)}
         categoriasExistentes={categories}
         secretariasDisponiveis={listaSecretariasDoUsuario.length > 0 ? listaSecretariasDoUsuario : secretarias.map(s => `${s.nome} (${s.sigla})`)}
+        destinatariosExistentes={listaDestinatariosBase}
         secretariaPadrao={activeSecretaria}
         canCatalogModelo={currentUser?.nivel === 'ADMIN' || currentUser?.nivel === 'EDITOR'}
+        isAdmin={currentUser?.nivel === 'ADMIN'}
+        usuariosExistentes={usuarios}
+        cargosOficiaisExistentes={Array.from(new Set([...cargosEfetivos, ...funcoesOficiais.map(f => f.nome)]))}
+        departamentosExistentes={Array.from(
+          new Set([
+            ...secretarias.flatMap(s => s.departamentos || []),
+            ...usuarios.map(u => u.departamento || '').filter(Boolean)
+          ])
+        )}
+        getMaiorSequencialAtual={(tipoDoc, sec, ano) =>
+          getMaxSequentialForSecretaria(numeracoes, tipoDoc, sec, ano, secretarias, configNumeracao)
+        }
         onCatalogarComoModelo={handleCatalogarModeloImportado}
         onRegistrarNoLivro={handleRegistrarLivroImportado}
         onAbrirNoRedator={handleAbrirImportadoNoRedator}
+        onAbastecerServidorOCR={handleAbastecerServidorOCR}
+        onAbastecerDepartamentoOCR={handleAbastecerDepartamentoOCR}
+        onAbastecerCargoOCR={handleAbastecerCargoOCR}
+        onAbastecerCombosRedatorOCR={handleAbastecerCombosRedatorOCR}
+        onAtualizarMarcoZeroOCR={handleAtualizarMarcoZeroOCR}
+        onClonarEstiloVisual={handleClonarEstiloVisual}
         showToast={showToast}
       />
 
@@ -11501,9 +14445,79 @@ ${renderAssinaturasHtmlWord()}
         onShowToast={showToast}
       />
 
+      {/* Barra de Navegação Inferior Fixa para Celulares (Zona do Polegar) */}
+      <nav
+        aria-label="Navegação rápida mobile"
+        className="sgep-themed-surface no-print md:hidden fixed bottom-0 left-0 right-0 z-40 backdrop-blur-md border-t shadow-[0_-4px_16px_rgba(15,23,42,0.08)]"
+      >
+        <div className="grid grid-cols-5 items-center min-h-[60px] pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('app');
+              setActiveAppView('inicio');
+            }}
+            className={`flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] transition-colors cursor-pointer ${
+              activeTab === 'app' && activeAppView === 'inicio'
+                ? 'sgep-accent-active-nav'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            <Home className="w-5 h-5" />
+            <span className="text-[10px] leading-none">Início</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleAbrirRedatorComTipo()}
+            className="sgep-accent-text flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] font-semibold transition-colors cursor-pointer"
+          >
+            <FilePen className="w-5 h-5" />
+            <span className="text-[10px] leading-none">Redigir</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveSheetTab('numeracao');
+              setIsSheetsDrawerOpen(true);
+            }}
+            className="flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] text-slate-600 dark:text-slate-300 font-medium transition-colors cursor-pointer"
+          >
+            <ListOrdered className="w-5 h-5" />
+            <span className="text-[10px] leading-none">Livro</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('app');
+              setActiveAppView('modelos');
+            }}
+            className={`flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] transition-colors cursor-pointer ${
+              activeTab === 'app' && activeAppView === 'modelos'
+                ? 'sgep-accent-active-nav'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            <BookOpen className="w-5 h-5" />
+            <span className="text-[10px] leading-none">Modelos</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsImportCatalogModalOpen(true)}
+            className="flex flex-col items-center justify-center gap-0.5 py-2 min-h-[52px] text-slate-600 dark:text-slate-300 font-medium transition-colors cursor-pointer"
+          >
+            <Upload className="w-5 h-5" />
+            <span className="text-[10px] leading-none">Importar</span>
+          </button>
+        </div>
+      </nav>
+
       {/* Global Toast */}
       {toastMessage && (
-        <div id="toast" role="status" className={`no-print fixed bottom-6 right-6 z-[120] max-w-sm bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border flex items-center space-x-3 pointer-events-none transition-all duration-300 animate-in slide-in-from-bottom-5 ${
+        <div id="toast" role="status" className={`no-print fixed bottom-20 md:bottom-6 left-3 right-3 sm:left-auto sm:right-6 z-[120] sm:max-w-sm bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border flex items-center space-x-3 pointer-events-none transition-all duration-300 animate-in slide-in-from-bottom-5 ${
           toastMessage.isError ? 'border-rose-500' : 'border-emerald-500'
         }`}>
           <div className={toastMessage.isError ? 'text-rose-400 text-lg' : 'text-emerald-400 text-lg'}>

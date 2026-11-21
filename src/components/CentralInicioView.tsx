@@ -19,6 +19,8 @@ import {
   Star,
 } from 'lucide-react';
 import { RegistroNumeracao, UsuarioSistema } from '../mockData';
+import type { RedatorTipoDocumento } from '../documentTypes';
+import { AjudaAssistenteIA } from './AjudaAssistenteIA';
 
 export interface SavedRedatorDraftSummary {
   tipo: string;
@@ -47,7 +49,7 @@ interface CentralInicioViewProps {
   onToggleSkipHomeHub: (skip: boolean) => void;
   onContinuarRascunho: () => void;
   onDescartarRascunho: () => void;
-  onAbrirRedator: (tipoInicial?: 'MEMORANDO' | 'OFICIO' | 'DESPACHO') => void;
+  onAbrirRedator: (tipoInicial?: RedatorTipoDocumento) => void;
   onAbrirLivro: () => void;
   onIrParaModelos: (opts?: { tipo?: string; categoria?: string | null }) => void;
   onAbrirImportacao: () => void;
@@ -132,20 +134,20 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
   );
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950">
-      <div className="max-w-[1200px] w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-        {/* Faixa 1: Boas-vindas, Contexto Institucional e Resumo Real */}
-        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6">
+    <div className="flex-1 overflow-y-auto sgep-themed-page">
+      <div className="max-w-[1440px] w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-8 pb-24 md:pb-8 space-y-5 sm:space-y-6">
+        {/* Faixa 1: Boas-vindas, Contexto Institucional e Resumo Real (Acompanha a Paleta Ativa) */}
+        <section className="sgep-themed-hero text-white border rounded-2xl shadow-md p-5 sm:p-6">
           <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
             <div className="space-y-2 min-w-0">
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              <p className="text-xs font-semibold text-white/75">
                 Central de Início · Banco Mestre Administrativo
               </p>
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 text-balance">
+              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white text-balance">
                 {saudacao}, {primeiroNome}. O que você deseja fazer agora?
               </h2>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
-                <span className="font-medium text-slate-700 dark:text-slate-300">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/80">
+                <span className="font-semibold text-white">
                   {currentUser.nome}
                 </span>
                 {currentUser.cargo && (
@@ -169,9 +171,9 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
             <div className="lg:w-80 shrink-0 space-y-1.5">
               <label
                 htmlFor="hub-secretaria-select"
-                className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-400"
+                className="flex items-center gap-1.5 text-xs font-semibold text-white/85"
               >
-                <Building2 className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+                <Building2 className="w-3.5 h-3.5 text-white/85" />
                 <span>Secretaria ativa para emissão</span>
               </label>
               {canSwitchSecretaria ? (
@@ -179,54 +181,63 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                   id="hub-secretaria-select"
                   value={activeSecretaria}
                   onChange={e => onChangeSecretaria(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 cursor-pointer"
+                  className="w-full px-3 py-2.5 bg-white/15 hover:bg-white/20 border border-white/25 rounded-lg text-xs font-semibold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 cursor-pointer"
                 >
                   {isAdmin && (
-                    <option value="TODAS">Todas as Secretarias (Auditoria Geral)</option>
+                    <option value="TODAS" className="bg-slate-900 text-white">Todas as Secretarias (Auditoria Geral)</option>
                   )}
                   {listaSecretariasDoUsuario.map(sec => (
-                    <option key={sec} value={sec}>
+                    <option key={sec} value={sec} className="bg-slate-900 text-white">
                       {sec}
                     </option>
                   ))}
                 </select>
               ) : (
-                <div className="px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                <div className="px-3 py-2.5 bg-white/15 border border-white/25 rounded-lg text-xs font-semibold text-white truncate">
                   {activeSecretaria}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Resumo numérico limpo sem cards aninhados */}
-          <div className="mt-5 pt-5 border-t border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-0 sm:divide-x sm:divide-slate-200 dark:sm:divide-slate-800">
+          {/* Resumo numérico limpo integrado ao banner temático */}
+          <div className="mt-5 pt-5 border-t border-white/20 grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-0 sm:divide-x sm:divide-white/20">
             <div className="sm:pr-5">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-white/75">
                 Livro ({activeSecretaria === 'TODAS' ? 'Geral' : activeSecretariaSigla})
               </p>
-              <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+              <p className="mt-0.5 text-lg font-bold text-white tabular-nums">
                 {numeracoesFiltradas.length}
               </p>
             </div>
             <div className="sm:px-5">
-              <p className="text-xs text-slate-500 dark:text-slate-400">Emitidos neste mês</p>
-              <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+              <p className="text-xs text-white/75">Emitidos neste mês</p>
+              <p className="mt-0.5 text-lg font-bold text-white tabular-nums">
                 {emitidosNoMes}
               </p>
             </div>
             <div className="sm:px-5">
-              <p className="text-xs text-slate-500 dark:text-slate-400">Modelos disponíveis</p>
-              <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+              <p className="text-xs text-white/75">Modelos disponíveis</p>
+              <p className="mt-0.5 text-lg font-bold text-white tabular-nums">
                 {totalModelos}
               </p>
             </div>
             <div className="sm:pl-5">
-              <p className="text-xs text-slate-500 dark:text-slate-400">Seus favoritos</p>
-              <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-slate-100 tabular-nums">
+              <p className="text-xs text-white/75">Seus favoritos</p>
+              <p className="mt-0.5 text-lg font-bold text-white tabular-nums">
                 {totalFavoritos}
               </p>
             </div>
           </div>
+
+          {/* Bloco de Respostas da IA para Dúvidas do Sistema */}
+          <AjudaAssistenteIA
+            variant="hero"
+            userRole={currentUser.nivel}
+            activeSecretaria={activeSecretaria}
+            userName={currentUser.nome}
+            onAbrirGuiaCompleto={onAbrirGuia}
+          />
         </section>
 
         {/* Faixa Condicional: Rascunho Pendente e/ou Pendências Administrativas */}
@@ -317,14 +328,14 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Cartão 1: Redator Oficial (Focal Anchor — CTA Primário) */}
-            <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between transition-colors hover:border-emerald-400 dark:hover:border-emerald-700">
+            {/* Cartão 1: Redator Oficial (Focal Anchor — CTA Primário seguindo a Paleta) */}
+            <article className="sgep-themed-surface border rounded-xl p-5 flex flex-col justify-between transition-all hover:shadow-md">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-lg sgep-accent-soft border flex items-center justify-center shrink-0">
                     <FilePen className="w-4 h-4" />
                   </div>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                  <span className="text-xs font-semibold sgep-accent-text">
                     Emissão oficial
                   </span>
                 </div>
@@ -340,7 +351,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onAbrirRedator('MEMORANDO')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  className="sgep-btn-primary inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border text-xs font-semibold shadow-xs whitespace-nowrap cursor-pointer"
                 >
                   <span>Novo documento</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -348,7 +359,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onAbrirRedator('OFICIO')}
-                  className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline whitespace-nowrap cursor-pointer py-1.5 px-1"
+                  className="text-xs font-semibold sgep-accent-text hover:underline whitespace-nowrap cursor-pointer py-1.5 px-1"
                 >
                   Novo Ofício
                 </button>
@@ -356,7 +367,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
             </article>
 
             {/* Cartão 2: Despachos */}
-            <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between transition-colors hover:border-slate-300 dark:hover:border-slate-700">
+            <article className="sgep-themed-surface border rounded-xl p-5 flex flex-col justify-between transition-all hover:shadow-md">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 flex items-center justify-center shrink-0">
@@ -378,7 +389,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onAbrirRedator('DESPACHO')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg sgep-accent-soft border text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
                 >
                   <span>Novo Despacho</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -394,10 +405,10 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
             </article>
 
             {/* Cartão 3: Livro de Numeração */}
-            <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between transition-colors hover:border-slate-300 dark:hover:border-slate-700">
+            <article className="sgep-themed-surface border rounded-xl p-5 flex flex-col justify-between transition-all hover:shadow-md">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 flex items-center justify-center shrink-0">
                     <ListOrdered className="w-4 h-4" />
                   </div>
                   <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
@@ -416,7 +427,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                 <button
                   type="button"
                   onClick={onAbrirLivro}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg sgep-accent-soft border text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
                 >
                   <span>Abrir Livro</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -428,10 +439,10 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
             </article>
 
             {/* Cartão 4: Banco de Modelos */}
-            <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between transition-colors hover:border-slate-300 dark:hover:border-slate-700">
+            <article className="sgep-themed-surface border rounded-xl p-5 flex flex-col justify-between transition-all hover:shadow-md">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 flex items-center justify-center shrink-0">
                     <BookOpen className="w-4 h-4" />
                   </div>
                   <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
@@ -450,7 +461,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onIrParaModelos({ tipo: 'TODOS', categoria: null })}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg sgep-accent-soft border text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
                 >
                   <span>Explorar modelos</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -479,11 +490,11 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
               </div>
             </article>
 
-            {/* Cartão 5: Importar e Catalogar PDF / DOCX */}
-            <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between transition-colors hover:border-slate-300 dark:hover:border-slate-700">
+            {/* Cartão 5: Importar Documentos & OCR */}
+            <article className="sgep-themed-surface border rounded-xl p-5 flex flex-col justify-between transition-all hover:shadow-md">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-3">
-                  <div className="w-9 h-9 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-400 flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 flex items-center justify-center shrink-0">
                     <Upload className="w-4 h-4" />
                   </div>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -491,10 +502,10 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                   </span>
                 </div>
                 <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  Importar PDF / DOCX
+                  Importar Documentos &amp; OCR
                 </h4>
                 <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Envie documentos digitais ou PDFs escaneados para reconhecimento automático de metadados, geração de campos e catalogação.
+                  Leia PDF, ODT (LibreOffice), DOC/DOCX, RTF, CSV e fotos com OCR, catalogação automática e proteção de assinaturas digitais.
                 </p>
               </div>
 
@@ -502,23 +513,23 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                 <button
                   type="button"
                   onClick={onAbrirImportacao}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg sgep-accent-soft border text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
                 >
                   <span>Importar arquivos</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
-                  PDF até 10 MB
+                  PDF/ODT/DOC/CSV
                 </span>
               </div>
             </article>
 
             {/* Cartão 6: Gestão Administrativa (ADMIN) ou Guia de Orientações (Demais Perfis) */}
             {isAdmin ? (
-              <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between transition-colors hover:border-slate-300 dark:hover:border-slate-700">
+              <article className="sgep-themed-surface border rounded-xl p-5 flex flex-col justify-between transition-all hover:shadow-md">
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 flex items-center justify-center shrink-0">
                       <ShieldCheck className="w-4 h-4" />
                     </div>
                     <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
@@ -537,7 +548,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                   <button
                     type="button"
                     onClick={onAbrirAdmin}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg sgep-accent-soft border text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
                   >
                     <span>Abrir Gestão</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -556,10 +567,10 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                 </div>
               </article>
             ) : (
-              <article className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between transition-colors hover:border-slate-300 dark:hover:border-slate-700">
+              <article className="sgep-themed-surface border rounded-xl p-5 flex flex-col justify-between transition-all hover:shadow-md">
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 flex items-center justify-center shrink-0">
                       <HelpCircle className="w-4 h-4" />
                     </div>
                     <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -578,7 +589,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                   <button
                     type="button"
                     onClick={onAbrirGuia}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg sgep-accent-soft border text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
                   >
                     <span>Abrir Guia</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -595,9 +606,9 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
         {/* Faixa 3: Atos Recentes da Secretaria */}
         <section
           aria-labelledby="heading-atos-recentes"
-          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden"
+          className="sgep-themed-surface border rounded-xl overflow-hidden"
         >
-          <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+          <div className="px-5 py-4 sgep-themed-subtle border-b flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3
                 id="heading-atos-recentes"
@@ -612,7 +623,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
             <button
               type="button"
               onClick={onAbrirLivro}
-              className="text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline whitespace-nowrap cursor-pointer"
+              className="text-xs font-semibold sgep-accent-text hover:underline whitespace-nowrap cursor-pointer"
             >
               Ver livro completo
             </button>
@@ -626,7 +637,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
               <button
                 type="button"
                 onClick={() => onAbrirRedator('MEMORANDO')}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors cursor-pointer"
+                className="sgep-btn-primary inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer"
               >
                 <span>Emitir primeiro documento</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -662,11 +673,11 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                     <button
                       type="button"
                       onClick={() => onUsarDocumentoComoBase(doc)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer"
+                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 min-h-[40px] sm:min-h-0 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer"
                       title="Copiar tipo, destinatário e assunto para um novo documento com nova numeração"
                     >
                       <Files className="w-3.5 h-3.5" />
@@ -675,7 +686,7 @@ export const CentralInicioView: React.FC<CentralInicioViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onResponderDocumento(doc)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
+                      className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 min-h-[40px] sm:min-h-0 rounded-lg sgep-accent-soft border text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer"
                       title="Responder este documento no Redator com referência automática"
                     >
                       <Send className="w-3.5 h-3.5" />
